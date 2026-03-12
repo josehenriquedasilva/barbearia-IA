@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+@layer utilities {
+  /* Estilização da Scrollbar Personalizada */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px; /* Barra bem fininha */
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #0a0a0a; /* neutral-950 (fundo da barra) */
+    border-radius: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #262626; /* neutral-800 (cor do "puxador") */
+    border-radius: 10px;
+    border: 1px solid #0a0a0a; /* Dá um espaçamento interno */
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #404040; /* neutral-700 ao passar o mouse */
+  }
+
+  /* Para Firefox */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #262626 #0a0a0a;
+  }
+}

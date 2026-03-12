@@ -1,15 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { BiArrowToRight, BiCheck } from "react-icons/bi";
-import { BsArrowLeft } from "react-icons/bs";
 import { RiScissorsFill } from "react-icons/ri";
+import { registerShop } from "./actions";
+import { useRouter } from "next/navigation";
+import { formatPhone } from "@/utils/formatters";
+import StepOneShop from "@/components/register/stepOneShop";
+import StepTwoAdimin from "@/components/register/stepTwoAdmin";
+import StepThreeServices from "@/components/register/stepThreeServices";
+import { Service } from "@/types/types";
+import StepFourPricing from "@/components/register/stepFourPricing";
 
 export default function Register() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const router = useRouter();
 
   // Dados da Etapa 1
   const [barberName, setBarberName] = useState("");
@@ -20,71 +26,128 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
-  const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, "").slice(0, 11);
-    if (numbers.length <= 2) {
-      return numbers.replace(/^(\d{2})/, "($1");
-    }
-    if (numbers.length <= 6) {
-      return numbers.replace(/^(\d{2})(\d)/, "($1) $2");
-    }
-    if (numbers.length <= 10) {
-      return numbers.replace(/^(\d{2})(\d{4})(\d)/, "($1) $2-$3");
-    }
-    return numbers.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-  };
-
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhone(e.target.value);
     setPhone(formatted);
   };
 
+  // Dados da Etapa 3
+  const [services, setServices] = useState<Service[]>([]);
+  const [isAddingService, setIsAddingService] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [serviceForm, setServiceForm] = useState({
+    name: "",
+    price: "",
+    duration: "",
+  });
+  const [serviceErrors, setServiceErrors] = useState({
+    name: "",
+    price: "",
+    duration: "",
+  });
+
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    const rawPhone = phone.replace(/\D/g, "");
-
     if (currentStep === 1) {
-      if (!barberName.trim()) {
-        setError("Por favor, preencha o nome da barbearia");
-        return;
-      }
-      if (rawPhone === "") {
-        setError("Por favor, preencha o telefone");
-        return;
-      } else if (rawPhone.length < 11) {
-        setError("Número de telefone inválido");
+      if (!barberName.trim() || phone.replace(/\D/g, "").length < 11) {
+        setError("Preencha os dados da barbearia corretamente.");
         return;
       }
       setCurrentStep(2);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleGoToStepThree = (e: React.FormEvent) => {
     e.preventDefault();
+    if (
+      !adminName ||
+      !email.includes("@") ||
+      password.length < 6 ||
+      password !== confirmPassword
+    ) {
+      setError("Verifique os dados do responsável.");
+      return;
+    }
     setError("");
+    setCurrentStep(3);
+  };
 
-    if (!adminName.trim()) {
-      setError("Por favor, preencha o nome do responsável");
+  const handleAddOrEditService = () => {
+    if (!serviceForm.name || !serviceForm.price || !serviceForm.duration) {
+      setError("Preencha os campos obrigatórios do serviço.");
       return;
     }
-    if (!email.trim()) {
-      setError("Por favor, preencha o email");
+
+    const priceNum = parseFloat(serviceForm.price);
+    const durationNum = parseInt(serviceForm.duration);
+
+    if (isNaN(priceNum) || isNaN(durationNum)) {
+      setError("Preço e duração devem ser números válidos.");
       return;
     }
-    if (!email.includes("@")) {
-      setError("Email inválido");
+
+    const serviceData: Service = {
+      id: editingServiceId || Date.now(),
+      name: serviceForm.name,
+      price: parseFloat(serviceForm.price),
+      duration: parseInt(serviceForm.duration),
+    };
+
+    if (editingServiceId) {
+      setServices((prev) =>
+        prev.map((s) => (s.id === editingServiceId ? serviceData : s)),
+      );
+    } else {
+      setServices((prev) => [...prev, serviceData]);
+    }
+
+    setIsAddingService(false);
+    setEditingServiceId(null);
+    setServiceForm({ name: "", price: "", duration: "" });
+    setError("");
+  };
+
+  const handleGoToStepFour = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (services.length === 0) {
+      setError("Adicione pelo menos um serviço.");
       return;
     }
-    if (password.length < 6) {
-      setError("A senha deve ter no mínimo 6 caracteres");
+    setError("");
+    setCurrentStep(4);
+  };
+
+  // Dados da Etapa 4
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+
+  const handleFinalizeRegister = async () => {
+    if (services.length === 0) {
+      setError("Adicione pelo menos um serviço.");
       return;
     }
-    if (password !== confirmPassword) {
-      setError("As senhas não coincidem");
-      return;
+
+    setIsLoading(true);
+    try {
+      const result = await registerShop({
+        barberName,
+        phone,
+        adminName,
+        email,
+        password,
+        services,
+        plan: selectedPlan,
+      });
+
+      if (result.success) {
+        router.push("/login?register=true");
+      } else {
+        setError(result.error || "Erro ao cadastrar.");
+      }
+    } catch (err) {
+      setError(`Falha na conexão. | ${err}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -94,187 +157,102 @@ export default function Register() {
         <div className="flex flex-col items-center mb-5">
           <RiScissorsFill className="bg-amber-600 text-black p-3 rounded-xl size-20 mb-4" />
           <h1 className="text-neutral-50 text-3xl mb-2">BarberPro Dashboard</h1>
-          <p className="text-neutral-400">Crie sua conta no BarberPro</p>
+          <p className="text-neutral-400">
+            Cadastre Sua Barbearia no{" "}
+            <span className="font-bold">BarberPro</span>
+          </p>
         </div>
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-neutral-400">
-              Etapa {currentStep} de 2
+              Etapa {currentStep} de 4
             </span>
             <span className="text-sm text-amber-500">
-              {currentStep === 1
-                ? "Dados da Barbearia"
-                : "Dados do Responsável"}
+              {currentStep === 1 && "Dados da Barbearia"}
+              {currentStep === 2 && "Dados do Responsável"}
+              {currentStep === 3 && "Serviços Oferecidos"}
+              {currentStep === 4 && "Plano de Assinatura"}
             </span>
           </div>
           <div className="w-full bg-neutral-800 rounded-full h-2">
             <div
               className="bg-amber-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 2) * 100}%` }}
+              style={{ width: `${(currentStep / 4) * 100}%` }}
             />
           </div>
         </div>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 md:p-8">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-5 md:p-8">
           {currentStep === 1 && (
-            <form onSubmit={handleNextStep} className="flex flex-col gap-5">
-              <div>
-                <label htmlFor="barberName">Nome da Barbearia</label>
-                <input
-                  className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                  type="text"
-                  id="barberName"
-                  value={barberName}
-                  onChange={(e) => setBarberName(e.target.value)}
-                  placeholder="Ex: Barber Shop"
-                />
-              </div>
-
-              <div className="relative">
-                <label htmlFor="phone">Telefone</label>
-                <input
-                  className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                  type="tel"
-                  id="phone"
-                  value={phone}
-                  onChange={handlePhoneChange}
-                  placeholder="(81) 98765-4321"
-                />
-              </div>
-
-              {error && (
-                <div className="bg-red-900/20 border border-red-800 text-red-400 rounded-lg px-4 py-3 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-neutral-950 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-1 font-semibold cursor-pointer"
-              >
-                Próxima Etapa <BiArrowToRight className="size-5" />
-              </button>
-              <div className="text-center">
-                <span className="w-full text-neutral-400 text-sm transition-colors flex justify-center gap-1">
-                  Já tem uma conta?
-                  <Link
-                    href={"/login"}
-                    className="text-amber-500 hover:text-amber-600 transition-colors"
-                  >
-                    Faça login
-                  </Link>
-                </span>
-              </div>
-            </form>
+            <StepOneShop
+              barberName={barberName}
+              setBarberName={setBarberName}
+              phone={phone}
+              handlePhoneChange={handlePhoneChange}
+              onNext={handleNextStep}
+              error={error}
+            />
           )}
           {currentStep === 2 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label
-                  htmlFor="adminName"
-                  className="block text-neutral-300 mb-2"
-                >
-                  Nome do Responsável
-                </label>
-                <input
-                  id="adminName"
-                  type="text"
-                  value={adminName}
-                  onChange={(e) => setAdminName(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                  placeholder="Digite seu nome completo"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block text-neutral-300 mb-2">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                  placeholder="seu@email.com"
-                  required
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-neutral-300 mb-2"
-                >
-                  Senha
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                  placeholder="Mínimo 6 caracteres"
-                  required
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="confirmPassword"
-                  className="block text-neutral-300 mb-2"
-                >
-                  Confirmar Senha
-                </label>
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                  placeholder="Digite a senha novamente"
-                  required
-                />
-              </div>
-
-              {error && (
-                <div className="bg-red-900/20 border border-red-800 text-red-400 rounded-lg px-4 py-3 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCurrentStep(1);
-                    setError("");
-                  }}
-                  className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2"
-                >
-                  <BsArrowLeft className="w-5 h-5" />
-                  <span>Voltar</span>
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-neutral-950 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin"></div>
-                      <span>Cadastrando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <BiCheck className="w-5 h-5" />
-                      <span>Finalizar</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+            <StepTwoAdimin
+              adminName={adminName}
+              setAdminName={setAdminName}
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              confirmPassword={confirmPassword}
+              setConfirmPassword={setConfirmPassword}
+              error={error}
+              onNext={handleGoToStepThree}
+              onBack={() => {
+                setCurrentStep(1);
+                setError("");
+              }}
+            />
+          )}
+          {currentStep === 3 && (
+            <StepThreeServices
+              services={services}
+              isAddingService={isAddingService}
+              setIsAddingService={setIsAddingService}
+              serviceForm={serviceForm}
+              setServiceForm={setServiceForm}
+              serviceErrors={serviceErrors}
+              setServiceErrors={setServiceErrors}
+              handleAddOrEditService={handleAddOrEditService}
+              handleDeleteService={(id) =>
+                setServices((prev) => prev.filter((s) => s.id !== id))
+              }
+              handleEditService={(service) => {
+                setServiceForm({
+                  name: service.name,
+                  price: service.price.toString(),
+                  duration: service.duration.toString(),
+                });
+                setEditingServiceId(service.id);
+                setIsAddingService(true);
+              }}
+              handleCancelServiceForm={() => {
+                setIsAddingService(false);
+                setEditingServiceId(null);
+                setServiceForm({ name: "", price: "", duration: "" });
+              }}
+              onBack={() => setCurrentStep(2)}
+              handleGoToStepFour={handleGoToStepFour}
+              error={error}
+              setCurrentStep={setCurrentStep}
+              setError={setError}
+            />
+          )}
+          {currentStep === 4 && (
+            <StepFourPricing
+              selectedPlan={selectedPlan}
+              setSelectedPlan={setSelectedPlan}
+              onBack={() => setCurrentStep(3)}
+              onConfirm={handleFinalizeRegister}
+              isLoading={isLoading}
+              error={error}
+            />
           )}
         </div>
         <p className="text-center text-neutral-500 text-sm mt-6">

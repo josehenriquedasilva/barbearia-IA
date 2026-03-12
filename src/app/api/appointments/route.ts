@@ -1,12 +1,29 @@
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
+    const id = searchParams.get("barberId");
+    const dateParam = searchParams.get("date");
 
-    const whereClause = id ? { barberId: Number(id) } : {};
+    const whereClause: Prisma.AppointmentWhereInput = {};
+
+    if (id) {
+      whereClause.barberId = Number(id);
+    }
+
+    if (dateParam) {
+      const [year, month, day] = dateParam.split("-").map(Number);
+      const startOfDay = new Date(year, month - 1, day, 0, 0, 0);
+      const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+      whereClause.startTime = {
+        gte: startOfDay,
+        lte: endOfDay,
+      };
+    }
 
     const appointments = await prisma.appointment.findMany({
       where: whereClause,

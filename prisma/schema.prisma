@@ -18,11 +18,14 @@ enum Role {
   BARBER
 }
 
+enum PlanType {
+  BRONZE
+  SILVER
+}
+
 enum AppointmentStatus {
-  PENDING
   CONFIRMED
   CANCELED
-  CANCELED_IMPREVISTO
 }
 
 model Shop {
@@ -32,11 +35,29 @@ model Shop {
   slug        String   @unique @db.VarChar(100)
   createdAt   DateTime @default(now()) @map("created_at")
 
+  plan      PlanType @default(BRONZE)
+  closedDays ClosedDay[]
+
   barbers     Barber[]
   services    Service[]
   appointments Appointment[]
 
+  whatsappInstance String?  @unique
+  whatsappToken    String?
+  
   @@map("shops")
+}
+
+model ClosedDay {
+  id        Int      @id @default(autoincrement())
+  date      String   
+  reason    String?  @db.VarChar(255)
+  
+  shopId    Int      @map("shop_id")
+  shop      Shop     @relation(fields: [shopId], references: [id])
+
+  @@unique([shopId, date]) 
+  @@map("closed_days")
 }
 
 model Barber {
@@ -63,6 +84,8 @@ model Service {
   
   shopId          Int      @map("shop_id")
   shop            Shop     @relation(fields: [shopId], references: [id])
+  active          Boolean       @default(true)
+  disableAt       DateTime?
 
   appointments    Appointment[]
 
@@ -86,6 +109,7 @@ model Appointment {
   startTime   DateTime          @map("start_time")
   endTime     DateTime          @map("end_time")
   status      AppointmentStatus @default(CONFIRMED)
+  cancelReason String?           @map("cancel_reason") @db.VarChar(255)
   
   @@map("appointments")
 }

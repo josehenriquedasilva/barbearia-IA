@@ -3,6 +3,8 @@ import { startNewChat } from "@/lib/gemini";
 import { Content, Type } from "@google/genai";
 import prisma from "@/lib/db";
 
+// Alterar a lógica do número mockado para que a IA pegue o número da API do WhatsApp
+
 export const dynamic = "force-dynamic";
 
 interface ScheduleArgs {
@@ -11,6 +13,12 @@ interface ScheduleArgs {
   time: string;
   serviceName: string;
   clientName: string;
+  clientPhone: string;
+}
+
+interface ClosedDay {
+  date: string;
+  reason: string;
 }
 
 function getFormattedCurrentDate() {
@@ -20,30 +28,35 @@ function getFormattedCurrentDate() {
 
 export async function POST(request: Request) {
   try {
-    const { message, history: incomingHistory } = await request.json();
+    const { message, history: incomingHistory, shopId } = await request.json();
 
-    const currentDate = getFormattedCurrentDate();
-
-    const availableBarbers = await prisma.barber.findMany({
-      select: { id: true, name: true },
-    });
-    const availableServices = await prisma.service.findMany({
-      select: {
-        id: true,
-        name: true,
-        durationMinutes: true,
-      },
-    });
-
-    if (availableBarbers.length === 0) {
+    if (!shopId) {
       return NextResponse.json(
-        { status: "Error", message: "Nenhum barbeiro cadastrado no sistema." },
-        { status: 500 }
+        { message: "ID da barbearia não fornecido." },
+        { status: 400 },
       );
     }
 
-    const barbeiroNames = availableBarbers.map((b) => b.name);
-    const serviceNames = availableServices.map((s) => s.name);
+    const currentDate = getFormattedCurrentDate();
+
+    const shopData = await prisma.shop.findUnique({
+      where: { id: Number(shopId) },
+      include: {
+        barbers: { select: { id: true, name: true } },
+        services: { select: { id: true, name: true, durationMinutes: true } },
+        closedDays: true,
+      },
+    });
+
+    if (!shopData) {
+      return NextResponse.json(
+        { message: "Barbearia não encontrada." },
+        { status: 404 },
+      );
+    }
+
+    const barbeiroNames = shopData.barbers.map((b) => b.name);
+    const serviceNames = shopData.services.map((s) => s.name);
 
     const tools = [
       {
@@ -78,6 +91,10 @@ export async function POST(request: Request) {
                   type: Type.STRING,
                   description: "O nome do cliente. Obrigatorio.",
                 },
+                clientPhone: {
+                  type: Type.STRING,
+                  description: "O número de telefone do cliente.",
+                },
               },
               required: [
                 "barberName",
@@ -85,6 +102,7 @@ export async function POST(request: Request) {
                 "time",
                 "serviceName",
                 "clientName",
+                "clientPhone",
               ],
             },
           },
@@ -93,22 +111,22 @@ export async function POST(request: Request) {
     ];
 
     const systemInstruction = `
-      Você é um assistente de agendamento de barbearia profissional e amigável.
+      Você é um assistente de agendamento de barbearia "${shopData.name}", profissional e amigável.
       Seu objetivo é guiar o usuário para preencher todos os campos da função 'scheduleAppointment'.
       ⚠️ INFORMAÇÃO CRÍTICA: A data de hoje é ${currentDate}. Assuma o ano atual.
 
       LISTA DE BARBEIROS: ${barbeiroNames.join(", ")}.
       LISTA DE SERVIÇOS: ${serviceNames.join(", ")}.
 
-      Você deve extrair o "nome do cliente", o "nome do barbeiro", "a data", "a hora" e "o serviço" da conversa.
-      Se faltar algum dado OBRIGATÓRIO (nome do cliente, nome do barbeiro, data, hora ou serviço), você DEVE responder em texto perguntando o dado que falta.
+      Você deve extrair o "nome do cliente", "telefone do cliente", "nome do barbeiro", "a data", "a hora" e "o serviço" da conversa.
+      Se faltar algum dado OBRIGATÓRIO (nome do cliente, telefone do cliente, nome do barbeiro, data, hora ou serviço), você DEVE responder em texto perguntando o dado que falta.
       Se todos os dados OBRIGATÓRIOS estiverem na conversa, chame a função 'scheduleAppointment'.
     `;
 
     const chat = startNewChat(
       systemInstruction,
       tools,
-      incomingHistory as Content[]
+      incomingHistory as Content[],
     );
 
     const response = await chat.sendMessage({ message: message });
@@ -118,44 +136,57 @@ export async function POST(request: Request) {
     const call = response.functionCalls ? response.functionCalls[0] : null;
 
     if (call && call.name === "scheduleAppointment") {
-      const { barberName, date, time, serviceName, clientName } =
-        call.args as unknown as ScheduleArgs;
+      const args = call.args as unknown as ScheduleArgs;
+      const closedDays = (shopData.closedDays as ClosedDay[]) || [];
+      const closedDayEntry = closedDays.find((d) => d.date === args.date);
 
-      const clientPhone = "55999999999";
+      if (closedDayEntry) {
+        const reason = closedDayEntry.reason || "não especificado";
+        return NextResponse.json({
+          status: "CLOSED",
+          ai_response: `Desculpe, mas no dia ${args.date} a barbearia estará fechada (Motivo: ${reason}). Pode escolher outro dia?`,
+          newHistory,
+        });
+      }
 
-      const targetService = availableServices.find(
-        (s) => serviceName && s.name.toLowerCase() === serviceName.toLowerCase()
+      const targetService = shopData.services.find(
+        (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
+      );
+      const targetBarber = shopData.barbers.find(
+        (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
       );
 
       if (!targetService) {
         return NextResponse.json(
           {
             status: "SERVICE_NOT_FOUND",
-            ai_response: `Desculpe, o serviço "${serviceName}" não existe. Escolha um desta lista: ${serviceNames.join(
-              ", "
+            ai_response: `Desculpe, o serviço "${args.serviceName}" não existe. Escolha um desta lista: ${serviceNames.join(
+              ", ",
             )}.`,
             newHistory: newHistory,
           },
-          { status: 400 }
+          { status: 400 },
+        );
+      }
+
+      if (!targetBarber) {
+        return NextResponse.json(
+          {
+            status: "BARBER_NOT_FOUND",
+            ai_response: `Desculpe, o barbeiro "${args.barberName}" não está na lista de disponíveis. Escolha um desta lista: ${barbeiroNames.join(
+              ", ",
+            )}.`,
+            newHistory: newHistory,
+          },
+          { status: 400 },
         );
       }
 
       const assumedDurationMinutes = targetService.durationMinutes;
 
-      const targetBarber = availableBarbers.find(
-        (b) => b.name.toLowerCase() === barberName.toLowerCase()
-      );
-
-      if (!targetBarber) {
-        return NextResponse.json({
-          status: "BARBER_NOT_FOUND",
-          ai_response: `O barbeiro "${barberName}" não está na lista de disponíveis.`,
-        });
-      }
-
       const USER_TIMEZONE_OFFSET_HOURS = 3;
 
-      const [hour, minute] = time.split(":").map(Number);
+      const [hour, minute] = args.time.split(":").map(Number);
 
       const utcHour = hour + USER_TIMEZONE_OFFSET_HOURS;
 
@@ -163,30 +194,33 @@ export async function POST(request: Request) {
         .toString()
         .padStart(2, "0")}:00Z`;
 
-      const startAt = new Date(`${date}T${utcTimeString}`);
+      const startAt = new Date(`${args.date}T${utcTimeString}`);
 
       const endTime = new Date(
-        startAt.getTime() + assumedDurationMinutes * 60000
+        startAt.getTime() + assumedDurationMinutes * 60000,
       );
 
       const existingAppointment = await prisma.appointment.findFirst({
         where: {
           barberId: targetBarber.id,
           startTime: startAt,
+          status: "CONFIRMED",
         },
       });
 
       if (existingAppointment) {
         return NextResponse.json({
           status: "UNAVAILABLE",
-          ai_response: `Desculpe, o horário com ${targetBarber.name} em ${date} às ${time} já está reservado. Por favor, escolha outro horário.`,
+          ai_response: `Poxa, o horário das ${args.time} com ${targetBarber.name} já foi preenchido. Tem outro horário ou barbeiro de sua preferência?`,
+          newHistory,
         });
       }
 
       const newAppointment = await prisma.appointment.create({
         data: {
-          clientName: clientName || "Cliente padrão",
-          clientPhone: clientPhone,
+          clientName: args.clientName,
+          clientPhone: args.clientPhone, // Injetar esse número automaticamente
+          shopId: shopData.id,
           barberId: targetBarber.id,
           serviceId: targetService.id,
           startTime: startAt,
@@ -220,7 +254,7 @@ export async function POST(request: Request) {
     console.error("Erro na rota de agendamento:", error);
     return NextResponse.json(
       { status: "Error", message: (error as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

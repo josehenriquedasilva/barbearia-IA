@@ -1,9 +1,13 @@
 import { AppointmentsListProps } from "@/types/types";
 import AppointmentsCard from "./ui/appointmentsCard";
 
-export default function Appointments({ appointments }: AppointmentsListProps) {
-  const confirmed = appointments.filter((a) => a.status !== "CANCELED");
-  const canceled = appointments.filter((a) => a.status === "CANCELED");
+export default function Appointments({
+  appointments,
+  onOpenCancelModal,
+}: AppointmentsListProps) {
+  const list = appointments || [];
+  const confirmed = list.filter((a) => a.status !== "CANCELED");
+  const canceled = list.filter((a) => a.status === "CANCELED");
 
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 md:p-6">
@@ -12,24 +16,49 @@ export default function Appointments({ appointments }: AppointmentsListProps) {
           Agendamentos do Dia
         </h1>
         <p className="text-xs md:text-sm text-neutral-400">
-          {appointments.length} Agendamentos
+          {list.length} {list.length === 1 ? "Agendamento" : "Agendamentos"}
         </p>
       </section>
-      <section className="flex flex-col gap-3.5 h-[400px] overflow-y-scroll">
-        {confirmed.map((appointment) => (
-          <AppointmentsCard key={appointment.id} appointment={appointment} />
-        ))}
-        <section className="flex flex-col gap-3.5">
-          <p className="text-xs md:text-sm text-neutral-500">
-            {canceled.length} Cancelados
+
+      {confirmed.length === 0 && canceled.length === 0 ? (
+        <div className="text-center py-8 md:py-12">
+          <p className="text-neutral-500 text-sm md:text-base">
+            Nenhum agendamento para hoje
           </p>
-          {canceled.map((appointment) => (
-            <div className="border-red-900/30 opacity-60" key={appointment.id}>
-              <AppointmentsCard appointment={appointment} />
-            </div>
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-[500px] md:max-h-[600px] overflow-y-scroll pr-1 md:pr-2 custom-scrollbar">
+          {confirmed.map((appointment) => (
+            <AppointmentsCard
+              key={appointment.id}
+              appointment={appointment}
+              onOpenCancelModal={onOpenCancelModal}
+            />
           ))}
-        </section>
-      </section>
+
+          {canceled.length > 0 && (
+            <>
+              <div className="pt-4 pb-2">
+                <p className="text-xs md:text-sm text-neutral-500">
+                  {canceled.length}{" "}
+                  {canceled.length === 1 ? "Cancelado" : "Cancelados"}
+                </p>
+              </div>
+              {canceled.map((appointment) => (
+                <div
+                  key={appointment.id}
+                  className="border-red-900/30 opacity-60"
+                >
+                  <AppointmentsCard
+                    appointment={appointment}
+                    onOpenCancelModal={() => {}}
+                  />
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

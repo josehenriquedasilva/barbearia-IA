@@ -1,10 +1,12 @@
-import { AppointmentsListProps } from "@/types/types";
+import { InfoAppointmentsProps } from "@/types/types";
 import { FaDollarSign } from "react-icons/fa";
 import { MdOutlineCalendarToday, MdOutlineCancel } from "react-icons/md";
 
-export default function Info({ appointments }: AppointmentsListProps) {
-  const confirmed = appointments.filter((a) => a.status !== "CANCELED");
-  const cancelados = appointments.filter((a) => a.status === "CANCELED");
+export default function Info({ appointments }: InfoAppointmentsProps) {
+  const list = appointments || [];
+
+  const confirmed = list.filter((a) => a.status !== "CANCELED");
+  const cancelados = list.filter((a) => a.status === "CANCELED");
 
   const formattedPrice = new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -23,7 +25,7 @@ export default function Info({ appointments }: AppointmentsListProps) {
                 Agendamentos Hoje
               </p>
               <p className="text-neutral-50 text-2xl md:text-3xl">
-                {appointments.length}
+                {list.length}
               </p>
             </div>
             <div className="bg-blue-600/10 p-2 md:p-3 rounded-lg">
