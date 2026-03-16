@@ -1,9 +1,8 @@
 "use server";
 
-import { Prisma } from "@/generated/prisma/client";
-import { PlanType, Role } from "@/generated/prisma/enums";
 import prisma from "@/lib/db";
 import { FormBarberProps } from "@/types/types";
+import { Prisma, PlanType, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 export async function registerShop(formData: FormBarberProps) {
