@@ -119,7 +119,7 @@ export default function Register() {
   };
 
   // Dados da Etapa 4
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<"BRONZE" | "SILVER">("BRONZE");
 
   const handleFinalizeRegister = async () => {
     if (services.length === 0) {
@@ -136,7 +136,7 @@ export default function Register() {
         email,
         password,
         services,
-        plan: selectedPlan,
+        plan: (selectedPlan as "BRONZE" | "SILVER") || "BRONZE",
       });
 
       if (result.success) {

@@ -85,8 +85,8 @@ export interface StepThreeProps {
 }
 
 export interface StepFourPricingProps {
-  selectedPlan: string | null;
-  setSelectedPlan: (plan: string) => void;
+  selectedPlan: "BRONZE" | "SILVER";
+  setSelectedPlan: (plan: "BRONZE" | "SILVER") => void;
   onBack: () => void;
   onConfirm: () => void;
   isLoading: boolean;
@@ -161,7 +161,7 @@ export interface FormBarberProps {
   email: string;
   password: string;
   services: Service[];
-  plan: "bronze" | "silver";
+  plan: "BRONZE" | "SILVER";
 }
 
 export interface FormLoginProps {

@@ -3,20 +3,20 @@ import { BiCheck } from "react-icons/bi";
 
 const plans = [
   {
-    id: "bronze",
+    id: "BRONZE",
     name: "Bronze",
     price: "49,90",
     features: ["Até 2 Barbeiros", "IA Básica", "Suporte via Email"],
     highlight: false,
   },
   {
-    id: "silver",
+    id: "SILVER",
     name: "Silver",
     price: "89,90",
     features: ["Até 5 Barbeiros", "IA Avançada", "Suporte WhatsApp"],
     highlight: true,
   },
-];
+] as const;
 
 export default function StepFourPricing({
   selectedPlan,
