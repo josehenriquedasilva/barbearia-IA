@@ -1,21 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 
-const prismaClientSingleton = () => {
-  // Se não houver DATABASE_URL (caso do build da Vercel), 
-  // passamos uma string de fallback válida apenas para o construtor não reclamar.
-  const url = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/postgres";
-  
-  return new PrismaClient({
-    datasourceUrl: url,
-  });
-};
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-declare global {
-  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
-}
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient(); 
 
-export const prisma = globalThis.prisma ?? prismaClientSingleton();
-
-if (process.env.NODE_ENV !== "production") globalThis.prisma = prisma;
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 export default prisma;
