@@ -10,7 +10,7 @@ const prismaClientSingleton = () => {
   const pool = new pg.Pool({ connectionString })
   
   // 3. Cria o adaptador do Prisma para esse driver
-  const adapter = new PrismaPg(pool)
+  const adapter = new PrismaPg(pool as any)
   
   // 4. Instancia o cliente usando o adaptador
   return new PrismaClient({ adapter })
