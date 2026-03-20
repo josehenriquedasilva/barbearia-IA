@@ -42,13 +42,6 @@ export async function registerShop(formData: FormBarberProps) {
         },
       });
 
-      const generatedInstanceName = `${slug}-${shop.id}`;
-
-      const updatedShop = await tx.shop.update({
-        where: { id: shop.id },
-        data: { whatsappInstance: generatedInstanceName },
-      });
-
       const admin = await tx.barber.create({
         data: {
           name: adminName,
@@ -70,10 +63,8 @@ export async function registerShop(formData: FormBarberProps) {
         });
       }
 
-      return { shop: updatedShop, admin };
+      return { shop, admin };
     });
-
-    const instanceToCreate = result.shop.whatsappInstance;
 
     try {
       await fetch(`${EVO_URL}/instance/create`, {
@@ -83,14 +74,14 @@ export async function registerShop(formData: FormBarberProps) {
           apikey: EVO_KEY as string,
         },
         body: JSON.stringify({
-          instanceName: instanceToCreate,
-          token: "",
+          instanceName: instanceName,
+          token: "", 
           number: rawPhone,
           qrcode: true,
         }),
       });
 
-      await fetch(`${EVO_URL}/webhook/set/${instanceToCreate}`, {
+      await fetch(`${EVO_URL}/webhook/set/${instanceName}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
