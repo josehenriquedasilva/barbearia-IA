@@ -29,8 +29,6 @@ export async function registerShop(formData: FormBarberProps) {
     const selectedPlan =
       plan?.toUpperCase() === "SILVER" ? PlanType.SILVER : PlanType.BRONZE;
 
-    const instanceName = slug;
-
     const result = await prisma.$transaction(async (tx) => {
       const shop = await tx.shop.create({
         data: {
@@ -38,15 +36,15 @@ export async function registerShop(formData: FormBarberProps) {
           phone: rawPhone,
           slug: slug,
           plan: selectedPlan,
-          whatsappInstance: instanceName,
+          whatsappInstance: slug,
         },
       });
 
-      const generatedInstanceName = `${slug}-${shop.id}`;
+      const finalInstanceName = `${slug}-${shop.id}`;
 
       const updatedShop = await tx.shop.update({
         where: { id: shop.id },
-        data: { whatsappInstance: generatedInstanceName },
+        data: { whatsappInstance: finalInstanceName },
       });
 
       const admin = await tx.barber.create({
@@ -75,15 +73,12 @@ export async function registerShop(formData: FormBarberProps) {
 
     const instanceToCreate = result.shop.whatsappInstance;
 
-    console.log("Tentando criar instância:", instanceToCreate);
-    console.log("URL de destino:", `${EVO_URL}/instance/create`);
-
     try {
       const response = await fetch(`${EVO_URL}/instance/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: EVO_KEY as string, // Certifique-se que esta chave é a mesma do CURL
+          apikey: EVO_KEY as string,
         },
         body: JSON.stringify({
           instanceName: instanceToCreate,
@@ -95,10 +90,8 @@ export async function registerShop(formData: FormBarberProps) {
       });
 
       const data = await response.json();
-      console.log("Resposta da Evolution:", data); // VERIFIQUE ISSO NO TERMINAL
 
       if (response.ok) {
-        // Se deu certo, atualiza o token no banco
         await prisma.shop.update({
           where: { id: result.shop.id },
           data: { whatsappToken: data.hash || data.token?.value || null },
@@ -109,6 +102,21 @@ export async function registerShop(formData: FormBarberProps) {
           "A Evolution recusou o pedido:",
           data.message || data.error,
         );
+      }
+
+      if (process.env.NEXT_PUBLIC_SITE_URL) {
+        await fetch(`${EVO_URL}/webhook/set/${instanceToCreate}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: EVO_KEY as string,
+          },
+          body: JSON.stringify({
+            url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/whatsapp`,
+            enabled: true,
+            events: ["MESSAGES_UPSERT"],
+          }),
+        });
       }
     } catch (evoError) {
       console.error("ERRO FATAL NA COMUNICAÇÃO:", evoError);
