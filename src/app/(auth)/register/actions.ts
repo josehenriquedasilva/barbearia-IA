@@ -42,6 +42,13 @@ export async function registerShop(formData: FormBarberProps) {
         },
       });
 
+      const generatedInstanceName = `${slug}-${shop.id}`;
+
+      const updatedShop = await tx.shop.update({
+        where: { id: shop.id },
+        data: { whatsappInstance: generatedInstanceName },
+      });
+
       const admin = await tx.barber.create({
         data: {
           name: adminName,
@@ -63,41 +70,47 @@ export async function registerShop(formData: FormBarberProps) {
         });
       }
 
-      return { shop, admin };
+      return { shop: updatedShop, admin };
     });
 
+    const instanceToCreate = result.shop.whatsappInstance;
+
+    console.log("Tentando criar instância:", instanceToCreate);
+    console.log("URL de destino:", `${EVO_URL}/instance/create`);
+
     try {
-      await fetch(`${EVO_URL}/instance/create`, {
+      const response = await fetch(`${EVO_URL}/instance/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: EVO_KEY as string,
+          apikey: EVO_KEY as string, // Certifique-se que esta chave é a mesma do CURL
         },
         body: JSON.stringify({
-          instanceName: instanceName,
-          token: "", 
+          instanceName: instanceToCreate,
+          token: "",
           number: rawPhone,
           qrcode: true,
         }),
       });
 
-      await fetch(`${EVO_URL}/webhook/set/${instanceName}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: EVO_KEY as string,
-        },
-        body: JSON.stringify({
-          url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/whatsapp`,
-          enabled: true,
-          events: ["MESSAGES_UPSERT"],
-        }),
-      });
+      const data = await response.json();
+      console.log("Resposta da Evolution:", data); // VERIFIQUE ISSO NO TERMINAL
+
+      if (response.ok) {
+        // Se deu certo, atualiza o token no banco
+        await prisma.shop.update({
+          where: { id: result.shop.id },
+          data: { whatsappToken: data.hash || data.token?.value || null },
+        });
+        console.log("Instância criada com sucesso e Token salvo!");
+      } else {
+        console.error(
+          "A Evolution recusou o pedido:",
+          data.message || data.error,
+        );
+      }
     } catch (evoError) {
-      console.error(
-        "Erro ao criar instância na Evolution, mas o cadastro no DB foi feito:",
-        evoError,
-      );
+      console.error("ERRO FATAL NA COMUNICAÇÃO:", evoError);
     }
 
     return { success: true, user: result.admin };
