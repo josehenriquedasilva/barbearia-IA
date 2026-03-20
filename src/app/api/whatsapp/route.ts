@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
 
     // Configurar a URL do Webhook
-    // Adicionar mais uma tabela no schema para a IA buscar a history
 
   try {
     const body = await request.json();
@@ -42,7 +41,6 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         message: messageText,
         shopId: shop.id,
-        history: [],
         clientPhone: clientPhone,
       }),
     });

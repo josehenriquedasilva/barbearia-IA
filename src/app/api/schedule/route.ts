@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { startNewChat } from "@/lib/gemini";
-import { Content, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import prisma from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -26,12 +26,7 @@ function getFormattedCurrentDate() {
 
 export async function POST(request: Request) {
   try {
-    const {
-      message,
-      history: incomingHistory,
-      shopId,
-      clientPhone,
-    } = await request.json();
+    const { message, shopId, clientPhone } = await request.json();
 
     if (!shopId) {
       return NextResponse.json(
@@ -39,6 +34,20 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    const lastMessages = await prisma.chatMessage.findMany({
+      where: {
+        shopId: Number(shopId),
+        clientPhone: clientPhone,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    const history = lastMessages.reverse().map((msg) => ({
+      role: msg.role,
+      parts: [{ text: msg.content }],
+    }));
 
     const currentDate = getFormattedCurrentDate();
 
@@ -126,13 +135,21 @@ export async function POST(request: Request) {
       Se todos os dados OBRIGATÓRIOS estiverem na conversa, chame a função 'scheduleAppointment'.
     `;
 
-    const chat = startNewChat(
-      systemInstruction,
-      tools,
-      incomingHistory as Content[],
-    );
+    const chat = startNewChat(systemInstruction, tools, history);
 
     const response = await chat.sendMessage({ message: message });
+
+    await prisma.chatMessage.createMany({
+      data: [
+        { role: "user", content: message, shopId: Number(shopId), clientPhone },
+        {
+          role: "model",
+          content: response.text || "Chamada de função",
+          shopId: Number(shopId),
+          clientPhone,
+        },
+      ],
+    });
 
     const newHistory = await chat.getHistory();
 
