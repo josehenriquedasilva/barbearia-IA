@@ -90,6 +90,7 @@ export async function registerShop(formData: FormBarberProps) {
           token: "",
           number: rawPhone,
           qrcode: true,
+          integration: "WHATSAPP-BAILEYS",
         }),
       });
 
