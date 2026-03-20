@@ -4,7 +4,6 @@ export async function POST(request: Request) {
 
     // Configurar a URL do Webhook
     // Adicionar mais uma tabela no schema para a IA buscar a history
-    // Verificar a lógica de slug para criação de barbearias com o mesmo nome
 
   try {
     const body = await request.json();

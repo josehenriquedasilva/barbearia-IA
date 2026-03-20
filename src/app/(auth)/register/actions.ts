@@ -96,7 +96,6 @@ export async function registerShop(formData: FormBarberProps) {
           where: { id: result.shop.id },
           data: { whatsappToken: data.hash || data.token?.value || null },
         });
-        console.log("Instância criada com sucesso e Token salvo!");
       } else {
         console.error(
           "A Evolution recusou o pedido:",
