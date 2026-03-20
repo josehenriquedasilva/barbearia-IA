@@ -3,8 +3,6 @@ import { startNewChat } from "@/lib/gemini";
 import { Content, Type } from "@google/genai";
 import prisma from "@/lib/db";
 
-// Alterar a lógica do número mockado para que a IA pegue o número da API do WhatsApp
-
 export const dynamic = "force-dynamic";
 
 interface ScheduleArgs {
@@ -28,7 +26,12 @@ function getFormattedCurrentDate() {
 
 export async function POST(request: Request) {
   try {
-    const { message, history: incomingHistory, shopId } = await request.json();
+    const {
+      message,
+      history: incomingHistory,
+      shopId,
+      clientPhone,
+    } = await request.json();
 
     if (!shopId) {
       return NextResponse.json(
@@ -219,7 +222,7 @@ export async function POST(request: Request) {
       const newAppointment = await prisma.appointment.create({
         data: {
           clientName: args.clientName,
-          clientPhone: args.clientPhone, // Injetar esse número automaticamente
+          clientPhone: clientPhone,
           shopId: shopData.id,
           barberId: targetBarber.id,
           serviceId: targetService.id,

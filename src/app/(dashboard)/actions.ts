@@ -8,8 +8,6 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-// Chamar no dashboard as actions "cancelAppointmentAction" e "updateClosedDays"
-
 export async function getBarbersAction(shopId: number) {
   return await prisma.barber.findMany({
     where: { shopId },
