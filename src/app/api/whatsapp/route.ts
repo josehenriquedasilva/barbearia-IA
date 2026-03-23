@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
 
-    // Configurar a URL do Webhook
-
   try {
     const body = await request.json();
 
