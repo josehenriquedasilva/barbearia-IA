@@ -46,6 +46,10 @@ export interface StepTwoProps {
   setEmail: (val: string) => void;
   password: string;
   setPassword: (val: string) => void;
+  showPasswordOne: boolean;
+  setShowPasswordOne: (val: boolean) => void;
+  showPasswordTwo: boolean;
+  setShowPasswordTwo: (val: boolean) => void;
   confirmPassword: string;
   setConfirmPassword: (val: string) => void;
   onNext: (e: React.FormEvent) => void;
@@ -142,6 +146,8 @@ export interface AppointmentData {
 
 export interface InfoAppointmentsProps {
   appointments: AppointmentData[];
+  shopInstance: string;
+  shopPhone: string;
 }
 
 export interface AppointmentsListProps {
@@ -174,6 +180,7 @@ export interface DashboardViewProps {
   user: {
     id: number;
     name: string;
+    
     email: string;
     role: "ADMIN" | "BARBER" | string;
     shopId: number;
@@ -182,6 +189,7 @@ export interface DashboardViewProps {
       name: string;
       phone: string;
       slug: string;
+      whatsappInstance: string;
       closedDays: { date: string; reason: string }[];
       createdAt: Date;
       services: Service[];

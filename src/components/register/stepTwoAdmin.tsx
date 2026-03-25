@@ -1,5 +1,6 @@
 import { StepTwoProps } from "@/types/types";
 import { BsArrowLeft, BsArrowRight } from "react-icons/bs";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
 export default function StepTwoAdimin({
   adminName,
@@ -8,6 +9,10 @@ export default function StepTwoAdimin({
   setEmail,
   password,
   setPassword,
+  showPasswordOne,
+  setShowPasswordOne,
+  showPasswordTwo,
+  setShowPasswordTwo,
   confirmPassword,
   setConfirmPassword,
   onNext,
@@ -44,21 +49,32 @@ export default function StepTwoAdimin({
         />
       </div>
 
-      <div>
+      <div className="relative">
         <label htmlFor="password" className="block text-neutral-300 mb-2">
           Senha
         </label>
         <input
           id="password"
-          type="password"
+          type={showPasswordOne ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
           placeholder="Mínimo 6 caracteres"
         />
+        <button
+          type="button"
+          onClick={() => setShowPasswordOne(!showPasswordOne)}
+          className="absolute right-4 bottom-4 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer"
+        >
+          {showPasswordOne ? (
+            <FiEye className="w-5 h-5" />
+          ) : (
+            <FiEyeOff className="w-5 h-5" />
+          )}
+        </button>
       </div>
 
-      <div>
+      <div className="relative">
         <label
           htmlFor="confirmPassword"
           className="block text-neutral-300 mb-2"
@@ -67,12 +83,23 @@ export default function StepTwoAdimin({
         </label>
         <input
           id="confirmPassword"
-          type="password"
+          type={showPasswordTwo ? "text" : "password"}
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
           placeholder="Digite a senha novamente"
         />
+        <button
+          type="button"
+          onClick={() => setShowPasswordTwo(!showPasswordTwo)}
+          className="absolute right-4 bottom-4 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer"
+        >
+          {showPasswordTwo ? (
+            <FiEye className="w-5 h-5" />
+          ) : (
+            <FiEyeOff className="w-5 h-5" />
+          )}
+        </button>
       </div>
 
       {error && (

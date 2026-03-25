@@ -210,7 +210,11 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             </div>
           ) : (
             <>
-              <Info appointments={appointments} />
+              <Info 
+              appointments={appointments}
+              shopInstance={user.shop.whatsappInstance}
+              shopPhone={user.shop.phone}
+              />
             </>
           )}
         </section>

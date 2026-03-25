@@ -25,6 +25,8 @@ export default function Register() {
   const [adminName, setAdminName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPasswordOne, setShowPasswordOne] = useState(false);
+  const [showPasswordTwo, setShowPasswordTwo] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhone(e.target.value);
@@ -119,7 +121,9 @@ export default function Register() {
   };
 
   // Dados da Etapa 4
-  const [selectedPlan, setSelectedPlan] = useState<"BRONZE" | "SILVER">("BRONZE");
+  const [selectedPlan, setSelectedPlan] = useState<"BRONZE" | "SILVER">(
+    "BRONZE",
+  );
 
   const handleFinalizeRegister = async () => {
     if (services.length === 0) {
@@ -200,6 +204,10 @@ export default function Register() {
               setEmail={setEmail}
               password={password}
               setPassword={setPassword}
+              showPasswordOne={showPasswordOne}
+              setShowPasswordOne={setShowPasswordOne}
+              showPasswordTwo={showPasswordTwo}
+              setShowPasswordTwo={setShowPasswordTwo}
               confirmPassword={confirmPassword}
               setConfirmPassword={setConfirmPassword}
               error={error}

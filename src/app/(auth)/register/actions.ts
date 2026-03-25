@@ -5,9 +5,6 @@ import { FormBarberProps } from "@/types/types";
 import { Prisma, PlanType, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
-const EVO_KEY = process.env.EVOLUTION_API_KEY;
-
 export async function registerShop(formData: FormBarberProps) {
   const { barberName, phone, adminName, email, password, services, plan } =
     formData;
@@ -40,13 +37,6 @@ export async function registerShop(formData: FormBarberProps) {
         },
       });
 
-      const finalInstanceName = `${slug}-${shop.id}`;
-
-      const updatedShop = await tx.shop.update({
-        where: { id: shop.id },
-        data: { whatsappInstance: finalInstanceName },
-      });
-
       const admin = await tx.barber.create({
         data: {
           name: adminName,
@@ -68,58 +58,8 @@ export async function registerShop(formData: FormBarberProps) {
         });
       }
 
-      return { shop: updatedShop, admin };
+      return { admin };
     });
-
-    const instanceToCreate = result.shop.whatsappInstance;
-
-    try {
-      const response = await fetch(`${EVO_URL}/instance/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: EVO_KEY as string,
-        },
-        body: JSON.stringify({
-          instanceName: instanceToCreate,
-          token: "",
-          number: rawPhone,
-          qrcode: true,
-          integration: "WHATSAPP-BAILEYS",
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        await prisma.shop.update({
-          where: { id: result.shop.id },
-          data: { whatsappToken: data.hash || data.token?.value || null },
-        });
-      } else {
-        console.error(
-          "A Evolution recusou o pedido:",
-          data.message || data.error,
-        );
-      }
-
-      if (process.env.NEXT_PUBLIC_SITE_URL) {
-        await fetch(`${EVO_URL}/webhook/set/${instanceToCreate}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: EVO_KEY as string,
-          },
-          body: JSON.stringify({
-            url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/whatsapp`,
-            enabled: true,
-            events: ["MESSAGES_UPSERT"],
-          }),
-        });
-      }
-    } catch (evoError) {
-      console.error("ERRO FATAL NA COMUNICAÇÃO:", evoError);
-    }
 
     return { success: true, user: result.admin };
   } catch (error) {

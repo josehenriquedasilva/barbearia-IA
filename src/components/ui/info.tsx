@@ -1,8 +1,12 @@
 import { InfoAppointmentsProps } from "@/types/types";
 import { FaDollarSign } from "react-icons/fa";
 import { MdOutlineCalendarToday, MdOutlineCancel } from "react-icons/md";
+import { WhatsAppStatus } from "./whatsAppStatus";
 
-export default function Info({ appointments }: InfoAppointmentsProps) {
+export default function Info({
+  appointments,
+  shopInstance,
+}: InfoAppointmentsProps) {
   const list = appointments || [];
 
   const confirmed = list.filter((a) => a.status !== "CANCELED");
@@ -17,6 +21,7 @@ export default function Info({ appointments }: InfoAppointmentsProps) {
 
   return (
     <div className="my-3 flex flex-col gap-3">
+      <WhatsAppStatus instanceName={shopInstance} />
       <section className="flex flex-col gap-3 md:flex-row md:justify-between">
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 md:p-6 md:flex-1">
           <div className="flex items-start justify-between">

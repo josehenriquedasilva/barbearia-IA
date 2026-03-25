@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+// Buscar barbearia no banco de dados
 export async function getBarbersAction(shopId: number) {
   return await prisma.barber.findMany({
     where: { shopId },
@@ -16,6 +17,7 @@ export async function getBarbersAction(shopId: number) {
   });
 }
 
+// Criar/registrar barbearia
 export async function createBarberAction(
   shopId: number,
   data: {
@@ -56,6 +58,7 @@ export async function createBarberAction(
   }
 }
 
+// Cancelar agendamentos
 export async function cancelAppointmentAction(
   appointmentId: number,
   reason: string,
@@ -87,6 +90,7 @@ export async function cancelAppointmentAction(
   }
 }
 
+// Atualizar dias fechados
 export async function updateClosedDays(
   shopId: number,
   days: { date: string; reason?: string }[],
@@ -141,6 +145,7 @@ export async function updateClosedDays(
   }
 }
 
+// Atualizar serviços
 export async function updateServicesAction(
   shopId: number,
   services: Service[],
@@ -221,8 +226,77 @@ export async function updateServicesAction(
   }
 }
 
+// Fazer logout/sair
 export async function logout() {
   const cookieStore = await cookies();
   (await cookieStore).delete("auth_token");
   redirect("/login");
+}
+
+// Gerar código de conexão com IA
+export async function getPairingCodeAction(instanceName: string) {
+  const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
+  const EVO_KEY = process.env.EVOLUTION_API_KEY;
+
+  try {
+    await fetch(`${EVO_URL}/instance/create`, {
+      method: "POST",
+      headers: {
+        apikey: EVO_KEY as string,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ instanceName, qrcode: true }),
+    });
+
+    const url = `${EVO_URL}/instance/connect/${instanceName}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { apikey: EVO_KEY as string },
+      cache: "no-store",
+    });
+
+    const data = await response.json();
+    console.log("LOG QR CODE:", data);
+
+    if (data.base64) {
+      return { success: true, qr: data.base64 };
+    }
+
+    return {
+      success: false,
+      error:
+        data.message ||
+        "Erro ao buscar QR Code. Verifique se a instância está aberta.",
+    };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
+// Verificar status da conexão com IA
+export async function checkWhatsAppStatusAction(instanceName: string) {
+  const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
+  const EVO_KEY = process.env.EVOLUTION_API_KEY;
+
+  try {
+    const response = await fetch(
+      `${EVO_URL}/instance/connectionState/${instanceName}`,
+      {
+        method: "GET",
+        headers: { apikey: EVO_KEY as string },
+        cache: "no-store",
+      },
+    );
+
+    const data = await response.json();
+
+    return {
+      success: true,
+      connected: data.instance?.state === "open",
+    };
+  } catch (error) {
+    console.error("Erro Evolution Connection:", error);
+    return { success: false, connected: false };
+  }
 }
