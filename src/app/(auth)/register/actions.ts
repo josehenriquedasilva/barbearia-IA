@@ -9,7 +9,6 @@ async function generateUniqueSlug(
   tx: Prisma.TransactionClient,
   baseName: string,
 ): Promise<string> {
-  // 1. Gera o slug base limpo
   const slug = baseName
     .toLowerCase()
     .trim()
@@ -19,7 +18,6 @@ async function generateUniqueSlug(
     .replace(/[\s_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  // 2. Tenta encontrar slugs que começam com o mesmo padrão
   const existingShops = await tx.shop.findMany({
     where: {
       slug: {
@@ -29,19 +27,15 @@ async function generateUniqueSlug(
     select: { slug: true },
   });
 
-  // 3. Se não existe nenhum, usa o base
   if (existingShops.length === 0) {
     return slug;
   }
 
-  // 4. Se já existem, vamos incrementar
-  // Criamos um Set com os slugs existentes para verificação rápida
   const slugsSet = new Set(existingShops.map((s: { slug: string }) => s.slug));
 
   let finalSlug = slug;
   let counter = 1;
 
-  // Enquanto o slug gerado existir no Set, incrementamos o contador
   while (slugsSet.has(finalSlug)) {
     finalSlug = `${slug}-${counter}`;
     counter++;
@@ -56,15 +50,6 @@ export async function registerShop(formData: FormBarberProps) {
 
   try {
     const rawPhone = phone.replace(/\D/g, "");
-
-    const slug = barberName
-      .toLowerCase()
-      .trim()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^\w\s-]/g, "")
-      .replace(/[\s_-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
 
     const hashedPassword = await bcrypt.hash(password, 10);
 

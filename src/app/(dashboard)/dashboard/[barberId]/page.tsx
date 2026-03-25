@@ -45,6 +45,8 @@ export default async function Page(props: {
     ...user,
     shop: {
       ...user.shop,
+      whatsappInstance: user.shop.whatsappInstance ?? "",
+      whatsappToken: user.shop.whatsappToken ?? "",
       closedDays: user.shop.closedDays.map((d) => ({
         date: d.date,
         reason: d.reason ?? "Não informado",
