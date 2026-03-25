@@ -238,6 +238,9 @@ export async function getPairingCodeAction(instanceName: string) {
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
 
+  const wait = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
   try {
     await fetch(`${EVO_URL}/instance/create`, {
       method: "POST",
@@ -245,23 +248,41 @@ export async function getPairingCodeAction(instanceName: string) {
         apikey: EVO_KEY as string,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ instanceName, qrcode: true }),
+      body: JSON.stringify({
+        instanceName,
+        qrcode: true,
+        integration: "WHATSAPP-BAILEYS",
+      }),
     });
 
-    const url = `${EVO_URL}/instance/connect/${instanceName}`;
+    await wait(2000);
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { apikey: EVO_KEY as string },
-      cache: "no-store",
-    });
+    let attempts = 0;
+    let data;
 
-    const data = await response.json();
-    console.log("LOG QR CODE:", data);
+    while (attempts < 3) {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { apikey: EVO_KEY as string },
+        cache: "no-store",
+      });
 
-    if (data.base64) {
-      return { success: true, qr: data.base64 };
+      data = await response.json();
+
+      if (data.base64) {
+        return { success: true, qr: data.base64 };
+      }
+
+      // Se der erro de "não existe", espera mais um pouco e tenta de novo
+      if (data.status === 404 || data.error?.includes("does not exist")) {
+        attempts++;
+        await wait(1500); // Espera mais 1.5s antes da próxima tentativa
+      } else {
+        break; // Se for outro erro (ex: já conectada), para o loop
+      }
     }
+
+    console.log("LOG QR CODE APÓS TENTATIVAS:", data);
 
     return {
       success: false,
