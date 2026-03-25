@@ -257,6 +257,8 @@ export async function getPairingCodeAction(instanceName: string) {
 
     await wait(2000);
 
+    const url = `${EVO_URL}/instance/connect/${instanceName}`;
+
     let attempts = 0;
     let data;
 
