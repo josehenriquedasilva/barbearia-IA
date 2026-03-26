@@ -6,6 +6,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
+    console.log("Evento recebido:", body.event);
+
     if (body.event !== "messages.upsert" || body.data.key.fromMe) {
       return NextResponse.json({ ok: true });
     }
