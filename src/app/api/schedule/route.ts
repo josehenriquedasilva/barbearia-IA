@@ -101,11 +101,12 @@ export async function POST(request: Request) {
                 },
                 clientName: {
                   type: Type.STRING,
-                  description: "O nome do cliente. Obrigatorio.",
+                  description: "O nome do cliente. Não pergunte o nome completo, apenas o nome",
                 },
                 clientPhone: {
                   type: Type.STRING,
-                  description: "O número de telefone do cliente.",
+                  description:
+                    "O número de telefone do cliente. (Já fornecido pelo sistema, não pergunte)",
                 },
               },
               required: [
@@ -114,7 +115,6 @@ export async function POST(request: Request) {
                 "time",
                 "serviceName",
                 "clientName",
-                "clientPhone",
               ],
             },
           },
@@ -130,9 +130,11 @@ export async function POST(request: Request) {
       LISTA DE BARBEIROS: ${barbeiroNames.join(", ")}.
       LISTA DE SERVIÇOS: ${serviceNames.join(", ")}.
 
-      Você deve extrair o "nome do cliente", "telefone do cliente", "nome do barbeiro", "a data", "a hora" e "o serviço" da conversa.
-      Se faltar algum dado OBRIGATÓRIO (nome do cliente, telefone do cliente, nome do barbeiro, data, hora ou serviço), você DEVE responder em texto perguntando o dado que falta.
-      Se todos os dados OBRIGATÓRIOS estiverem na conversa, chame a função 'scheduleAppointment'.
+      Você deve extrair o "nome do cliente", "nome do barbeiro", "a data", "a hora" e "o serviço" da conversa.
+      Se precisar perguntar o "nome do cliente", não pessa o nome completo, apenas que informe o seu nome.
+      O telefone (${clientPhone}) deve ser usado automaticamente na chamada da função.
+      Se faltar algum dado OBRIGATÓRIO (nome do cliente, nome do barbeiro, data, hora ou serviço), você DEVE responder em texto perguntando educadamente o dado que falta.
+      Quando tiver tudo, chame 'scheduleAppointment' passando o telefone ${clientPhone} no parâmetro clientPhone.
     `;
 
     const chat = startNewChat(systemInstruction, tools, history);
