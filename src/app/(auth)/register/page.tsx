@@ -47,6 +47,12 @@ export default function Register() {
     price: "",
     duration: "",
   });
+  // No componente Register()
+  const [openingTime, setOpeningTime] = useState("09:00");
+  const [closingTime, setClosingTime] = useState("19:00");
+  const [isClosedSunday, setIsClosedSunday] = useState(true);
+  const [openingSunday, setOpeningSunday] = useState("09:00");
+  const [closingSunday, setClosingSunday] = useState("13:00");
 
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,7 +180,7 @@ export default function Register() {
             <span className="text-sm text-amber-500">
               {currentStep === 1 && "Dados da Barbearia"}
               {currentStep === 2 && "Dados do Responsável"}
-              {currentStep === 3 && "Serviços Oferecidos"}
+              {currentStep === 3 && "Serviços e horários"}
               {currentStep === 4 && "Plano de Assinatura"}
             </span>
           </div>
@@ -245,6 +251,16 @@ export default function Register() {
                 setEditingServiceId(null);
                 setServiceForm({ name: "", price: "", duration: "" });
               }}
+              openingTime={openingTime}
+              setOpeningTime={setOpeningTime}
+              closingTime={closingTime}
+              setClosingTime={setClosingTime}
+              isClosedSunday={isClosedSunday}
+              setIsClosedSunday={setIsClosedSunday}
+              openingSunday={openingSunday}
+              setOpeningSunday={setOpeningSunday}
+              closingSunday={closingSunday}
+              setClosingSunday={setClosingSunday}
               onBack={() => setCurrentStep(2)}
               handleGoToStepFour={handleGoToStepFour}
               error={error}

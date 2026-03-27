@@ -81,6 +81,16 @@ export interface StepThreeProps {
   handleDeleteService: (id: number) => void;
   handleEditService: (service: Service) => void;
   handleCancelServiceForm: () => void;
+  openingTime: string;
+  setOpeningTime: Dispatch<SetStateAction<string>>;
+  closingTime: string;
+  setClosingTime: Dispatch<SetStateAction<string>>;
+  isClosedSunday: boolean;
+  setIsClosedSunday: Dispatch<SetStateAction<boolean>>;
+  openingSunday: string;
+  setOpeningSunday: Dispatch<SetStateAction<string>>;
+  closingSunday: string;
+  setClosingSunday: Dispatch<SetStateAction<string>>;
   onBack: () => void;
   handleGoToStepFour: (e: React.FormEvent) => void;
   error: string;
@@ -180,7 +190,7 @@ export interface DashboardViewProps {
   user: {
     id: number;
     name: string;
-    
+
     email: string;
     role: "ADMIN" | "BARBER" | string;
     shopId: number;

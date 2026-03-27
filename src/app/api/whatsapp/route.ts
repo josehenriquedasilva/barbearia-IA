@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/db"
+import prisma from "@/lib/db";
 
 export async function POST(request: Request) {
-
   try {
     const body = await request.json();
 
-    console.log("Evento recebido:", body.event);
-
     if (body.event !== "messages.upsert" || body.data.key.fromMe) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const event = body.event?.toUpperCase();
+    if (event !== "MESSAGES_UPSERT" || body.data?.key?.fromMe) {
+      console.log("Evento ignorado:", event, "FromMe:", body.data?.key?.fromMe);
       return NextResponse.json({ ok: true });
     }
 

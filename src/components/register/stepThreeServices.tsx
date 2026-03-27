@@ -21,6 +21,16 @@ export default function StepThreeServices({
   handleDeleteService,
   handleEditService,
   handleCancelServiceForm,
+  openingTime,
+  setOpeningTime,
+  closingTime,
+  setClosingTime,
+  isClosedSunday,
+  setIsClosedSunday,
+  openingSunday,
+  setOpeningSunday,
+  closingSunday,
+  setClosingSunday,
   onBack,
   handleGoToStepFour,
   error,
@@ -38,7 +48,7 @@ export default function StepThreeServices({
           <button
             type="button"
             onClick={() => setIsAddingService(true)}
-            className="bg-amber-600 hover:bg-amber-700 text-neutral-950 rounded-lg px-4 py-2 transition-colors flex items-center gap-2 text-sm font-medium"
+            className="bg-amber-600 hover:bg-amber-700 text-neutral-950 rounded-lg px-4 py-2 transition-colors flex items-center gap-2 text-sm font-medium cursor-pointer"
           >
             <BiPlus className="w-4 h-4" />
             <span>Adicionar</span>
@@ -102,7 +112,7 @@ export default function StepThreeServices({
             <button
               type="button"
               onClick={handleCancelServiceForm}
-              className="flex-1 bg-neutral-700/50 hover:bg-neutral-700 text-neutral-300 rounded-lg py-2.5 transition-colors flex items-center justify-center gap-2 text-sm"
+              className="flex-1 bg-neutral-700/50 hover:bg-neutral-700 text-neutral-300 rounded-lg py-2.5 transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer"
             >
               <BiX className="w-4 h-4" />
               <span>Cancelar</span>
@@ -110,7 +120,7 @@ export default function StepThreeServices({
             <button
               type="button"
               onClick={handleAddOrEditService}
-              className="flex-1 bg-amber-600 hover:bg-amber-700 text-neutral-950 rounded-lg px-1 py-2.5 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+              className="flex-1 bg-amber-600 hover:bg-amber-700 text-neutral-950 rounded-lg px-1 py-2.5 transition-colors flex items-center justify-center gap-2 text-sm font-medium cursor-pointer"
             >
               <BiCheck className="w-4 h-4" />
               <span>Salvar Serviço</span>
@@ -145,7 +155,7 @@ export default function StepThreeServices({
                 <button
                   type="button"
                   onClick={() => handleEditService(service)}
-                  className="p-2 hover:bg-neutral-700 rounded-lg transition-colors opacity-60 hover:opacity-100"
+                  className="group p-2 hover:bg-orange-400 rounded-lg transition-colors opacity-60 hover:opacity-100 cursor-pointer"
                   title="Editar serviço"
                 >
                   <FiEdit2 className="w-4 h-4 text-neutral-400" />
@@ -153,7 +163,7 @@ export default function StepThreeServices({
                 <button
                   type="button"
                   onClick={() => handleDeleteService(service.id)}
-                  className="p-2 hover:bg-neutral-700 rounded-lg transition-colors opacity-60 hover:opacity-100"
+                  className="p-2 hover:bg-red-600 rounded-lg transition-colors opacity-60 hover:opacity-100 cursor-pointer"
                   title="Excluir serviço"
                 >
                   <BsTrash2 className="w-4 h-4 text-neutral-400" />
@@ -174,6 +184,96 @@ export default function StepThreeServices({
             </p>
           </div>
         )
+      )}
+
+      {!isAddingService && (
+        <div className="bg-neutral-800/30 border border-neutral-700 rounded-lg p-5 mt-6 space-y-6">
+          <div className="flex items-center gap-2 border-b border-neutral-700/50 pb-2">
+            <BsClock className="text-amber-500" />
+            <h4 className="text-neutral-50 font-medium">
+              Horários de Funcionamento
+            </h4>
+          </div>
+
+          {/* Segunda a Sábado */}
+          <div className="space-y-3">
+            <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">
+              Segunda a Sábado
+            </span>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] text-neutral-500 uppercase">
+                  Abertura
+                </label>
+                <input
+                  type="time"
+                  value={openingTime}
+                  onChange={(e) => setOpeningTime(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-neutral-500 uppercase">
+                  Fechamento
+                </label>
+                <input
+                  type="time"
+                  value={closingTime}
+                  onChange={(e) => setClosingTime(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Domingo */}
+          <div className="space-y-3 pt-2 border-t border-neutral-700/30">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">
+                Domingo
+              </span>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isClosedSunday}
+                  onChange={(e) => setIsClosedSunday(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <span className="text-[10px] text-neutral-400 uppercase">
+                  Fechado?
+                </span>
+                <div className="w-8 h-4 bg-neutral-700 peer-checked:bg-amber-600 rounded-full relative transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-2 after:w-2 after:transition-all peer-checked:after:translate-x-4"></div>
+              </label>
+            </div>
+
+            {!isClosedSunday && (
+              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-neutral-500 uppercase">
+                    Abertura
+                  </label>
+                  <input
+                    type="time"
+                    value={openingSunday}
+                    onChange={(e) => setOpeningSunday(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-neutral-500 uppercase">
+                    Fechamento
+                  </label>
+                  <input
+                    type="time"
+                    value={closingSunday}
+                    onChange={(e) => setClosingSunday(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {error && (

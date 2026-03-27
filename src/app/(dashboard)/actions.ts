@@ -237,9 +237,9 @@ export async function logout() {
 export async function getPairingCodeAction(instanceName: string) {
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
 
-  const wait = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
+  const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
   try {
     await fetch(`${EVO_URL}/instance/create`, {
@@ -255,36 +255,38 @@ export async function getPairingCodeAction(instanceName: string) {
       }),
     });
 
-    await wait(2000);
+    await delay(3000);
+
+    await fetch(`${EVO_URL}/webhook/set/${instanceName}`, {
+      method: "POST",
+      headers: {
+        apikey: EVO_KEY as string,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        webhook: {
+          enabled: true,
+          url: `${SITE_URL}/api/whatsapp`,
+          byEvents: false,
+          base64: false,
+          events: ["MESSAGES_UPSERT"],
+        },
+      }),
+    });
 
     const url = `${EVO_URL}/instance/connect/${instanceName}`;
 
-    let attempts = 0;
-    let data;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { apikey: EVO_KEY as string },
+      cache: "no-store",
+    });
 
-    while (attempts < 3) {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { apikey: EVO_KEY as string },
-        cache: "no-store",
-      });
+    const data = await response.json();
 
-      data = await response.json();
-
-      if (data.base64) {
-        return { success: true, qr: data.base64 };
-      }
-
-      // Se der erro de "não existe", espera mais um pouco e tenta de novo
-      if (data.status === 404 || data.error?.includes("does not exist")) {
-        attempts++;
-        await wait(1500); // Espera mais 1.5s antes da próxima tentativa
-      } else {
-        break; // Se for outro erro (ex: já conectada), para o loop
-      }
+    if (data.base64) {
+      return { success: true, qr: data.base64 };
     }
-
-    console.log("LOG QR CODE APÓS TENTATIVAS:", data);
 
     return {
       success: false,
