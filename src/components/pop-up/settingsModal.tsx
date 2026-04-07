@@ -444,9 +444,9 @@ export default function SettingsModal({
                     Domingo
                   </span>
                   <Switch
-                    label="Fechado"
-                    checked={isClosedSunday}
-                    onChange={setIsClosedSunday}
+                    label={!isClosedSunday ? "Aberto" : "Fechado"}
+                    checked={!isClosedSunday}
+                    onChange={() => setIsClosedSunday(!isClosedSunday)}
                   />
                 </div>
                 {!isClosedSunday && (

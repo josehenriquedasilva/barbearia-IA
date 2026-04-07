@@ -147,8 +147,6 @@ export default function StepThreeServices({
               <span>Salvar Serviço</span>
             </button>
           </div>
-
-          
         </div>
       )}
 
@@ -291,17 +289,17 @@ export default function StepThreeServices({
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={isClosedSunday}
-                  onChange={(e) => setIsClosedSunday(e.target.checked)}
+                  checked={!isClosedSunday}
+                  onChange={(e) => setIsClosedSunday(!e.target.checked)}
                   className="sr-only peer"
                 />
                 <span className="text-[10px] text-neutral-400 uppercase">
-                  {isClosedSunday ? "Aberto" : "Fechado"}
+                  {!isClosedSunday ? "Aberto" : "Fechado"}
                 </span>
                 <div className="w-8 h-4 bg-neutral-700 peer-checked:bg-amber-600 rounded-full relative transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-2 after:w-2 after:transition-all peer-checked:after:translate-x-4"></div>
               </label>
             </div>
-            {isClosedSunday && (
+            {!isClosedSunday && (
               <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div className="space-y-1">
                   <label className="text-[10px] text-neutral-500 uppercase font-bold">
