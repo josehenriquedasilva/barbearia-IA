@@ -8,6 +8,7 @@ import {
   BsTrash2,
 } from "react-icons/bs";
 import { FiEdit2 } from "react-icons/fi";
+import { IoFastFood } from "react-icons/io5";
 
 export default function StepThreeServices({
   services,
@@ -31,10 +32,30 @@ export default function StepThreeServices({
   setOpeningSunday,
   closingSunday,
   setClosingSunday,
+  hasDayOff,
+  setHasDayOff,
+  dayOff,
+  setDayOff,
+  hasLunchBreak,
+  setHasLunchBreak,
+  lunchStart,
+  setLunchStart,
+  lunchEnd,
+  setLunchEnd,
   onBack,
   handleGoToStepFour,
   error,
 }: StepThreeProps) {
+  const weekDays = [
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado",
+    "Domingo",
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2 border-b border-neutral-700 pb-2">
@@ -126,6 +147,8 @@ export default function StepThreeServices({
               <span>Salvar Serviço</span>
             </button>
           </div>
+
+          
         </div>
       )}
 
@@ -195,14 +218,13 @@ export default function StepThreeServices({
             </h4>
           </div>
 
-          {/* Segunda a Sábado */}
           <div className="space-y-3">
             <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">
               Segunda a Sábado
             </span>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-[10px] text-neutral-500 uppercase">
+                <label className="text-[10px] text-neutral-500 uppercase font-bold">
                   Abertura
                 </label>
                 <input
@@ -213,7 +235,7 @@ export default function StepThreeServices({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-neutral-500 uppercase">
+                <label className="text-[10px] text-neutral-500 uppercase font-bold">
                   Fechamento
                 </label>
                 <input
@@ -226,7 +248,41 @@ export default function StepThreeServices({
             </div>
           </div>
 
-          {/* Domingo */}
+          <div className="space-y-3 pt-2 border-t border-neutral-700/30">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">
+                Dia de Folga Semanal
+              </span>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={hasDayOff}
+                  onChange={(e) => setHasDayOff(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <span className="text-[10px] text-neutral-400 uppercase">
+                  {hasDayOff ? "Desativar" : "Ativar"}
+                </span>
+                <div className="w-8 h-4 bg-neutral-700 peer-checked:bg-amber-600 rounded-full relative transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-2 after:w-2 after:transition-all peer-checked:after:translate-x-4"></div>
+              </label>
+            </div>
+            {hasDayOff && (
+              <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                <select
+                  value={dayOff}
+                  onChange={(e) => setDayOff(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                >
+                  {weekDays.map((day) => (
+                    <option key={day} value={day} className="bg-neutral-900">
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-3 pt-2 border-t border-neutral-700/30">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">
@@ -240,16 +296,15 @@ export default function StepThreeServices({
                   className="sr-only peer"
                 />
                 <span className="text-[10px] text-neutral-400 uppercase">
-                  Fechado?
+                  {isClosedSunday ? "Aberto" : "Fechado"}
                 </span>
                 <div className="w-8 h-4 bg-neutral-700 peer-checked:bg-amber-600 rounded-full relative transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-2 after:w-2 after:transition-all peer-checked:after:translate-x-4"></div>
               </label>
             </div>
-
-            {!isClosedSunday && (
+            {isClosedSunday && (
               <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-500 uppercase">
+                  <label className="text-[10px] text-neutral-500 uppercase font-bold">
                     Abertura
                   </label>
                   <input
@@ -260,13 +315,62 @@ export default function StepThreeServices({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-neutral-500 uppercase">
+                  <label className="text-[10px] text-neutral-500 uppercase font-bold">
                     Fechamento
                   </label>
                   <input
                     type="time"
                     value={closingSunday}
                     onChange={(e) => setClosingSunday(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 pt-2 border-t border-neutral-700/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <IoFastFood className="text-amber-500 w-3 h-3" />
+                <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">
+                  Intervalo de Almoço
+                </span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasLunchBreak}
+                  onChange={(e) => setHasLunchBreak(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <span className="text-[10px] text-neutral-400 uppercase">
+                  {hasLunchBreak ? "Desativar Pausa" : "Ativar Pausa"}
+                </span>
+                <div className="w-8 h-4 bg-neutral-700 peer-checked:bg-amber-600 rounded-full relative transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-2 after:w-2 after:transition-all peer-checked:after:translate-x-4"></div>
+              </label>
+            </div>
+            {hasLunchBreak && (
+              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-neutral-500 uppercase font-bold">
+                    Início
+                  </label>
+                  <input
+                    type="time"
+                    value={lunchStart}
+                    onChange={(e) => setLunchStart(e.target.value)}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-neutral-500 uppercase font-bold">
+                    Fim
+                  </label>
+                  <input
+                    type="time"
+                    value={lunchEnd}
+                    onChange={(e) => setLunchEnd(e.target.value)}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-amber-500 outline-none"
                   />
                 </div>

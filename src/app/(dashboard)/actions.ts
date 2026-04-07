@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsApp";
-import { Service } from "@/types/types";
+import { Service, SettingsPayload } from "@/types/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -148,15 +148,31 @@ export async function updateClosedDays(
 // Atualizar serviços
 export async function updateServicesAction(
   shopId: number,
-  services: Service[],
+  payload: SettingsPayload,
 ) {
   try {
     await prisma.$transaction(async (tx) => {
+      await tx.shop.update({
+        where: { id: shopId },
+        data: {
+          openingTime: payload.openingTime,
+          closingTime: payload.closingTime,
+          hasDayOff: payload.hasDayOff,
+          dayOff: payload.dayOff,
+          isClosedSunday: payload.isClosedSunday,
+          openingSunday: payload.openingSunday,
+          closingSunday: payload.closingSunday,
+          hasLunchBreak: payload.hasLunchBreak,
+          lunchStart: payload.lunchStart,
+          lunchEnd: payload.lunchEnd,
+        },
+      });
+
       const currentServices = await tx.service.findMany({
         where: { shopId, active: true },
       });
 
-      const incomingIds = services.map((s) => s.id);
+      const incomingIds = payload.services.map((s) => s.id);
 
       const toDeactivate = currentServices.filter(
         (s) => !incomingIds.includes(s.id),
@@ -191,7 +207,7 @@ export async function updateServicesAction(
         }
       }
 
-      for (const s of services) {
+      for (const s of payload.services) {
         const isNew = s.id > 1700000000000;
 
         if (isNew) {

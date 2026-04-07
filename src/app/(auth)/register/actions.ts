@@ -45,8 +45,25 @@ async function generateUniqueSlug(
 }
 
 export async function registerShop(formData: FormBarberProps) {
-  const { barberName, phone, adminName, email, password, services, plan } =
-    formData;
+  const {
+    barberName,
+    phone,
+    adminName,
+    email,
+    password,
+    services,
+    plan,
+    openingTime,
+    closingTime,
+    isClosedSunday,
+    openingSunday,
+    closingSunday,
+    hasDayOff,
+    dayOff,
+    hasLunchBreak,
+    lunchStart,
+    lunchEnd,
+  } = formData;
 
   try {
     const rawPhone = phone.replace(/\D/g, "");
@@ -66,6 +83,16 @@ export async function registerShop(formData: FormBarberProps) {
           slug: uniqueSlug,
           plan: selectedPlan,
           whatsappInstance: uniqueSlug,
+          openingTime,
+          closingTime,
+          isClosedSunday,
+          openingSunday: isClosedSunday ? null : openingSunday,
+          closingSunday: isClosedSunday ? null : closingSunday,
+          hasDayOff,
+          dayOff: hasDayOff ? dayOff : null,
+          hasLunchBreak,
+          lunchStart: hasLunchBreak ? lunchStart : null,
+          lunchEnd: hasLunchBreak ? lunchEnd : null,
         },
       });
 

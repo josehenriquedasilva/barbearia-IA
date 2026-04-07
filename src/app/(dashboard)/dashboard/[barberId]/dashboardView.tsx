@@ -16,6 +16,7 @@ import {
   BarbersData,
   DashboardViewProps,
   Service,
+  SettingsPayload,
 } from "@/types/types";
 
 import { useEffect, useState } from "react";
@@ -79,12 +80,12 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     loadBarbers();
   }, [user.shopId]);
 
-  const handleSaveServices = async (updatedServices: Service[]) => {
+  const handleSaveSettings = async (payload: SettingsPayload) => {
     try {
-      const result = await updateServicesAction(user.shopId, updatedServices);
+      const result = await updateServicesAction(user.shopId, payload);
 
       if (result.success) {
-        setServices(updatedServices);
+        setServices(payload.services);
       } else {
         console.error(result.error);
       }
@@ -210,10 +211,10 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             </div>
           ) : (
             <>
-              <Info 
-              appointments={appointments}
-              shopInstance={user.shop.whatsappInstance}
-              shopPhone={user.shop.phone}
+              <Info
+                appointments={appointments}
+                shopInstance={user.shop.whatsappInstance}
+                shopPhone={user.shop.phone}
               />
             </>
           )}
@@ -239,10 +240,12 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
       {isSettingsOpen && (
         <SettingsModal
+          key="settings-modal"
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          shop={user.shop}
           services={services}
-          onSave={handleSaveServices}
+          onSave={handleSaveSettings}
         />
       )}
 

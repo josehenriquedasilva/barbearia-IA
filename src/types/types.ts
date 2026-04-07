@@ -91,6 +91,16 @@ export interface StepThreeProps {
   setOpeningSunday: Dispatch<SetStateAction<string>>;
   closingSunday: string;
   setClosingSunday: Dispatch<SetStateAction<string>>;
+  hasDayOff: boolean;
+  setHasDayOff: Dispatch<SetStateAction<boolean>>;
+  dayOff: string;
+  setDayOff: Dispatch<SetStateAction<string>>;
+  hasLunchBreak: boolean;
+  setHasLunchBreak: Dispatch<SetStateAction<boolean>>;
+  lunchStart: string;
+  setLunchStart: Dispatch<SetStateAction<string>>;
+  lunchEnd: string;
+  setLunchEnd: Dispatch<SetStateAction<string>>;
   onBack: () => void;
   handleGoToStepFour: (e: React.FormEvent) => void;
   error: string;
@@ -126,11 +136,42 @@ export interface MobileMenuProps {
   viewBarberId: number;
 }
 
+export interface ShopSettings {
+  id: number;
+  name: string;
+  openingTime: string;
+  closingTime: string;
+  hasDayOff: boolean;
+  dayOff: string | null;
+  isClosedSunday: boolean;
+  openingSunday: string | null;
+  closingSunday: string | null;
+  hasLunchBreak: boolean;
+  lunchStart: string | null;
+  lunchEnd: string | null;
+  services: Service[];
+}
+
+export interface SettingsPayload {
+  services: Service[];
+  openingTime: string;
+  closingTime: string;
+  hasDayOff: boolean;
+  dayOff: string | null;
+  isClosedSunday: boolean;
+  openingSunday: string | null;
+  closingSunday: string | null;
+  hasLunchBreak: boolean;
+  lunchStart: string | null;
+  lunchEnd: string | null;
+}
+
 export interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  shop: ShopSettings;
   services: Service[];
-  onSave: (updatedServices: Service[]) => void;
+  onSave: (payload: SettingsPayload) => void;
 }
 
 export interface ClosedDaysModalProps {
@@ -178,6 +219,16 @@ export interface FormBarberProps {
   password: string;
   services: Service[];
   plan: "BRONZE" | "SILVER";
+  openingTime: string;
+  closingTime: string;
+  isClosedSunday: boolean;
+  openingSunday?: string | null;
+  closingSunday?: string | null;
+  hasDayOff: boolean;
+  dayOff?: string | null;
+  hasLunchBreak: boolean;
+  lunchStart?: string | null;
+  lunchEnd?: string | null;
 }
 
 export interface FormLoginProps {
@@ -194,15 +245,12 @@ export interface DashboardViewProps {
     email: string;
     role: "ADMIN" | "BARBER" | string;
     shopId: number;
-    shop: {
-      id: number;
-      name: string;
+    shop: ShopSettings & {
       phone: string;
       slug: string;
       whatsappInstance: string;
       closedDays: { date: string; reason: string }[];
       createdAt: Date;
-      services: Service[];
     };
   };
 }

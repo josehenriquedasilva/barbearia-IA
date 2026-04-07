@@ -50,9 +50,14 @@ export default function Register() {
   // No componente Register()
   const [openingTime, setOpeningTime] = useState("09:00");
   const [closingTime, setClosingTime] = useState("19:00");
-  const [isClosedSunday, setIsClosedSunday] = useState(true);
+  const [isClosedSunday, setIsClosedSunday] = useState(false);
   const [openingSunday, setOpeningSunday] = useState("09:00");
   const [closingSunday, setClosingSunday] = useState("13:00");
+  const [hasDayOff, setHasDayOff] = useState(false);
+  const [dayOff, setDayOff] = useState("Segunda-feira");
+  const [hasLunchBreak, setHasLunchBreak] = useState(false);
+  const [lunchStart, setLunchStart] = useState("12:00");
+  const [lunchEnd, setLunchEnd] = useState("13:00");
 
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,8 +123,13 @@ export default function Register() {
 
   const handleGoToStepFour = (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     if (services.length === 0) {
       setError("Adicione pelo menos um serviço.");
+      return;
+    }
+    if (hasLunchBreak && lunchStart >= lunchEnd) {
+      setError("O horário de início do almoço deve ser antes do fim.");
       return;
     }
     setError("");
@@ -137,6 +147,11 @@ export default function Register() {
       return;
     }
 
+    if (hasLunchBreak && lunchStart >= lunchEnd) {
+      setError("O horário de início do almoço deve ser antes do fim.");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const result = await registerShop({
@@ -147,6 +162,16 @@ export default function Register() {
         password,
         services,
         plan: (selectedPlan as "BRONZE" | "SILVER") || "BRONZE",
+        openingTime,
+        closingTime,
+        isClosedSunday,
+        openingSunday: isClosedSunday ? null : openingSunday,
+        closingSunday: isClosedSunday ? null : closingSunday,
+        hasDayOff,
+        dayOff: hasDayOff ? dayOff : null,
+        hasLunchBreak,
+        lunchStart: hasLunchBreak ? lunchStart : null,
+        lunchEnd: hasLunchBreak ? lunchEnd : null,
       });
 
       if (result.success) {
@@ -261,6 +286,16 @@ export default function Register() {
               setOpeningSunday={setOpeningSunday}
               closingSunday={closingSunday}
               setClosingSunday={setClosingSunday}
+              hasDayOff={hasDayOff}
+              setHasDayOff={setHasDayOff}
+              dayOff={dayOff}
+              setDayOff={setDayOff}
+              hasLunchBreak={hasLunchBreak}
+              setHasLunchBreak={setHasLunchBreak}
+              lunchStart={lunchStart}
+              setLunchStart={setLunchStart}
+              lunchEnd={lunchEnd}
+              setLunchEnd={setLunchEnd}
               onBack={() => setCurrentStep(2)}
               handleGoToStepFour={handleGoToStepFour}
               error={error}

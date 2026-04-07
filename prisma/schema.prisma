@@ -35,8 +35,22 @@ model Shop {
   createdAt DateTime @default(now()) @map("created_at")
 
   plan       PlanType    @default(BRONZE)
-  closedDays ClosedDay[]
 
+  openingTime      String       @default("09:00") @map("opening_time")
+  closingTime      String       @default("19:00") @map("closing_time")
+
+  hasDayOff        Boolean      @default(false) @map("has_day_off")
+  dayOff           String?      @map("day_off")
+
+  isClosedSunday   Boolean      @default(true) @map("is_closed_sunday")
+  openingSunday    String?      @map("opening_sunday")
+  closingSunday    String?      @map("closing_sunday")
+
+  hasLunchBreak    Boolean      @default(false) @map("has_lunch_break")
+  lunchStart       String?      @map("lunch_start")
+  lunchEnd         String?      @map("lunch_end")
+
+  closedDays ClosedDay[]
   barbers      Barber[]
   services     Service[]
   appointments Appointment[]
