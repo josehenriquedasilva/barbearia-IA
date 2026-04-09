@@ -50,7 +50,7 @@ export default function Register() {
   // No componente Register()
   const [openingTime, setOpeningTime] = useState("09:00");
   const [closingTime, setClosingTime] = useState("19:00");
-  const [isClosedSunday, setIsClosedSunday] = useState(false);
+  const [isClosedSunday, setIsClosedSunday] = useState(true);
   const [openingSunday, setOpeningSunday] = useState("09:00");
   const [closingSunday, setClosingSunday] = useState("13:00");
   const [hasDayOff, setHasDayOff] = useState(false);
