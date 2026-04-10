@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/db";
 import { sendWhatsAppMessage } from "@/lib/whatsApp";
-import { Service, SettingsPayload } from "@/types/types";
+import { SettingsPayload } from "@/types/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
