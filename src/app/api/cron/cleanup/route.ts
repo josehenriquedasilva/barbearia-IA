@@ -13,6 +13,8 @@ export async function GET(request: Request) {
     const seisMesesAtras = new Date();
     seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 6);
 
+    const vinteQuatroHorasAtras = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const deleted = await prisma.service.deleteMany({
       where: {
         active: false,
@@ -22,9 +24,17 @@ export async function GET(request: Request) {
       },
     });
 
+    const deletedMessages = await prisma.chatMessage.deleteMany({
+      where: {
+        createdAt: { lt: vinteQuatroHorasAtras },
+      },
+    });
+
     return NextResponse.json({
       success: true,
-      message: `${deleted.count} serviços antigos foram removidos permanentemente.`,
+      servicesRemoved: deleted.count,
+      messagesRemoved: deletedMessages.count,
+      message: "Limpeza concluída com sucesso.",
     });
   } catch (error) {
     console.error("Erro na limpeza:", error);
