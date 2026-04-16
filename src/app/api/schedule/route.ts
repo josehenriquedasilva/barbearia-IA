@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     
         ATENÇÃO AO CALENDÁRIO:
         - Se hoje é ${currentDate.split(",")[0]}, amanhã será o dia seguinte na sequência. 
-        - Verifique SEMPRE o dia da semana antes de dizer se a barbearia abre ou fecha.
+        - Verifique SEMPRE o dia da semana antes de dizer se a barbearia abre ou fecha. MAS não informe qual é o dia da semana na mensagem, apenas se a dara for muito adiante da atual.
 
         REGRAS DE FUNCIONAMENTO:
         - Horário Padrão (Seg-Sáb): ${openingTime} às ${closingTime}.
