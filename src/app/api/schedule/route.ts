@@ -27,8 +27,14 @@ interface ClosedDay {
 }
 
 function getFormattedCurrentDate() {
-  const today = new Date();
-  return today.toISOString().split("T")[0];
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: "long",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  };
+  return new Date().toLocaleDateString("pt-BR", options);
 }
 
 export async function POST(request: Request) {
@@ -143,10 +149,17 @@ export async function POST(request: Request) {
         content: `Você é o assistente virtual da "${shopData.name}". Sua personalidade é profissional, AMIGÁVEL e muito direta.
         ${appointmentInfo}
 
+        HOJE É: ${currentDate}.
+    
+        ATENÇÃO AO CALENDÁRIO:
+        - Se hoje é ${currentDate.split(",")[0]}, amanhã será o dia seguinte na sequência. 
+        - Verifique SEMPRE o dia da semana antes de dizer se a barbearia abre ou fecha.
+
         REGRAS DE FUNCIONAMENTO:
         - Horário Padrão (Seg-Sáb): ${openingTime} às ${closingTime}.
         - Domingo: ${sundayInfo}
-        - Folga: ${dayOffInfo}
+        - Folga fixa: ${dayOffInfo}
+        - - Domingos: ${sundayInfo}
         - ${lunchInfo}
     
         AGENDA DE HOJE (${currentDate}):
@@ -329,7 +342,7 @@ export async function POST(request: Request) {
       );
 
       const isSunday = diaDaSemana === 0;
-      
+
       const currentOpening =
         isSunday && shopData.openingSunday
           ? shopData.openingSunday
