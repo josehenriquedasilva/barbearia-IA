@@ -160,7 +160,7 @@ export async function POST(request: Request) {
         - DATA: Se não informada, sugira hoje (${currentDate}).
         - HORA: Se não informada, sugira horários como 09:00, 10:30, 14:00 ou 16:30.
         - SERVIÇO: Opções: ${serviceNames.join(", ")}.
-        - NOME DO CLIENTE: Peça o nome apenas no final, antes da confirmação, caso ainda não saiba.
+        - NOME DO CLIENTE: ⚠️ OBRIGATÓRIO. Peça o nome apenas no final, antes da confirmação, caso ainda não saiba.
 
         ESTILO DE RESPOSTA:
         - Respostas curtas (máximo 2 frases).
