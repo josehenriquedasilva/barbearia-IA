@@ -90,11 +90,54 @@ export async function POST(request: Request) {
       take: 10,
     });
 
+    const searchLimit = new Date();
+    searchLimit.setDate(searchLimit.getDate() + 2);
+
+    const busyAppointments = await prisma.appointment.findMany({
+      where: {
+        shopId: Number(shopId),
+        startTime: { gte: new Date(), lte: searchLimit },
+        status: "CONFIRMED",
+      },
+      select: {
+        startTime: true,
+        barber: { select: { name: true } },
+      },
+      orderBy: { startTime: "asc" },
+    });
+
+    const busyScheduleString =
+      busyAppointments.length > 0
+        ? busyAppointments
+            .map((a) => {
+              const d = a.startTime;
+              return `- ${d.toLocaleDateString("pt-BR")} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} com ${a.barber.name}`;
+            })
+            .join("\n")
+        : "Nenhum horário ocupado nos próximos dias.";
+
+    const openingTime = "09:00";
+    const closingTime = "19:00";
+    const lunchBreak = "12:00 às 13:30";
+
     const messages: ChatCompletionMessageParam[] = [
       {
         role: "system",
         content: `Você é o assistente virtual da "${shopData.name}". Sua personalidade é profissional, AMIGÁVEL e muito direta.
         ${appointmentInfo}
+
+        HORÁRIO DE FUNCIONAMENTO:
+        - Aberto de: ${openingTime} às ${closingTime}.
+        - Intervalo: ${lunchBreak} (Não agendar neste período).
+    
+        AGENDA DE HOJE (${currentDate}):
+        ${busyScheduleString}
+
+        REGRAS DE HORÁRIO:
+        1. Antes de sugerir um horário, verifique se ele está dentro do horário de funcionamento.
+        2. NUNCA sugira ou confirme horários que já aparecem na "AGENDA DE HOJE" acima.
+        3. Se o cliente pedir um horário ocupado, informe que está indisponível e sugira o próximo horário livre mais próximo.
+        4. Se o cliente pedir para "hoje" e já passar das ${closingTime}, informe que encerramos e ofereça amanhã.
 
         FLUXO DE ATENDIMENTO:
         1. SE FOR A PRIMEIRA MENSAGEM (saudação ou início de conversa): Dê as boas-vindas informando o nome da barbearia "${shopData.name}" e pergunte se o cliente deseja agendar um horário.
