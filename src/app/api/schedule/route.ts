@@ -118,9 +118,20 @@ export async function POST(request: Request) {
 
     const openingTime = shopData.openingTime;
     const closingTime = shopData.closingTime;
-    const lunchStart = shopData.lunchStart;
-    const lunchEnd = shopData.lunchEnd;
-    const lunchBreak = `${lunchStart} às ${lunchEnd}`;
+
+    const dayOffInfo =
+      shopData.hasDayOff && shopData.dayOff
+        ? `Folga semanal toda ${shopData.dayOff}.`
+        : "Não há folga semanal fixa.";
+
+    const sundayInfo = shopData.isClosedSunday
+      ? "Fechado aos Domingos."
+      : `Aberto aos Domingos das ${shopData.openingSunday} às ${shopData.closingSunday}.`;
+
+    const lunchInfo =
+      shopData.hasLunchBreak && shopData.lunchStart && shopData.lunchEnd
+        ? `Intervalo de almoço: ${shopData.lunchStart} às ${shopData.lunchEnd} (Não agendar neste período).`
+        : "Não há intervalo de almoço.";
 
     const servicosInfo = shopData.services
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
@@ -132,9 +143,11 @@ export async function POST(request: Request) {
         content: `Você é o assistente virtual da "${shopData.name}". Sua personalidade é profissional, AMIGÁVEL e muito direta.
         ${appointmentInfo}
 
-        HORÁRIO DE FUNCIONAMENTO:
-        - Aberto de: ${openingTime} às ${closingTime}.
-        - Intervalo: ${lunchBreak} (Não agendar neste período).
+        REGRAS DE FUNCIONAMENTO:
+        - Horário Padrão (Seg-Sáb): ${openingTime} às ${closingTime}.
+        - Domingo: ${sundayInfo}
+        - Folga: ${dayOffInfo}
+        - ${lunchInfo}
     
         AGENDA DE HOJE (${currentDate}):
         ${busyScheduleString}
@@ -146,11 +159,11 @@ export async function POST(request: Request) {
         - Ao sugerir horários, considere que o serviço leva o tempo listado acima.
         - Não agende nada que termine após o horário de fechamento (${closingTime}).
 
-        REGRAS DE HORÁRIO:
-        1. Antes de sugerir um horário, verifique se ele está dentro do horário de funcionamento.
-        2. NUNCA sugira ou confirme horários que já aparecem na "AGENDA DE HOJE" acima.
-        3. Se o cliente pedir um horário ocupado, informe que está indisponível e sugira o próximo horário livre mais próximo.
-        4. Se o cliente pedir para "hoje" e já passar das ${closingTime}, informe que encerramos e ofereça amanhã.
+        REGRAS CRÍTICAS DE HORÁRIO:
+        1. Verifique se o dia solicitado não é o dia de folga (${shopData.dayOff}) ou se é um Domingo fechado.
+        2. NUNCA sugira horários que conflitem com a "AGENDA DE OCUPAÇÃO" ou com o intervalo de almoço.
+        3. Se o cliente pedir um horário em que estamos fechados, informe o horário de funcionamento correto.
+        4. Se o cliente pedir para "hoje" e o horário já passou do fechamento, ofereça o próximo dia útil.
 
         FLUXO DE ATENDIMENTO:
         1. SE FOR A PRIMEIRA MENSAGEM (saudação ou início de conversa): Dê as boas-vindas informando o nome da barbearia "${shopData.name}" e pergunte se o cliente deseja agendar um horário.
@@ -247,6 +260,39 @@ export async function POST(request: Request) {
     ) {
       const args = JSON.parse(toolCall.function.arguments) as ScheduleArgs;
 
+      const dataAgendamento = new Date(`${args.date}T12:00:00Z`);
+      const diaDaSemana = dataAgendamento.getUTCDay();
+
+      if (diaDaSemana === 0 && shopData.isClosedSunday) {
+        return NextResponse.json({
+          status: "CLOSED_SUNDAY",
+          ai_response:
+            "Desculpe, mas não abrimos aos domingos. Poderia escolher outro dia?",
+        });
+      }
+
+      const diasSemanaMap: Record<string, number> = {
+        domingo: 0,
+        "segunda-feira": 1,
+        "terça-feira": 2,
+        "quarta-feira": 3,
+        "quinta-feira": 4,
+        "sexta-feira": 5,
+        sábado: 6,
+        segunda: 1,
+        terca: 2,
+      };
+
+      if (shopData.hasDayOff && shopData.dayOff) {
+        const diaFolgaNum = diasSemanaMap[shopData.dayOff.toLowerCase()];
+        if (diaDaSemana === diaFolgaNum) {
+          return NextResponse.json({
+            status: "DAY_OFF",
+            ai_response: `Às ${shopData.dayOff}s nós estamos fechados para descanso. Que tal outro dia?`,
+          });
+        }
+      }
+
       const closedDays = (shopData.closedDays as ClosedDay[]) || [];
       const closedDayEntry = closedDays.find((d) => d.date === args.date);
 
@@ -281,8 +327,19 @@ export async function POST(request: Request) {
         startAt.getTime() + targetService.durationMinutes * 60000,
       );
 
-      const [openH, openM] = openingTime.split(":").map(Number);
-      const [closeH, closeM] = closingTime.split(":").map(Number);
+      const isSunday = diaDaSemana === 0;
+      
+      const currentOpening =
+        isSunday && shopData.openingSunday
+          ? shopData.openingSunday
+          : shopData.openingTime;
+      const currentClosing =
+        isSunday && shopData.closingSunday
+          ? shopData.closingSunday
+          : shopData.closingTime;
+
+      const [openH, openM] = currentOpening.split(":").map(Number);
+      const [closeH, closeM] = currentClosing.split(":").map(Number);
 
       const openDate = new Date(startAt);
       openDate.setUTCHours(openH + USER_TIMEZONE_OFFSET_HOURS, openM, 0);
@@ -297,14 +354,26 @@ export async function POST(request: Request) {
         });
       }
 
-      const lunchStartDate = new Date(startAt);
-      const lunchEndDate = new Date(startAt);
+      if (shopData.hasLunchBreak && shopData.lunchStart && shopData.lunchEnd) {
+        const [lStartH, lStartM] = shopData.lunchStart.split(":").map(Number);
+        const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
 
-      if (startAt < lunchEndDate && endTime > lunchStartDate) {
-        return NextResponse.json({
-          status: "LUNCH_BREAK",
-          ai_response: `Nesse horário nossos barbeiros estão em intervalo de almoço (${lunchBreak}). Que tal um pouco antes ou depois?`,
-        });
+        const lunchStartDate = new Date(startAt);
+        lunchStartDate.setUTCHours(
+          lStartH + USER_TIMEZONE_OFFSET_HOURS,
+          lStartM,
+          0,
+        );
+
+        const lunchEndDate = new Date(startAt);
+        lunchEndDate.setUTCHours(lEndH + USER_TIMEZONE_OFFSET_HOURS, lEndM, 0);
+
+        if (startAt < lunchEndDate && endTime > lunchStartDate) {
+          return NextResponse.json({
+            status: "LUNCH_BREAK",
+            ai_response: `Nesse horário nossos barbeiros estão em intervalo de almoço (${shopData.lunchStart} às ${shopData.lunchEnd}).`,
+          });
+        }
       }
 
       const existingAppointment = await prisma.appointment.findFirst({
