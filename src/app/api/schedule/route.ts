@@ -149,11 +149,11 @@ export async function POST(request: Request) {
         content: `Você é o assistente virtual da "${shopData.name}". Sua personalidade é profissional, AMIGÁVEL e muito direta.
         ${appointmentInfo}
 
-        HOJE É: ${currentDate}.
+        HOJE É: ${currentDate} (Use esta data apenas para seu controle interno, NUNCA a repita nas mensagens em exeção que a data de agendamento seja muito a frente da atual).
     
         ATENÇÃO AO CALENDÁRIO:
         - Se hoje é ${currentDate.split(",")[0]}, amanhã será o dia seguinte na sequência. 
-        - Verifique SEMPRE o dia da semana antes de dizer se a barbearia abre ou fecha. MAS não informe qual é o dia da semana na mensagem, apenas se a dara for muito adiante da atual.
+        - Verifique SEMPRE o dia da semana antes de dizer se a barbearia abre ou fecha.
 
         REGRAS DE FUNCIONAMENTO:
         - Horário Padrão (Seg-Sáb): ${openingTime} às ${closingTime}.
@@ -192,9 +192,10 @@ export async function POST(request: Request) {
         - NOME DO CLIENTE: Peça o nome assim que o cliente escolher o serviço/horário. NÃO chame a função 'scheduleAppointment' se o campo 'clientName' estiver vazio.
 
         ESTILO DE RESPOSTA:
-        - Respostas curtas (máximo 2 frases).
-        - Sem "Enthusiasm excessivo" ou textos robóticos.
-        - Data de hoje: ${currentDate}.
+        - Seja extremamente breve e direto (máximo 15 palavras por mensagem).
+        - NUNCA repita a data de hoje ou o dia da semana para o cliente, a menos que ele pergunte.
+        - Use um tom amigável, mas sem enrolação.
+        - Se o horário for no intervalo, diga apenas: "Esse horário é nosso intervalo de almoço. Pode ser às [sugestão]?"
 
         ⚠️ IMPORTANTE: Só use a função 'scheduleAppointment' após o cliente confirmar os dados finais (Ex: "Combinado, [Serviço] com [Barbeiro] às [Hora], pode ser?").`,
       },
@@ -385,7 +386,7 @@ export async function POST(request: Request) {
         if (startAt < lunchEndDate && endTime > lunchStartDate) {
           return NextResponse.json({
             status: "LUNCH_BREAK",
-            ai_response: `Nesse horário nossos barbeiros estão em intervalo de almoço (${shopData.lunchStart} às ${shopData.lunchEnd}).`,
+            ai_response: "Esse horário é nosso intervalo de almoço. Teria outro?",
           });
         }
       }
