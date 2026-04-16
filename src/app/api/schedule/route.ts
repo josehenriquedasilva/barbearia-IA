@@ -116,9 +116,11 @@ export async function POST(request: Request) {
             .join("\n")
         : "Nenhum horário ocupado nos próximos dias.";
 
-    const openingTime = "09:00";
-    const closingTime = "19:00";
-    const lunchBreak = "12:00 às 13:30";
+    const openingTime = shopData.openingTime;
+    const closingTime = shopData.closingTime;
+    const lunchStart = shopData.lunchStart;
+    const lunchEnd = shopData.lunchEnd;
+    const lunchBreak = `${lunchStart} às ${lunchEnd}`;
 
     const servicosInfo = shopData.services
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
@@ -278,6 +280,32 @@ export async function POST(request: Request) {
       const endTime = new Date(
         startAt.getTime() + targetService.durationMinutes * 60000,
       );
+
+      const [openH, openM] = openingTime.split(":").map(Number);
+      const [closeH, closeM] = closingTime.split(":").map(Number);
+
+      const openDate = new Date(startAt);
+      openDate.setUTCHours(openH + USER_TIMEZONE_OFFSET_HOURS, openM, 0);
+
+      const closeDate = new Date(startAt);
+      closeDate.setUTCHours(closeH + USER_TIMEZONE_OFFSET_HOURS, closeM, 0);
+
+      if (startAt < openDate || endTime > closeDate) {
+        return NextResponse.json({
+          status: "OUT_OF_HOURS",
+          ai_response: `Desculpe, mas esse horário está fora do nosso expediente (${openingTime} às ${closingTime}). Pode escolher outro?`,
+        });
+      }
+
+      const lunchStartDate = new Date(startAt);
+      const lunchEndDate = new Date(startAt);
+
+      if (startAt < lunchEndDate && endTime > lunchStartDate) {
+        return NextResponse.json({
+          status: "LUNCH_BREAK",
+          ai_response: `Nesse horário nossos barbeiros estão em intervalo de almoço (${lunchBreak}). Que tal um pouco antes ou depois?`,
+        });
+      }
 
       const existingAppointment = await prisma.appointment.findFirst({
         where: {
