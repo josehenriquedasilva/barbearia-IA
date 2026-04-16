@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const seisMesesAtras = new Date();
     seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 6);
 
-    const vinteQuatroHorasAtras = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const vinteQuatroHorasAtras = new Date(Date.now() - 1 * 60 * 1000);
 
     const deleted = await prisma.service.deleteMany({
       where: {
