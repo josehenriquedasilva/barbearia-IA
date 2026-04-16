@@ -120,6 +120,10 @@ export async function POST(request: Request) {
     const closingTime = "19:00";
     const lunchBreak = "12:00 às 13:30";
 
+    const servicosInfo = shopData.services
+      .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
+      .join("\n");
+
     const messages: ChatCompletionMessageParam[] = [
       {
         role: "system",
@@ -132,6 +136,13 @@ export async function POST(request: Request) {
     
         AGENDA DE HOJE (${currentDate}):
         ${busyScheduleString}
+
+        SERVIÇOS E DURAÇÕES:
+        ${servicosInfo}
+
+        REGRA DE DURAÇÃO:
+        - Ao sugerir horários, considere que o serviço leva o tempo listado acima.
+        - Não agende nada que termine após o horário de fechamento (${closingTime}).
 
         REGRAS DE HORÁRIO:
         1. Antes de sugerir um horário, verifique se ele está dentro do horário de funcionamento.
@@ -271,8 +282,15 @@ export async function POST(request: Request) {
       const existingAppointment = await prisma.appointment.findFirst({
         where: {
           barberId: targetBarber.id,
-          startTime: startAt,
           status: "CONFIRMED",
+          AND: [
+            {
+              startTime: { lt: endTime },
+            },
+            {
+              endTime: { gt: startAt },
+            },
+          ],
         },
       });
 
