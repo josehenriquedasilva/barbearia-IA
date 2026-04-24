@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { Type } from "@google/genai";
 import prisma from "@/lib/db";
 import { startNewChat } from "@/lib/gemini";
+import { SchemaType, Tool } from "@google/generative-ai";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,12 @@ interface ScheduleArgs {
   time: string;
   serviceName: string;
   clientName: string;
+}
+
+interface CheckArgs {
+  barberName: string;
+  date: string;
+  time: string;
 }
 
 function getFormattedCurrentDate() {
@@ -35,7 +41,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. BUSCA DADOS DA BARBEARIA
     const shopData = await prisma.shop.findUnique({
       where: { id: Number(shopId) },
       include: {
@@ -52,7 +57,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. BUSCA AGENDAMENTOS EXISTENTES (PARA INFO DO SISTEMA)
     const upcomingAppointment = await prisma.appointment.findFirst({
       where: {
         clientPhone: clientPhone,
@@ -74,7 +78,6 @@ export async function POST(request: Request) {
       appointmentInfo = `\n- O cliente JÁ TEM um agendamento para o dia ${dateStr} às ${timeStr} (${upcomingAppointment.service.name} com ${upcomingAppointment.barber.name}).`;
     }
 
-    // 3. PREPARA VARIÁVEIS DE CONTEXTO
     const barbeiroNames = shopData.barbers.map((b) => b.name);
     const currentDate = getFormattedCurrentDate();
     const unicoBarbeiro = barbeiroNames.length === 1 ? barbeiroNames[0] : null;
@@ -106,7 +109,15 @@ export async function POST(request: Request) {
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
       .join("\n");
 
-    // 4. HISTÓRICO E INSTRUÇÕES
+    await prisma.chatMessage.createMany({
+      data: {
+        role: "user",
+        content: message,
+        shopId: Number(shopId),
+        clientPhone,
+      },
+    });
+
     const lastMessages = await prisma.chatMessage.findMany({
       where: { shopId: Number(shopId), clientPhone },
       orderBy: { createdAt: "desc" },
@@ -118,30 +129,57 @@ export async function POST(request: Request) {
       parts: [{ text: msg.content }],
     }));
 
-    const systemInstruction = `Você é o assistente virtual da "${shopData.name}". Profissional e amigável.
+    while (history.length > 0 && history[0].role === "model") {
+      history.shift();
+    }
+
+    const systemInstruction = `Você é o assistente virtual da "${shopData.name}".
     ${appointmentInfo}
-    HOJE É: ${currentDate}.
-    
+    HOJE: ${currentDate}.
+
+    REGRAS DE OURO:
+    - O intervalo de 10 minutos entre clientes e qualquer evento é OBRIGATÓRIO.
+    ${unicoBarbeiro ? `- O ÚNICO barbeiro é ${unicoBarbeiro}. NÃO pergunte qual barbeiro o cliente deseja.` : ""}
+    - Se o almoço termina às ${shopData.lunchEnd}, você PROIBE o horário das ${shopData.lunchEnd}. 
+    - O primeiro horário disponível após o almoço é OBRIGATORIAMENTE ${(() => {
+      const [h, m] = shopData.lunchEnd!.split(":").map(Number);
+      const total = h * 60 + m + 10;
+      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    })()} .
+    - NUNCA agende exatamente no horário de término do almoço.
+    - Se o servidor recusar um horário (ex: almoço ou ocupado), lembre-se da sugestão dada e não pergunte novamente o que o cliente já respondeu.
+
+    REGRAS DE DISPONIBILIDADE:
+    1. NUNCA diga que um horário está livre sem antes chamar "checkAvailability".
+    2. Se o cliente perguntar "está disponível às 14h?", use a tool "checkAvailability".
+    3. Se a tool responder que está ocupado e sugerir um horário, diga: "As [hora pedida] está ocupado, mas consigo para as [hora sugerida]. Pode ser?"
+
+    COMPORTAMENTO:
+    - Seja ultra-direto. Máximo 2 frases.
+    - Se o horário pedido estiver ocupado ou for Almoço (${shopData.lunchStart}-${shopData.lunchEnd}), olhe a "OCUPAÇÃO ATUAL" e sugira o próximo horário vago imediatamente.
+    - Considere sempre 10 minutos de intervalo entre os agendamentos.
+
     REGRAS DE FUNCIONAMENTO:
     - Seg-Sáb: ${shopData.openingTime} às ${shopData.closingTime}.
     - Domingo: ${shopData.isClosedSunday ? "Fechado" : `Aberto ${shopData.openingSunday} às ${shopData.closingSunday}`}.
-    - Folga: ${shopData.hasDayOff ? shopData.dayOff : "Não há"}.
     - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart} às ${shopData.lunchEnd}` : "Sem intervalo"}.
 
-    OCUPAÇÃO ATUAL:
+    OCUPAÇÃO ATUAL (Não agende nestes horários):
     ${busyScheduleString}
 
     SERVIÇOS:
     ${servicosInfo}
 
-    FLUXO: 
-    1. Se for saudação, dê boas-vindas.
-    2. Colete: Barbeiro (${unicoBarbeiro || barbeiroNames.join(", ")}), Data, Hora, Serviço e Nome do cliente.
-    3. Antes de agendar, peça confirmação: "Certo, [Serviço] com [Barbeiro] dia [Data] às [Hora]. Posso confirmar?".
-    4. SÓ chame a função 'scheduleAppointment' após o "Sim" ou "Pode".
-    5. Respostas curtas (máx 2 frases).`;
+    FLUXO: Saudação -> Coleta (Barbeiro: ${unicoBarbeiro || barbeiroNames.join(", ")}, Data, Hora, Serviço, Nome) -> Confirmação -> scheduleAppointment.
 
-    const tools = [
+    1. Se faltar informações, peça-as. 
+    2. Se só existe 1 barbeiro (${unicoBarbeiro}), ignore a escolha de barbeiro e não informe o nome do barbeiro (apenas se o cliente perguntar).
+    3. Quando perguntar qual serviço, não liste os disponivel (apenas se o cliente perguntar).
+    3. Se o cliente aceitar uma sugestão de horário, use ESSE horário imediatamente.
+    4. Se já tiver Nome, Serviço, Barbeiro, Data e Hora, chame scheduleAppointment sem perguntar de novo.
+    `;
+
+    const tools: Tool[] = [
       {
         functionDeclarations: [
           {
@@ -149,13 +187,30 @@ export async function POST(request: Request) {
             description:
               "Executa o agendamento após confirmação final do cliente.",
             parameters: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                barberName: { type: Type.STRING },
-                date: { type: Type.STRING, description: "YYYY-MM-DD" },
-                time: { type: Type.STRING, description: "HH:MM" },
-                serviceName: { type: Type.STRING },
-                clientName: { type: Type.STRING },
+                barberName: {
+                  type: SchemaType.STRING,
+                  description:
+                    "Nome do barbeiro selecionado. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.",
+                },
+                date: {
+                  type: SchemaType.STRING,
+                  description: "Data no formato YYYY-MM-DD",
+                },
+                time: {
+                  type: SchemaType.STRING,
+                  description:
+                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use o horário sugerido.",
+                },
+                serviceName: {
+                  type: SchemaType.STRING,
+                  description: "Nome do serviço selecionado",
+                },
+                clientName: {
+                  type: SchemaType.STRING,
+                  description: "Nome do cliente",
+                },
               },
               required: [
                 "barberName",
@@ -166,134 +221,275 @@ export async function POST(request: Request) {
               ],
             },
           },
+          {
+            name: "checkAvailability",
+            description:
+              "Verifica se um horário específico está disponível antes de sugerir ao cliente ou antes de tentar agendar.",
+            parameters: {
+              type: SchemaType.OBJECT,
+              properties: {
+                date: {
+                  type: SchemaType.STRING,
+                  description: "Data no formato YYYY-MM-DD",
+                },
+                time: {
+                  type: SchemaType.STRING,
+                  description: "Hora no formato HH:MM",
+                },
+                barberName: {
+                  type: SchemaType.STRING,
+                  description: "Nome do barbeiro",
+                },
+              },
+              required: ["date", "time", "barberName"],
+            },
+          },
         ],
       },
     ];
 
-    // 5. EXECUÇÃO DA IA
+    // Verificar se a IA está sugerindo o horário mais próximo
+
     const chat = startNewChat(systemInstruction, tools, history);
-    const response = await chat.sendMessage({ message: message });
+    let result = await chat.sendMessage(message);
+    let responseAi = result.response;
+    let calls = responseAi.functionCalls();
 
-    const aiText = response.text || "";
-    const call = response.functionCalls ? response.functionCalls[0] : null;
+    while (calls && calls.length > 0) {
+      const call = calls[0];
+      let functionResponse: Record<string, unknown> = {};
 
-    // Salva a interação
-    await prisma.chatMessage.createMany({
-      data: [
-        { role: "user", content: message, shopId: Number(shopId), clientPhone },
+      if (call.name === "checkAvailability") {
+        const { date, time, barberName } = call.args as unknown as CheckArgs;
+        const startAt = new Date(`${date}T${time}:00-03:00`);
+        const targetBarber = shopData.barbers.find(
+          (b) => b.name.toLowerCase() === barberName.toLowerCase(),
+        );
+
+        if (!targetBarber) {
+          functionResponse = {
+            available: false,
+            message: "Barbeiro não encontrado.",
+          };
+        } else {
+          const isBusy = await prisma.appointment.findFirst({
+            where: {
+              barberId: targetBarber.id,
+              status: "CONFIRMED",
+              AND: [
+                { startTime: { lt: new Date(startAt.getTime() + 30 * 60000) } },
+                { endTime: { gt: startAt } },
+              ],
+            },
+          });
+
+          if (isBusy) {
+            const nextH = new Date(isBusy.endTime.getTime() + 10 * 60000);
+            const suggested = nextH.toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "America/Sao_Paulo",
+            });
+            functionResponse = {
+              available: false,
+              message: `Ocupado. Sugira ${suggested}.`,
+            };
+          } else {
+            functionResponse = { available: true, message: "Livre." };
+          }
+        }
+      }
+
+      if (call.name === "scheduleAppointment") {
+        const args = call.args as unknown as ScheduleArgs;
+
+        if (!args.time || !args.date) {
+          return NextResponse.json({
+            status: "ERROR",
+            ai_response: "Preciso da data e hora para agendar.",
+          });
+        }
+
+        const [hour, minute] = args.time.split(":").map(Number);
+        const appointmentMinutes = hour * 60 + minute;
+
+        const dataAgendamento = new Date(`${args.date}T12:00:00Z`);
+        const diaDaSemana = dataAgendamento.getUTCDay();
+        const diasSemanaMap: Record<string, number> = {
+          domingo: 0,
+          "segunda-feira": 1,
+          "terça-feira": 2,
+          "quarta-feira": 3,
+          "quinta-feira": 4,
+          "sexta-feira": 5,
+          sábado: 6,
+          segunda: 1,
+          terca: 2,
+        };
+
+        if (diaDaSemana === 0 && shopData.isClosedSunday) {
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: "Não abrimos aos domingos. Pode escolher outro dia?",
+          });
+        }
+
+        if (shopData.hasLunchBreak) {
+          const [lStartH, lStartM] = shopData
+            .lunchStart!.split(":")
+            .map(Number);
+          const [lEndH, lEndM] = shopData.lunchEnd!.split(":").map(Number);
+
+          const lunchStartTotal = lStartH * 60 + lStartM;
+          const lunchEndTotal = lEndH * 60 + lEndM;
+
+          const firstSlotAfterLunch = lunchEndTotal + 10;
+
+          if (
+            appointmentMinutes >= lunchStartTotal &&
+            appointmentMinutes < firstSlotAfterLunch
+          ) {
+            const suggestH = Math.floor(firstSlotAfterLunch / 60);
+            const suggestM = firstSlotAfterLunch % 60;
+            const suggestTime = `${String(suggestH).padStart(2, "0")}:${String(suggestM).padStart(2, "0")}`;
+
+            const ai_response = `O horário das ${args.time} não está disponível O primeiro horário livre é às ${suggestTime}. Pode ser?`;
+
+            await prisma.chatMessage.create({
+              data: {
+                role: "model",
+                content: ai_response,
+                shopId: Number(shopId),
+                clientPhone,
+              },
+            });
+
+            return NextResponse.json({
+              status: "LUNCH_BREAK",
+              ai_response: ai_response,
+            });
+          }
+        }
+
+        if (
+          shopData.hasDayOff &&
+          shopData.dayOff &&
+          diaDaSemana === diasSemanaMap[shopData.dayOff.toLowerCase()]
+        ) {
+          return NextResponse.json({
+            status: "DAY_OFF",
+            ai_response: `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
+          });
+        }
+
+        const targetService = shopData.services.find(
+          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
+        );
+        const targetBarber = shopData.barbers.find(
+          (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
+        );
+
+        if (!targetService || !targetBarber) {
+          return NextResponse.json({
+            status: "ERROR",
+            ai_response: "Não encontrei o serviço ou barbeiro. Pode repetir?",
+          });
+        }
+
+        const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
+
+        const durationWithInterval = targetService.durationMinutes + 10;
+        const endTime = new Date(
+          startAt.getTime() + durationWithInterval * 60000,
+        );
+
+        const existing = await prisma.appointment.findFirst({
+          where: {
+            barberId: targetBarber.id,
+            status: "CONFIRMED",
+            AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startAt } }],
+          },
+        });
+
+        if (existing) {
+          const nextAvailable = new Date(
+            existing.endTime.getTime() + 2 * 60000,
+          );
+          const suggestTime = nextAvailable.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "America/Sao_Paulo",
+          });
+
+          const ai_response = `O horário das ${args.time} já está ocupado com ${targetBarber.name}. O próximo horário disponível com ele é às ${suggestTime}. Pode ser?`;
+
+          await prisma.chatMessage.create({
+            data: {
+              role: "model",
+              content: ai_response,
+              shopId: Number(shopId),
+              clientPhone,
+            },
+          });
+
+          return NextResponse.json({
+            status: "UNAVAILABLE",
+            ai_response: ai_response,
+          });
+        }
+
+        const newAppointment = await prisma.appointment.create({
+          data: {
+            clientName: args.clientName,
+            clientPhone,
+            shopId: shopData.id,
+            barberId: targetBarber.id,
+            serviceId: targetService.id,
+            startTime: startAt,
+            endTime: endTime,
+          },
+        });
+
+        await prisma.chatMessage.deleteMany({
+          where: { shopId: Number(shopId), clientPhone },
+        });
+        return NextResponse.json({
+          status: "SUCCESS",
+          ai_response: `Agendado!`,
+          details: newAppointment,
+        });
+      }
+
+      result = await chat.sendMessage([
         {
+          functionResponse: {
+            name: call.name,
+            response: { content: functionResponse },
+          },
+        },
+      ]);
+
+      responseAi = result.response;
+      calls = responseAi.functionCalls();
+    }
+
+    const aiFinalText = responseAi.text();
+
+    if (aiFinalText) {
+      await prisma.chatMessage.create({
+        data: {
           role: "model",
-          content: aiText || "Chamada de função",
+          content: aiFinalText,
           shopId: Number(shopId),
           clientPhone,
         },
-      ],
-    });
-
-    // 6. LÓGICA DE VALIDAÇÃO DA FUNÇÃO (BACKEND)
-    if (call && call.name === "scheduleAppointment") {
-      const args = call.args as unknown as ScheduleArgs;
-
-      // Validação de Data/Folga/Domingo
-      const dataAgendamento = new Date(`${args.date}T12:00:00Z`);
-      const diaDaSemana = dataAgendamento.getUTCDay();
-      const diasSemanaMap: Record<string, number> = {
-        domingo: 0,
-        "segunda-feira": 1,
-        "terça-feira": 2,
-        "quarta-feira": 3,
-        "quinta-feira": 4,
-        "sexta-feira": 5,
-        sábado: 6,
-        segunda: 1,
-        terca: 2,
-      };
-
-      if (diaDaSemana === 0 && shopData.isClosedSunday) {
-        return NextResponse.json({
-          status: "CLOSED",
-          ai_response: "Não abrimos aos domingos. Pode escolher outro dia?",
-        });
-      }
-
-      if (
-        shopData.hasDayOff &&
-        shopData.dayOff &&
-        diaDaSemana === diasSemanaMap[shopData.dayOff.toLowerCase()]
-      ) {
-        return NextResponse.json({
-          status: "DAY_OFF",
-          ai_response: `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
-        });
-      }
-
-      // Validação de Serviço e Barbeiro
-      const targetService = shopData.services.find(
-        (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
-      );
-      const targetBarber = shopData.barbers.find(
-        (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
-      );
-
-      if (!targetService || !targetBarber) {
-        return NextResponse.json({
-          status: "ERROR",
-          ai_response: "Não encontrei o serviço ou barbeiro. Pode repetir?",
-        });
-      }
-
-      // Cálculo de Horário e Conflitos
-      const OFFSET = 3;
-      const [hour, minute] = args.time.split(":").map(Number);
-      const startAt = new Date(
-        `${args.date}T${String(hour + OFFSET).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`,
-      );
-      const endTime = new Date(
-        startAt.getTime() + targetService.durationMinutes * 60000,
-      );
-
-      // Verificação de Ocupação Real no Banco
-      const existing = await prisma.appointment.findFirst({
-        where: {
-          barberId: targetBarber.id,
-          status: "CONFIRMED",
-          AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startAt } }],
-        },
-      });
-
-      if (existing) {
-        return NextResponse.json({
-          status: "UNAVAILABLE",
-          ai_response: `O horário das ${args.time} já está ocupado com ${targetBarber.name}. Escolha outro?`,
-        });
-      }
-
-      // 7. CRIAÇÃO DO AGENDAMENTO
-      const newAppointment = await prisma.appointment.create({
-        data: {
-          clientName: args.clientName,
-          clientPhone,
-          shopId: shopData.id,
-          barberId: targetBarber.id,
-          serviceId: targetService.id,
-          startTime: startAt,
-          endTime: endTime,
-        },
-      });
-
-      // Limpa histórico após sucesso
-      await prisma.chatMessage.deleteMany({
-        where: { shopId: Number(shopId), clientPhone },
-      });
-
-      return NextResponse.json({
-        status: "SUCCESS",
-        ai_response: `Perfeito! Agendado: ${args.serviceName} com ${args.barberName} dia ${args.date} às ${args.time}.`,
-        details: newAppointment,
       });
     }
 
-    return NextResponse.json({ status: "TEXT_RESPONSE", ai_response: aiText });
+    return NextResponse.json({
+      status: "TEXT_RESPONSE",
+      ai_response: aiFinalText,
+    });
   } catch (error) {
     console.error("Erro:", error);
     return NextResponse.json(

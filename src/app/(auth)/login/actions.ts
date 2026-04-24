@@ -35,6 +35,6 @@ export async function loginAction(formData: FormLoginProps) {
     };
   } catch (error) {
     console.error("Erro no login:", error);
-    return { sucess: false, error: "Erro ao realizar login" };
+    return { sucess: false, error: "Erro ao realizar login. Tente novamente." };
   }
 }

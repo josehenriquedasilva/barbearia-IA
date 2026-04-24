@@ -1,18 +1,23 @@
-import { Chat, Content, GoogleGenAI, Tool } from "@google/genai";
+import { GoogleGenerativeAI, Content, Tool } from "@google/generative-ai";
 
-const ai = new GoogleGenAI({});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export function startNewChat(
   systemInstruction: string,
   tools: Tool[],
-  history: Content[] = []
-): Chat {
-  return ai.chats.create({
-    model: "gemini-2.5-flash",
-    config: {
-      systemInstruction: systemInstruction,
-      tools: tools,
+  history: Content[],
+) {
+  const model = genAI.getGenerativeModel({
+    model: "gemini-3.1-flash-lite-preview",
+    systemInstruction: systemInstruction,
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 150,
     },
+  });
+
+  return model.startChat({
     history: history,
+    tools: tools,
   });
 }
