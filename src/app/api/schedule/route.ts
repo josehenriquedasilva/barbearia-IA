@@ -17,6 +17,7 @@ interface CheckArgs {
   barberName: string;
   date: string;
   time: string;
+  serviceName: string;
 }
 
 function getFormattedCurrentDate() {
@@ -137,6 +138,53 @@ export async function POST(request: Request) {
     ${appointmentInfo}
     HOJE: ${currentDate}.
 
+    DIRETRIZES DE ATENDIMENTO:
+    - Se houver agendamento ativo:
+        * SEMPRE reconheça o horário marcado na primeira resposta.
+        * Se o cliente pedir OUTRO horário, pergunte se ele quer uma NOVA reserva ou REMARCAR a atual.
+    - Se o cliente perguntar por um horário: Chame "checkAvailability" antes de responder qualquer coisa.
+    - Seja ultra-direto: máximo 2 frases.
+
+    REGRAS DE AGENDAMENTO (CRÍTICO):
+    - Intervalo OBRIGATÓRIO de 10 min entre atendimentos.
+    - Almoço (${shopData.lunchStart} às ${shopData.lunchEnd}): PROIBIDO agendar no horário de término exato. Primeiro horário pós-almoço: ${(() => {
+      const [h, m] = shopData.lunchEnd!.split(":").map(Number);
+      const total = h * 60 + m + 10;
+      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    })()}.
+    - Só informe disponibilidade após chamar "checkAvailability".
+    ${unicoBarbeiro ? `- ÚNICO barbeiro: ${unicoBarbeiro}. Não pergunte e não mencione o nome do barbeiro.` : ""}
+
+    FUNCIONAMENTO E SERVIÇOS:
+    - Horário: ${shopData.openingTime} às ${shopData.closingTime} (Almoço: ${shopData.lunchStart}-${shopData.lunchEnd}).
+    - Serviços: ${servicosInfo
+      .split("\n")
+      .map((s) => s.trim())
+      .join(" | ")}.
+
+    OCUPAÇÃO ATUAL:
+    ${busyScheduleString}
+
+    FLUXO DE EXECUÇÃO:
+    1. Se faltar dados (Serviço, Data, Hora, Nome), peça-os de forma breve. Não liste serviços exceto se solicitado.
+    2. Com todos os dados e aceite do cliente, execute "scheduleAppointment" imediatamente.
+    3. Se o cliente aceitar uma sugestão de horário, use esse horário no agendamento sem reconfirmar.
+    `;
+
+    {
+      /*
+    const systemInstruction = `Você é o assistente virtual da "${shopData.name}".
+    ${appointmentInfo}
+    HOJE: ${currentDate}.
+
+    REGRAS DE INTERAÇÃO (IMPORTANTE):
+    1. Se o cliente JÁ TEM um agendamento e enviou uma saudação genérica (ex: "Oi", "Bom dia"):
+       - Responda: "Olá! Vi que você já tem um horário marcado para [DATA] às [HORA]. Como posso te ajudar hoje?"
+    2. Se o cliente JÁ TEM um agendamento MAS fez uma pergunta específica (ex: "Tem vaga para amanhã?", "Quero desmarcar"):
+       - NÃO use a frase "Como posso te ajudar". 
+       - Reconheça o agendamento atual e responda à pergunta dele imediatamente.
+       - Exemplo: "Olá! Vi que você já tem um horário dia 25/04 às 14h. Quer agendar outro para amanhã às 17h ou deseja remarcar o atual?"
+
     REGRAS DE OURO:
     - O intervalo de 10 minutos entre clientes e qualquer evento é OBRIGATÓRIO.
     ${unicoBarbeiro ? `- O ÚNICO barbeiro é ${unicoBarbeiro}. NÃO pergunte qual barbeiro o cliente deseja.` : ""}
@@ -150,9 +198,10 @@ export async function POST(request: Request) {
     - Se o servidor recusar um horário (ex: almoço ou ocupado), lembre-se da sugestão dada e não pergunte novamente o que o cliente já respondeu.
 
     REGRAS DE DISPONIBILIDADE:
-    1. NUNCA diga que um horário está livre sem antes chamar "checkAvailability".
-    2. Se o cliente perguntar "está disponível às 14h?", use a tool "checkAvailability".
-    3. Se a tool responder que está ocupado e sugerir um horário, diga: "As [hora pedida] está ocupado, mas consigo para as [hora sugerida]. Pode ser?"
+    1. Antes de verificar disponibilidade (checkAvailability), você precisa saber qual o serviço desejado para calcular o tempo de duração.
+    2. NUNCA diga que um horário está livre sem antes chamar "checkAvailability".
+    3. Se o cliente perguntar "está disponível às 14h?", use a tool "checkAvailability".
+    4. Se a tool responder que está ocupado e sugerir um horário, diga: "As [hora pedida] está ocupado, mas consigo para as [hora sugerida]. Pode ser?"
 
     COMPORTAMENTO:
     - Seja ultra-direto. Máximo 2 frases.
@@ -178,6 +227,8 @@ export async function POST(request: Request) {
     3. Se o cliente aceitar uma sugestão de horário, use ESSE horário imediatamente.
     4. Se já tiver Nome, Serviço, Barbeiro, Data e Hora, chame scheduleAppointment sem perguntar de novo.
     `;
+    */
+    }
 
     const tools: Tool[] = [
       {
@@ -240,15 +291,17 @@ export async function POST(request: Request) {
                   type: SchemaType.STRING,
                   description: "Nome do barbeiro",
                 },
+                serviceName: {
+                  type: SchemaType.STRING,
+                  description: "Nome do serviço",
+                },
               },
-              required: ["date", "time", "barberName"],
+              required: ["date", "time", "barberName", "serviceName"],
             },
           },
         ],
       },
     ];
-
-    // Verificar se a IA está sugerindo o horário mais próximo
 
     const chat = startNewChat(systemInstruction, tools, history);
     let result = await chat.sendMessage(message);
@@ -260,32 +313,35 @@ export async function POST(request: Request) {
       let functionResponse: Record<string, unknown> = {};
 
       if (call.name === "checkAvailability") {
-        const { date, time, barberName } = call.args as unknown as CheckArgs;
+        const { date, time, barberName, serviceName } =
+          call.args as unknown as CheckArgs;
         const startAt = new Date(`${date}T${time}:00-03:00`);
         const targetBarber = shopData.barbers.find(
           (b) => b.name.toLowerCase() === barberName.toLowerCase(),
         );
+        const targetService = shopData.services.find(
+          (s) => s.name.toLowerCase() === serviceName.toLowerCase(),
+        );
 
-        if (!targetBarber) {
+        if (!targetBarber || !targetService) {
           functionResponse = {
             available: false,
-            message: "Barbeiro não encontrado.",
+            message: "Barbeiro ou serviço não encontrado.",
           };
         } else {
+          const totalDuration = targetService.durationMinutes + 10;
+          const endAt = new Date(startAt.getTime() + totalDuration * 60000);
+
           const isBusy = await prisma.appointment.findFirst({
             where: {
               barberId: targetBarber.id,
               status: "CONFIRMED",
-              AND: [
-                { startTime: { lt: new Date(startAt.getTime() + 30 * 60000) } },
-                { endTime: { gt: startAt } },
-              ],
+              AND: [{ startTime: { lt: endAt } }, { endTime: { gt: startAt } }],
             },
           });
 
           if (isBusy) {
-            const nextH = new Date(isBusy.endTime.getTime() + 10 * 60000);
-            const suggested = nextH.toLocaleTimeString("pt-BR", {
+            const suggested = isBusy.endTime.toLocaleTimeString("pt-BR", {
               hour: "2-digit",
               minute: "2-digit",
               timeZone: "America/Sao_Paulo",
@@ -412,10 +468,7 @@ export async function POST(request: Request) {
         });
 
         if (existing) {
-          const nextAvailable = new Date(
-            existing.endTime.getTime() + 2 * 60000,
-          );
-          const suggestTime = nextAvailable.toLocaleTimeString("pt-BR", {
+          const suggestTime = existing.endTime.toLocaleTimeString("pt-BR", {
             hour: "2-digit",
             minute: "2-digit",
             timeZone: "America/Sao_Paulo",
