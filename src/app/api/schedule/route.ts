@@ -168,6 +168,8 @@ export async function POST(request: Request) {
     - Seja ultra-direto. Máximo 2 frases.
     - Se o horário pedido estiver ocupado ou for Almoço (${shopData.lunchStart}-${shopData.lunchEnd}), olhe a "OCUPAÇÃO ATUAL" e sugira o próximo horário vago imediatamente.
     - Considere sempre 10 minutos de intervalo entre os agendamentos.
+    - SEPARE as informações por ponto final. 
+    - Exemplo: "Vi que você já tem horário às 13h. O das 16h também está livre, quer remarcar?"
 
     REGRAS DE FUNCIONAMENTO:
     - Seg-Sáb: ${shopData.openingTime} às ${shopData.closingTime}.
@@ -188,7 +190,6 @@ export async function POST(request: Request) {
     3. Se o cliente aceitar uma sugestão de horário, use ESSE horário imediatamente.
     4. Se já tiver Nome, Serviço, Barbeiro, Data e Hora, chame scheduleAppointment sem perguntar de novo.
     `;
-
 
     const tools: Tool[] = [
       {
@@ -496,6 +497,15 @@ export async function POST(request: Request) {
           shopId: Number(shopId),
           clientPhone,
         },
+      });
+
+      const messagesToSend = aiFinalText
+        .split(/(?<=[.!?])\s+/)
+        .filter((msg) => msg.trim().length > 0);
+
+      return NextResponse.json({
+        status: "TEXT_RESPONSE",
+        ai_response: messagesToSend,
       });
     }
 

@@ -54,22 +54,44 @@ export async function POST(request: Request) {
     });
 
     const dataIA = await aiResponse.json();
+    const content = dataIA.ai_response || dataIA.message;
 
-    await fetch(
-      `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.EVOLUTION_API_KEY as string,
+    if (Array.isArray(content)) {
+      for (const textPart of content) {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: process.env.EVOLUTION_API_KEY as string,
+            },
+            body: JSON.stringify({
+              number: clientPhone,
+              text: textPart.trim(),
+              delay: 1200, // Dá um intervalo de 1.2s entre os balões
+            }),
+          },
+        );
+      }
+    } else {
+      // Caso venha uma string normal (fallback)
+      await fetch(
+        `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: process.env.EVOLUTION_API_KEY as string,
+          },
+          body: JSON.stringify({
+            number: clientPhone,
+            text: content,
+            delay: 1000,
+          }),
         },
-        body: JSON.stringify({
-          number: clientPhone,
-          text: dataIA.ai_response || dataIA.message || "Desculpe, tive um probleminha técnico. Pode repetir?",
-          delay: 1000,
-        }),
-      },
-    );
+      );
+    }
 
     return NextResponse.json({ status: "SUCCESS" });
   } catch (error) {
