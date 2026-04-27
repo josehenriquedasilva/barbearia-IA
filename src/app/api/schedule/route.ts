@@ -138,45 +138,6 @@ export async function POST(request: Request) {
     ${appointmentInfo}
     HOJE: ${currentDate}.
 
-    DIRETRIZES DE ATENDIMENTO:
-    - Se houver agendamento ativo:
-        * SEMPRE reconheça o horário marcado na primeira resposta.
-        * Se o cliente pedir OUTRO horário, pergunte se ele quer uma NOVA reserva ou REMARCAR a atual.
-    - Se o cliente perguntar por um horário: Chame "checkAvailability" antes de responder qualquer coisa.
-    - Seja ultra-direto: máximo 2 frases.
-
-    REGRAS DE AGENDAMENTO (CRÍTICO):
-    - Intervalo OBRIGATÓRIO de 10 min entre atendimentos.
-    - Almoço (${shopData.lunchStart} às ${shopData.lunchEnd}): PROIBIDO agendar no horário de término exato. Primeiro horário pós-almoço: ${(() => {
-      const [h, m] = shopData.lunchEnd!.split(":").map(Number);
-      const total = h * 60 + m + 10;
-      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-    })()}.
-    - Só informe disponibilidade após chamar "checkAvailability".
-    ${unicoBarbeiro ? `- ÚNICO barbeiro: ${unicoBarbeiro}. Não pergunte e não mencione o nome do barbeiro.` : ""}
-
-    FUNCIONAMENTO E SERVIÇOS:
-    - Horário: ${shopData.openingTime} às ${shopData.closingTime} (Almoço: ${shopData.lunchStart}-${shopData.lunchEnd}).
-    - Serviços: ${servicosInfo
-      .split("\n")
-      .map((s) => s.trim())
-      .join(" | ")}.
-
-    OCUPAÇÃO ATUAL:
-    ${busyScheduleString}
-
-    FLUXO DE EXECUÇÃO:
-    1. Se faltar dados (Serviço, Data, Hora, Nome), peça-os de forma breve. Não liste serviços exceto se solicitado.
-    2. Com todos os dados e aceite do cliente, execute "scheduleAppointment" imediatamente.
-    3. Se o cliente aceitar uma sugestão de horário, use esse horário no agendamento sem reconfirmar.
-    `;
-
-    {
-      /*
-    const systemInstruction = `Você é o assistente virtual da "${shopData.name}".
-    ${appointmentInfo}
-    HOJE: ${currentDate}.
-
     REGRAS DE INTERAÇÃO (IMPORTANTE):
     1. Se o cliente JÁ TEM um agendamento e enviou uma saudação genérica (ex: "Oi", "Bom dia"):
        - Responda: "Olá! Vi que você já tem um horário marcado para [DATA] às [HORA]. Como posso te ajudar hoje?"
@@ -227,8 +188,7 @@ export async function POST(request: Request) {
     3. Se o cliente aceitar uma sugestão de horário, use ESSE horário imediatamente.
     4. Se já tiver Nome, Serviço, Barbeiro, Data e Hora, chame scheduleAppointment sem perguntar de novo.
     `;
-    */
-    }
+
 
     const tools: Tool[] = [
       {
