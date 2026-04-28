@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { startNewChat } from "@/lib/gemini";
-import { SchemaType, Tool } from "@google/generative-ai";
+import { ChatSession, Part, SchemaType, Tool } from "@google/generative-ai";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +29,35 @@ function getFormattedCurrentDate() {
     timeZone: "America/Sao_Paulo",
   };
   return new Date().toLocaleDateString("pt-BR", options);
+}
+
+async function sendMessageWithRetry(
+  chat: ChatSession,
+  content: string | (string | Part)[],
+  maxRetries = 2,
+) {
+  let retryCount = 0;
+  while (retryCount <= maxRetries) {
+    try {
+      return await chat.sendMessage(content);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "";
+      const isOverloaded =
+        errorMessage.includes("503") ||
+        errorMessage.includes("429") ||
+        errorMessage.includes("high demand");
+
+      if (isOverloaded && retryCount < maxRetries) {
+        retryCount++;
+        console.log(
+          `Gemini ocupado (503/429). Tentativa ${retryCount} de ${maxRetries}...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 export async function POST(request: Request) {
@@ -164,6 +193,12 @@ export async function POST(request: Request) {
     3. Se o cliente perguntar "está disponível às 14h?", use a tool "checkAvailability".
     4. Se a tool responder que está ocupado e sugerir um horário, diga: "As [hora pedida] está ocupado, mas consigo para as [hora sugerida]. Pode ser?"
 
+    REGRAS DE CANCELAMENTO E REMARCAÇÃO:
+    - Se o cliente quiser apenas CANCELAR ou DESMARCAR (sem pedir um novo horário), chame 'cancelAppointment'.
+    - Se o cliente quiser REMARCAR ou MUDAR o horário, NÃO chame 'cancelAppointment'. 
+    - Em caso de REMARCAÇÃO, verifique a disponibilidade do novo horário usando 'checkAvailability' e, se estiver livre, chame diretamente 'scheduleAppointment'. 
+    - O sistema de agendamento já está preparado para atualizar o horário antigo automaticamente se um novo for enviado.
+
     COMPORTAMENTO:
     - Seja ultra-direto. Máximo 2 frases.
     - Se o horário pedido estiver ocupado ou for Almoço (${shopData.lunchStart}-${shopData.lunchEnd}), olhe a "OCUPAÇÃO ATUAL" e sugira o próximo horário vago imediatamente.
@@ -234,6 +269,19 @@ export async function POST(request: Request) {
             },
           },
           {
+            name: "cancelAppointment",
+            description: "Cancela definitivamente o agendamento atual.",
+            parameters: {
+              type: SchemaType.OBJECT,
+              properties: {
+                confirm: {
+                  type: SchemaType.BOOLEAN,
+                },
+              },
+              required: ["confirm"],
+            },
+          },
+          {
             name: "checkAvailability",
             description:
               "Verifica se um horário específico está disponível antes de sugerir ao cliente ou antes de tentar agendar.",
@@ -265,8 +313,8 @@ export async function POST(request: Request) {
     ];
 
     const chat = startNewChat(systemInstruction, tools, history);
-    let result = await chat.sendMessage(message);
-    let responseAi = result.response;
+    let result = await sendMessageWithRetry(chat, message);
+    let responseAi = result!.response;
     let calls = responseAi.functionCalls();
 
     while (calls && calls.length > 0) {
@@ -297,6 +345,7 @@ export async function POST(request: Request) {
             where: {
               barberId: targetBarber.id,
               status: "CONFIRMED",
+              NOT: { id: upcomingAppointment?.id },
               AND: [{ startTime: { lt: endAt } }, { endTime: { gt: startAt } }],
             },
           });
@@ -315,6 +364,28 @@ export async function POST(request: Request) {
             functionResponse = { available: true, message: "Livre." };
           }
         }
+      }
+
+      if (call.name === "cancelAppointment") {
+        if (!upcomingAppointment) {
+          return NextResponse.json({
+            status: "ERROR",
+            ai_response: [
+              "Você não tem agendamento ativo. quer marcar um horário?",
+            ],
+          });
+        }
+        await prisma.appointment.update({
+          where: { id: upcomingAppointment.id },
+          data: { status: "CANCELED" },
+        });
+        await prisma.chatMessage.deleteMany({
+          where: { shopId: Number(shopId), clientPhone },
+        });
+        return NextResponse.json({
+          status: "SUCCESS",
+          ai_response: ["Agendamento cancelado com sucesso."],
+        });
       }
 
       if (call.name === "scheduleAppointment") {
@@ -424,6 +495,7 @@ export async function POST(request: Request) {
           where: {
             barberId: targetBarber.id,
             status: "CONFIRMED",
+            NOT: { id: upcomingAppointment?.id },
             AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startAt } }],
           },
         });
@@ -452,29 +524,51 @@ export async function POST(request: Request) {
           });
         }
 
-        const newAppointment = await prisma.appointment.create({
-          data: {
-            clientName: args.clientName,
-            clientPhone,
-            shopId: shopData.id,
-            barberId: targetBarber.id,
-            serviceId: targetService.id,
-            startTime: startAt,
-            endTime: endTime,
-          },
-        });
+        let finalAppointment;
+
+        if (upcomingAppointment) {
+          finalAppointment = await prisma.appointment.update({
+            where: { id: upcomingAppointment.id },
+            data: {
+              startTime: startAt,
+              endTime: endTime,
+              barberId: targetBarber.id,
+              serviceId: targetService.id,
+              status: "CONFIRMED",
+            },
+          });
+        } else {
+          finalAppointment = await prisma.appointment.create({
+            data: {
+              clientName: args.clientName,
+              clientPhone,
+              shopId: shopData.id,
+              barberId: targetBarber.id,
+              serviceId: targetService.id,
+              startTime: startAt,
+              endTime: endTime,
+            },
+          });
+        }
+
+        // Verificar se ao pedir para remarcar, ver se o sistema verifica se o horário pedido está ocupado
 
         await prisma.chatMessage.deleteMany({
           where: { shopId: Number(shopId), clientPhone },
         });
+
+        const successMsg = upcomingAppointment
+          ? "Certo. Seu horário foi alterado com sucesso!"
+          : "Agendado com sucesso!";
+
         return NextResponse.json({
           status: "SUCCESS",
-          ai_response: `Agendado!`,
-          details: newAppointment,
+          ai_response: successMsg,
+          details: finalAppointment,
         });
       }
 
-      result = await chat.sendMessage([
+      result = await sendMessageWithRetry(chat, [
         {
           functionResponse: {
             name: call.name,
@@ -483,7 +577,7 @@ export async function POST(request: Request) {
         },
       ]);
 
-      responseAi = result.response;
+      responseAi = result!.response;
       calls = responseAi.functionCalls();
     }
 
@@ -501,7 +595,7 @@ export async function POST(request: Request) {
 
       const messagesToSend = aiFinalText
         .split(/(?<=[.!?])\s+/)
-        .filter((msg) => msg.trim().length > 0);
+        .filter((msg: string) => msg.trim().length > 0);
 
       return NextResponse.json({
         status: "TEXT_RESPONSE",
@@ -513,8 +607,25 @@ export async function POST(request: Request) {
       status: "TEXT_RESPONSE",
       ai_response: aiFinalText,
     });
-  } catch (error) {
-    console.error("Erro:", error);
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro desconhecido";
+    console.error("Erro no processamento", error);
+
+    if (
+      errorMessage.includes("503") ||
+      errorMessage.includes("429") ||
+      errorMessage.includes("high demand")
+    ) {
+      return NextResponse.json({
+        status: "TEXT_RESPONSE",
+        ai_response: [
+          "Ops, tive um pequeno problema.",
+          "Repita sua última mensagem para eu tentar de novo.Ou aguarde que iremos lhe responder em breve.",
+        ],
+      });
+    }
+
     return NextResponse.json(
       { status: "Error", message: (error as Error).message },
       { status: 500 },

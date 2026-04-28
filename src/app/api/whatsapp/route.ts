@@ -69,13 +69,12 @@ export async function POST(request: Request) {
             body: JSON.stringify({
               number: clientPhone,
               text: textPart.trim(),
-              delay: 1200, // Dá um intervalo de 1.2s entre os balões
+              delay: 1200,
             }),
           },
         );
       }
     } else {
-      // Caso venha uma string normal (fallback)
       await fetch(
         `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
         {
