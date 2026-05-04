@@ -55,6 +55,8 @@ model Shop {
   services     Service[]
   appointments Appointment[]
 
+  isProcessingChat  Boolean   @default(false) @map("is_processing_chat")
+
   chatMessages ChatMessage[]
 
   whatsappInstance String? @unique

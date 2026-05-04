@@ -13,9 +13,6 @@ export async function POST(request: Request) {
       event === "MESSAGES.UPSERT" || event === "MESSAGES_UPSERT";
 
     if (!isCorrectEvent || fromMe === true) {
-      console.log(
-        "Condição de interrupção atingida. Evento não reconhecido ou fromMe.",
-      );
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
@@ -39,6 +36,40 @@ export async function POST(request: Request) {
 
     if (!messageText) return NextResponse.json({ ok: true });
 
+    // 1. SALVA A MENSAGEM NO BANCO IMEDIATAMENTE
+    // Isso é crucial para que, quando a IA for chamada, ela leia o histórico completo.
+    const currentMsg = await prisma.chatMessage.create({
+      data: {
+        role: "user",
+        content: messageText,
+        shopId: shop.id,
+        clientPhone,
+      },
+    });
+
+    // 2. ESPERA ESTRATÉGICA (Debounce de 6 segundos)
+    // Dá tempo ao usuário para enviar frases picadas.
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+
+    // 3. VERIFICA SE EXISTE UMA MENSAGEM MAIS NOVA
+    // Se o cliente mandou outra mensagem nesses 6 segundos, esta instância do código para aqui.
+    const newerMsg = await prisma.chatMessage.findFirst({
+      where: {
+        shopId: shop.id,
+        clientPhone,
+        role: "user",
+        id: { gt: currentMsg.id }, // Assume que o ID é autoincrement ou sequencial
+      },
+    });
+
+    if (newerMsg) {
+      return NextResponse.json({
+        status: "bundled",
+        message: "Aguardando próxima mensagem...",
+      });
+    }
+
+    // 4. SE CHEGOU AQUI, É A ÚLTIMA MENSAGEM DO BLOCO
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
       `https://${request.headers.get("host")}`;
@@ -47,7 +78,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: messageText,
+        message: messageText, // A IA vai ler as mensagens anteriores do banco no histórico de 10 msgs
         shopId: shop.id,
         clientPhone: clientPhone,
       }),
@@ -56,8 +87,11 @@ export async function POST(request: Request) {
     const dataIA = await aiResponse.json();
     const content = dataIA.ai_response || dataIA.message;
 
-    if (Array.isArray(content)) {
-      for (const textPart of content) {
+    // 5. ENVIO DAS RESPOSTAS PARA A EVOLUTION API
+    if (content) {
+      const parts = Array.isArray(content) ? content : [content];
+
+      for (const textPart of parts) {
         await fetch(
           `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
           {
@@ -74,22 +108,6 @@ export async function POST(request: Request) {
           },
         );
       }
-    } else {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: process.env.EVOLUTION_API_KEY as string,
-          },
-          body: JSON.stringify({
-            number: clientPhone,
-            text: content,
-            delay: 1000,
-          }),
-        },
-      );
     }
 
     return NextResponse.json({ status: "SUCCESS" });
