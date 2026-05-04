@@ -36,8 +36,6 @@ export async function POST(request: Request) {
 
     if (!messageText) return NextResponse.json({ ok: true });
 
-    // 1. SALVA A MENSAGEM NO BANCO IMEDIATAMENTE
-    // Isso é crucial para que, quando a IA for chamada, ela leia o histórico completo.
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -47,18 +45,14 @@ export async function POST(request: Request) {
       },
     });
 
-    // 2. ESPERA ESTRATÉGICA (Debounce de 6 segundos)
-    // Dá tempo ao usuário para enviar frases picadas.
     await new Promise((resolve) => setTimeout(resolve, 6000));
 
-    // 3. VERIFICA SE EXISTE UMA MENSAGEM MAIS NOVA
-    // Se o cliente mandou outra mensagem nesses 6 segundos, esta instância do código para aqui.
     const newerMsg = await prisma.chatMessage.findFirst({
       where: {
         shopId: shop.id,
         clientPhone,
         role: "user",
-        id: { gt: currentMsg.id }, // Assume que o ID é autoincrement ou sequencial
+        id: { gt: currentMsg.id },
       },
     });
 
@@ -69,7 +63,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // 4. SE CHEGOU AQUI, É A ÚLTIMA MENSAGEM DO BLOCO
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
       `https://${request.headers.get("host")}`;
@@ -78,7 +71,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: messageText, // A IA vai ler as mensagens anteriores do banco no histórico de 10 msgs
+        message: messageText, 
         shopId: shop.id,
         clientPhone: clientPhone,
       }),
@@ -87,7 +80,6 @@ export async function POST(request: Request) {
     const dataIA = await aiResponse.json();
     const content = dataIA.ai_response || dataIA.message;
 
-    // 5. ENVIO DAS RESPOSTAS PARA A EVOLUTION API
     if (content) {
       const parts = Array.isArray(content) ? content : [content];
 

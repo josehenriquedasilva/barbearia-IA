@@ -145,15 +145,6 @@ export async function POST(request: Request) {
         .map((s) => s.name)
         .join(", ") + (shopData.services.length > 3 ? "..." : "");
 
-    await prisma.chatMessage.createMany({
-      data: {
-        role: "user",
-        content: message,
-        shopId: Number(shopId),
-        clientPhone,
-      },
-    });
-
     const lastMessages = await prisma.chatMessage.findMany({
       where: { shopId: Number(shopId), clientPhone },
       orderBy: { createdAt: "desc" },
