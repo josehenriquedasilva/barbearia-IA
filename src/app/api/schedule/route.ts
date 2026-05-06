@@ -169,11 +169,11 @@ DIRETRIZES:
 - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
 - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
 - Intervalo obrigatório: 10 min entre atendimentos.
-- Primeiro horário pós-almoço (${shopData.lunchEnd}): ${(() => {
-      const [h, m] = shopData.lunchEnd!.split(":").map(Number);
+- Primeiro horário pós-almoço: ${shopData.hasLunchBreak && shopData.lunchEnd ? (() => {
+      const [h, m] = shopData.lunchEnd.split(":").map(Number);
       const total = h * 60 + m + 10;
       return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-    })()}.
+    })() : "N/A"}.
 
 SITUAÇÕES DE AGENDAMENTO:
 1. Agendamento Ativo: Se saudação, "Olá! Vi que já tem horário dia [DATA] às [HORA]. Como ajudo?". Se pergunta, responda direto.
@@ -183,7 +183,8 @@ SITUAÇÕES DE AGENDAMENTO:
 
 REGRAS GERAIS:
 - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}.` : ""}
-- Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}. Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não"}.
+- Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
+- Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
 - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
 
 INFO ATUAL:
@@ -578,7 +579,7 @@ Lista de serviços resumida: ${listaResumida}.`;
           });
         }
 
-        if (shopData.hasLunchBreak) {
+        if (shopData.hasLunchBreak && shopData.lunchStart && shopData.lunchEnd) {
           const [lStartH, lStartM] = shopData
             .lunchStart!.split(":")
             .map(Number);
