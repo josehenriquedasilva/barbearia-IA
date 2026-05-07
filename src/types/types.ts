@@ -1,3 +1,4 @@
+import { PlanType } from "@prisma/client";
 import { Dispatch, SetStateAction } from "react";
 
 export interface UserData {
@@ -134,6 +135,8 @@ export interface MobileMenuProps {
   setViewBarberName: (name: string) => void;
   setMenu: Dispatch<SetStateAction<boolean>>;
   viewBarberId: number;
+  onOpenUpgradeModal: () => void;
+  currentPlan: PlanType;
 }
 
 export interface ShopSettings {
@@ -241,13 +244,13 @@ export interface DashboardViewProps {
   user: {
     id: number;
     name: string;
-
     email: string;
     role: "ADMIN" | "BARBER" | string;
     shopId: number;
     shop: ShopSettings & {
       phone: string;
       slug: string;
+      plan: PlanType;
       whatsappInstance: string;
       closedDays: { date: string; reason: string }[];
       createdAt: Date;

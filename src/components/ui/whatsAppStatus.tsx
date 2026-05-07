@@ -6,9 +6,9 @@ import {
 } from "@/app/(dashboard)/actions";
 import { useState, useEffect } from "react";
 import { BiCheckCircle } from "react-icons/bi";
-import { FiAlertCircle } from "react-icons/fi";
 import { TbLoader2 } from "react-icons/tb";
 import { BsPhoneVibrate, BsWhatsapp } from "react-icons/bs";
+import { formatPhone } from "@/utils/formatters";
 
 interface WhatsAppStatusProps {
   instanceName: string;
@@ -22,6 +22,7 @@ export function WhatsAppStatus({
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const formattedPhone = formatPhone(defaultPhoneNumber);
 
   useEffect(() => {
     async function checkStatus() {
@@ -65,7 +66,6 @@ export function WhatsAppStatus({
       ) : (
         <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="flex flex-col lg:flex-row items-stretch">
-            {/* Bloco de Informação */}
             <div className="flex-1 p-6 flex items-start gap-4">
               <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-500 shrink-0 border border-amber-500/20">
                 <BsWhatsapp className="w-6 h-6" />
@@ -80,14 +80,13 @@ export function WhatsAppStatus({
                 <p className="text-sm text-zinc-400 max-w-md">
                   Para que a IA responda seus clientes no{" "}
                   <span className="text-zinc-200 font-semibold">
-                    {defaultPhoneNumber}
+                    {formattedPhone}
                   </span>
                   , você precisa parear o dispositivo.
                 </p>
               </div>
             </div>
 
-            {/* Bloco de Ação / Código */}
             <div className="bg-zinc-900/50 border-t lg:border-t-0 lg:border-l border-zinc-800 p-6 flex items-center justify-center min-w-[300px]">
               {!pairingCode ? (
                 <button

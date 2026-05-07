@@ -1,21 +1,26 @@
+import { PLAN_LIMITS } from "@/lib/permissions";
+import { PlanType } from "@prisma/client";
 import { useState } from "react";
-import { BiLock, BiUser, BiUserPlus, BiX } from "react-icons/bi";
+import { BiCrown, BiLock, BiUser, BiUserPlus, BiX } from "react-icons/bi";
 import { CgMail } from "react-icons/cg";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 
 interface ManageBarbersModalProps {
   barberModalClose: () => void;
+  currentBarbersCount: number;
+  plan: PlanType;
   onAddBarber: (data: {
     name: string;
     email: string;
     password: string;
   }) => Promise<{ success: boolean; error?: string }>;
-  // Veirificar se essa tipagem "Promisse" está correta
 }
 
 export default function ManageBarbersModal({
   barberModalClose,
   onAddBarber,
+  currentBarbersCount,
+  plan,
 }: ManageBarbersModalProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -27,8 +32,12 @@ export default function ManageBarbersModal({
 
   // Usar o "setError" e o "setIsLoadin"
 
+  const limits = PLAN_LIMITS[plan];
+  const isLimitReached = currentBarbersCount >= limits.maxBarbers;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLimitReached) return;
     setIsLoading(true);
     setError("");
 
@@ -79,124 +88,138 @@ export default function ManageBarbersModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <div>
-            <label
-              htmlFor="barber-name"
-              className="block text-neutral-300 mb-2"
-            >
-              Nome do Barbeiro
-            </label>
-            <div className="relative">
-              <BiUser className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-              <input
-                id="barber-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                placeholder="Digite o nome completo"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label
-              htmlFor="barber-email"
-              className="block text-neutral-300 mb-2"
-            >
-              Email do Barbeiro
-            </label>
-            <div className="relative">
-              <CgMail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-              <input
-                id="barber-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                placeholder="barbeiro@email.com"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label
-              htmlFor="barber-password"
-              className="block text-neutral-300 mb-2"
-            >
-              Senha de Acesso
-            </label>
-            <div className="relative">
-              <BiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-              <input
-                id="barber-password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-                placeholder="Mínimo 6 caracteres"
-                required
-              />
+          {isLimitReached ? (
+            <div className="bg-amber-600/10 border border-amber-600/30 rounded-xl p-6 text-center space-y-4">
+              <div className="flex justify-center">
+                <BiCrown className="w-12 h-12 text-amber-500 animate-pulse" />
+              </div>
+              <div>
+                <h4 className="text-neutral-50 font-medium">
+                  Limite atingido!
+                </h4>
+                <p className="text-neutral-400 text-sm mt-1">
+                  Seu plano <strong>{limits.label}</strong> permite até{" "}
+                  {limits.maxBarbers} barbeiros.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 bottom-4 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer"
+                onClick={() => alert("Redirecionar para Checkout do Asaas")}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-neutral-950 font-medium py-2 rounded-lg transition-all cursor-pointer"
               >
-                {showPassword ? (
-                  <FiEye className="w-5 h-5" />
-                ) : (
-                  <FiEyeOff className="w-5 h-5" />
-                )}
+                Fazer Upgrade para Silver
               </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div>
+                <label
+                  htmlFor="barber-name"
+                  className="block text-neutral-300 mb-2"
+                >
+                  Nome do Barbeiro
+                </label>
+                <div className="relative">
+                  <BiUser className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                  <input
+                    id="barber-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600"
+                    placeholder="Digite o nome completo"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="barber-email"
+                  className="block text-neutral-300 mb-2"
+                >
+                  Email do Barbeiro
+                </label>
+                <div className="relative">
+                  <CgMail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                  <input
+                    id="barber-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600"
+                    placeholder="barbeiro@email.com"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="barber-password"
+                  className="block text-neutral-300 mb-2"
+                >
+                  Senha de Acesso
+                </label>
+                <div className="relative">
+                  <BiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                  <input
+                    id="barber-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg pl-11 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600"
+                    placeholder="Mínimo 6 caracteres"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 bottom-4 text-neutral-400"
+                  >
+                    {showPassword ? (
+                      <FiEye className="w-5 h-5" />
+                    ) : (
+                      <FiEyeOff className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="bg-red-900/20 border border-red-800 text-red-400 rounded-lg px-4 py-3 text-sm">
               {error}
             </div>
           )}
-
           {success && (
             <div className="bg-green-900/20 border border-green-800 text-green-400 rounded-lg px-4 py-3 text-sm">
-              ✅ Barbeiro cadastrado com sucesso!
+              ✅ Barbeiro cadastrado!
             </div>
           )}
-
-          <div className="bg-amber-600/10 border border-amber-600/20 rounded-lg px-4 py-3">
-            <p className="text-amber-500 text-sm">
-              O barbeiro receberá um email com as credenciais de acesso ao
-              sistema.
-            </p>
-          </div>
 
           <div className="flex gap-3 pt-2">
             <button
               onClick={barberModalClose}
               type="button"
-              className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg px-4 py-3 transition-colors cursor-pointer"
+              className="flex-1 bg-neutral-800 text-neutral-300 rounded-lg px-4 py-3 cursor-pointer hover:bg-neutral-700 transition-colors"
             >
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-neutral-950 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin"></div>
-                  <span>Cadastrando...</span>
-                </>
-              ) : (
-                <>
-                  <BiUserPlus className="w-5 h-5" />
+            {!isLimitReached && (
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-neutral-950 rounded-lg px-4 py-3 flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />
+                ) : (
                   <span>Cadastrar</span>
-                </>
-              )}
-            </button>
+                )}
+              </button>
+            )}
           </div>
         </form>
       </div>

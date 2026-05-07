@@ -31,6 +31,7 @@ import {
   updateClosedDays,
   updateServicesAction,
 } from "../../actions";
+import UpgradePlanModal from "@/components/pop-up/upgradePlanModal";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -40,6 +41,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
   const [viewBarberName, setViewBarberName] = useState(user.name);
   const [barbers, setBarbers] = useState<BarbersData[]>([]);
   const [menu, setMenu] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isBarberModal, setIsBarberModal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isClosedDaysOpen, setIsClosedDaysOpen] = useState(false);
@@ -163,6 +165,8 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         setViewBarberName={setViewBarberName}
         setMenu={setMenu}
         viewBarberId={viewBarberId}
+        onOpenUpgradeModal={() => setIsUpgradeModalOpen(true)}
+        currentPlan={user.shop.plan}
       />
 
       <main className="px-3.5 py-5 max-w-[900px] mx-auto">
@@ -217,7 +221,6 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
                 shopPhone={user.shop.phone}
               />
             </>
-            // Mandar foto da documentação da evolution para IA e fazer o teste de conexão no site da evolution
           )}
         </section>
         <section>
@@ -264,6 +267,8 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           <ManageBarbersModal
             barberModalClose={() => setIsBarberModal(false)}
             onAddBarber={handleCreateBarber}
+            currentBarbersCount={barbers.length}
+            plan={user.shop.plan}
           />
         </section>
       )}
@@ -273,6 +278,14 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           appointment={selectedAppointment}
           modalClose={() => setSelectedAppointment(null)}
           mutate={mutate}
+        />
+      )}
+
+      {isUpgradeModalOpen && (
+        <UpgradePlanModal
+          currentPlan={user.shop.plan}
+          onClose={() => setIsUpgradeModalOpen(false)}
+          //Função do Asaas(getway) | onUpgrade={(plan) => handleStartCheckout(plan)}
         />
       )}
     </div>
