@@ -250,12 +250,17 @@ export async function logout() {
 }
 
 // Gerar código de conexão com IA
-export async function getPairingCodeAction(instanceName: string) {
+export async function getPairingCodeAction(
+  instanceName: string,
+  phoneNumber: string,
+) {
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
-  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
 
-  const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+  let cleanNumber = phoneNumber.replace(/\D/g, "");
+  if (!cleanNumber.startsWith("55")) {
+    cleanNumber = `55${cleanNumber}`;
+  }
 
   try {
     await fetch(`${EVO_URL}/instance/create`, {
@@ -266,52 +271,35 @@ export async function getPairingCodeAction(instanceName: string) {
       },
       body: JSON.stringify({
         instanceName,
-        qrcode: true,
+        qrcode: false,
         integration: "WHATSAPP-BAILEYS",
       }),
     });
 
-    await delay(3000);
+    await new Promise((res) => setTimeout(res, 3000));
 
-    await fetch(`${EVO_URL}/webhook/set/${instanceName}`, {
-      method: "POST",
+    const url = `${EVO_URL}/instance/connect/${instanceName}?number=${cleanNumber}`;
+
+    const response = await fetch(url, {
+      method: "GET",
       headers: {
         apikey: EVO_KEY as string,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        webhook: {
-          enabled: true,
-          url: `${SITE_URL}/api/whatsapp`,
-          byEvents: false,
-          base64: false,
-          events: ["MESSAGES_UPSERT"],
-        },
-      }),
-    });
-
-    const url = `${EVO_URL}/instance/connect/${instanceName}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { apikey: EVO_KEY as string },
       cache: "no-store",
     });
 
     const data = await response.json();
 
-    if (data.base64) {
-      return { success: true, qr: data.base64 };
+    if (data.pairingCode) {
+      return { success: true, pairingCode: data.pairingCode };
     }
-
-    return {
-      success: false,
-      error:
-        data.message ||
-        "Erro ao buscar QR Code. Verifique se a instância está aberta.",
-    };
+    
+    console.error("Resposta inesperada da API:", data);
+    return { success: false, error: "Falha ao gerar pairingCode." };
   } catch (error) {
-    return { success: false, error };
+    console.error("Erro na Action:", error);
+    return { success: false, error: "Erro interno no servidor." };
   }
 }
 

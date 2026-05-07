@@ -6,6 +6,7 @@ import { WhatsAppStatus } from "./whatsAppStatus";
 export default function Info({
   appointments,
   shopInstance,
+  shopPhone,
 }: InfoAppointmentsProps) {
   const list = appointments || [];
 
@@ -21,7 +22,10 @@ export default function Info({
 
   return (
     <div className="my-3 flex flex-col gap-3">
-      <WhatsAppStatus instanceName={shopInstance} />
+      <WhatsAppStatus
+        instanceName={shopInstance}
+        defaultPhoneNumber={shopPhone}
+      />
       <section className="flex flex-col gap-3 md:flex-row md:justify-between">
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 md:p-6 md:flex-1">
           <div className="flex items-start justify-between">

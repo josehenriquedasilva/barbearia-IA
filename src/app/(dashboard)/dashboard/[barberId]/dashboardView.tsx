@@ -217,6 +217,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
                 shopPhone={user.shop.phone}
               />
             </>
+            // Mandar foto da documentação da evolution para IA e fazer o teste de conexão no site da evolution
           )}
         </section>
         <section>
