@@ -217,7 +217,8 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             <>
               <Info
                 appointments={appointments}
-                shopInstance={user.shop.whatsappInstance}
+                shopId={user.shopId}
+                slug={user.shop.slug}
                 shopPhone={user.shop.phone}
               />
             </>

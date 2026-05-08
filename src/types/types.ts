@@ -200,7 +200,8 @@ export interface AppointmentData {
 
 export interface InfoAppointmentsProps {
   appointments: AppointmentData[];
-  shopInstance: string;
+  shopId: number;
+  slug: string;
   shopPhone: string;
 }
 

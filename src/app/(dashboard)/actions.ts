@@ -250,19 +250,34 @@ export async function logout() {
 }
 
 // Gerar código de conexão com IA
+
 export async function getPairingCodeAction(
-  instanceName: string,
+  shopId: number,
   phoneNumber: string,
 ) {
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
 
-  let cleanNumber = phoneNumber.replace(/\D/g, "");
-  if (!cleanNumber.startsWith("55")) {
-    cleanNumber = `55${cleanNumber}`;
-  }
-
   try {
+    const shop = await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { slug: true },
+    });
+
+    if (!shop?.slug) {
+      return {
+        success: false,
+        error: "Barbearia não encontrada ou slug inválido.",
+      };
+    }
+
+    const instanceName = shop.slug;
+
+    let cleanNumber = phoneNumber.replace(/\D/g, "");
+    if (!cleanNumber.startsWith("55")) {
+      cleanNumber = `55${cleanNumber}`;
+    }
+
     await fetch(`${EVO_URL}/instance/create`, {
       method: "POST",
       headers: {
@@ -294,7 +309,7 @@ export async function getPairingCodeAction(
     if (data.pairingCode) {
       return { success: true, pairingCode: data.pairingCode };
     }
-    
+
     console.error("Resposta inesperada da API:", data);
     return { success: false, error: "Falha ao gerar pairingCode." };
   } catch (error) {

@@ -11,12 +11,14 @@ import { BsPhoneVibrate, BsWhatsapp } from "react-icons/bs";
 import { formatPhone } from "@/utils/formatters";
 
 interface WhatsAppStatusProps {
-  instanceName: string;
+  shopId: number,
+  slug: string,
   defaultPhoneNumber: string;
 }
 
 export function WhatsAppStatus({
-  instanceName,
+  shopId,
+  slug,
   defaultPhoneNumber,
 }: WhatsAppStatusProps) {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
@@ -26,23 +28,23 @@ export function WhatsAppStatus({
 
   useEffect(() => {
     async function checkStatus() {
-      const res = await checkWhatsAppStatusAction(instanceName);
+      const res = await checkWhatsAppStatusAction(slug);
       setIsConnected(res.connected);
     }
     checkStatus();
     const interval = setInterval(async () => {
-      const res = await checkWhatsAppStatusAction(instanceName);
+      const res = await checkWhatsAppStatusAction(slug);
       if (res.connected !== isConnected) {
         setIsConnected(res.connected);
         if (res.connected) setPairingCode(null);
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [instanceName, isConnected]);
+  }, [slug, isConnected]);
 
   async function handleGenerateCode() {
     setLoading(true);
-    const res = await getPairingCodeAction(instanceName, defaultPhoneNumber);
+    const res = await getPairingCodeAction(shopId, defaultPhoneNumber);
     if (res.success && res.pairingCode) {
       setPairingCode(res.pairingCode);
     } else {

@@ -5,7 +5,8 @@ import { WhatsAppStatus } from "./whatsAppStatus";
 
 export default function Info({
   appointments,
-  shopInstance,
+  shopId,
+  slug,
   shopPhone,
 }: InfoAppointmentsProps) {
   const list = appointments || [];
@@ -23,7 +24,8 @@ export default function Info({
   return (
     <div className="my-3 flex flex-col gap-3">
       <WhatsAppStatus
-        instanceName={shopInstance}
+        shopId={shopId}
+        slug={slug}
         defaultPhoneNumber={shopPhone}
       />
       <section className="flex flex-col gap-3 md:flex-row md:justify-between">
