@@ -1,3 +1,4 @@
+import { PLAN_LIMITS } from "@/lib/permissions";
 import { BiCheck, BiCrown, BiRocket, BiX } from "react-icons/bi";
 
 interface UpgradePlanModalProps {
@@ -53,8 +54,8 @@ export default function UpgradePlanModal({
 
             <ul className="mt-6 space-y-3 flex-1">
               <li className="flex items-center gap-2 text-sm text-neutral-400">
-                <BiCheck className={isBronze ? "text-amber-500" : ""} /> 2
-                Barbeiros
+                <BiCheck className={isBronze ? "text-amber-500" : ""} />{" "}
+                {PLAN_LIMITS.BRONZE.maxBarbers} Barbeiros
               </li>
               <li className="flex items-center gap-2 text-sm text-neutral-400">
                 <BiCheck className={isBronze ? "text-amber-500" : ""} /> Agenda
@@ -108,7 +109,8 @@ export default function UpgradePlanModal({
 
             <ul className="mt-6 space-y-3 flex-1">
               <li className="flex items-center gap-2 text-sm text-neutral-200">
-                <BiCheck className="text-amber-500" /> Até 5 Barbeiros
+                <BiCheck className="text-amber-500" /> Até{" "}
+                {PLAN_LIMITS.SILVER.maxBarbers} Barbeiros
               </li>
               <li className="flex items-center gap-2 text-sm text-neutral-200">
                 <BiCheck className="text-amber-500" /> IA de Agendamento 24h

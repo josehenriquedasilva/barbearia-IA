@@ -6,14 +6,14 @@ const plans = [
     id: "BRONZE",
     name: "Bronze",
     price: "49,90",
-    features: ["Até 2 Barbeiros", "IA Básica", "Suporte via Email"],
+    features: ["Até 2 Barbeiros", "Agenda Online", "Suporte Email"],
     highlight: false,
   },
   {
     id: "SILVER",
     name: "Silver",
     price: "89,90",
-    features: ["Até 5 Barbeiros", "IA Avançada", "Suporte WhatsApp"],
+    features: ["Até 5 Barbeiros", "IA de Agendamento 24h", "Suporte VIP WhatsApp"],
     highlight: true,
   },
 ] as const;

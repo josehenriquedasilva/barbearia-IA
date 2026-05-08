@@ -12,13 +12,22 @@ export default function User({
     setMenu((prev) => !prev);
   };
 
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex gap-3">
-        <span className="bg-neutral-500 p-3 rounded-md">Imagen</span>
-        <div>
-          <h1 className="text-lg font-serif">{user?.name}</h1>
-          <p className="text-sm text-neutral-300">Barbeiro Profissional</p>
+      <div className="flex items-center gap-4">
+        <div className="relative flex items-center justify-center w-14 h-14 rounded-xl bg-linear-to-br from-amber-500 to-amber-700 text-neutral-950 font-bold text-xl shadow-lg shadow-amber-900/20">
+          {getInitials(user?.name || "U")}
+
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-neutral-900 rounded-full shadow-sm"></div>
         </div>
       </div>
       <div className="flex flex-col gap-2">
