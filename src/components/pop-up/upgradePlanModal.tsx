@@ -136,7 +136,7 @@ export default function UpgradePlanModal({
         </div>
 
         <p className="text-center text-[10px] text-neutral-600 pb-8 uppercase tracking-widest">
-          Ambiente de teste • Asaas Sandbox
+          Pagamento seguro com Asaas
         </p>
       </div>
     </div>
