@@ -4,7 +4,6 @@ import prisma from "@/lib/db";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-
     const rawEvent = body.event || "";
     const event = rawEvent.toUpperCase();
     const fromMe = body.data?.key?.fromMe;
@@ -33,6 +32,8 @@ export async function POST(request: Request) {
       body.data.message?.conversation ||
       body.data.message?.extendedTextMessage?.text ||
       "";
+
+    console.log(`Chamando IA para o shop ${shop.id} no número ${clientPhone}`);
 
     if (!messageText) return NextResponse.json({ ok: true });
 
@@ -63,9 +64,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      `https://${request.headers.get("host")}`;
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
     const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
       method: "POST",

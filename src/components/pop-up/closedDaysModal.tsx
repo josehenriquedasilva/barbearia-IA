@@ -221,6 +221,9 @@ export default function ClosedDaysModal({
                       <div className="text-neutral-400 text-sm mt-1">
                         {getDayOfWeek(date.date)}
                       </div>
+                      <div className="text-neutral-400 text-sm mt-1">
+                        {date.reason}
+                      </div>
                     </div>
                     <button
                       onClick={() => handleRemoveClosedDay(date.date)}
