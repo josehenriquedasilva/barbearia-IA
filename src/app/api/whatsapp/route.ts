@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: messageText, 
+        message: messageText,
         shopId: shop.id,
         clientPhone: clientPhone,
       }),

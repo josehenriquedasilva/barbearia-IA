@@ -250,7 +250,6 @@ export async function logout() {
 }
 
 // Gerar código de conexão com IA
-
 export async function getPairingCodeAction(
   shopId: number,
   phoneNumber: string,
@@ -264,21 +263,14 @@ export async function getPairingCodeAction(
       select: { slug: true },
     });
 
-    if (!shop?.slug) {
-      return {
-        success: false,
-        error: "Barbearia não encontrada ou slug inválido.",
-      };
-    }
+    if (!shop?.slug)
+      return { success: false, error: "Barbearia não encontrada." };
 
     const instanceName = shop.slug;
-
     let cleanNumber = phoneNumber.replace(/\D/g, "");
-    if (!cleanNumber.startsWith("55")) {
-      cleanNumber = `55${cleanNumber}`;
-    }
+    if (!cleanNumber.startsWith("55")) cleanNumber = `55${cleanNumber}`;
 
-    await fetch(`${EVO_URL}/instance/create`, {
+    const createRes = await fetch(`${EVO_URL}/instance/create`, {
       method: "POST",
       headers: {
         apikey: EVO_KEY as string,
@@ -291,17 +283,27 @@ export async function getPairingCodeAction(
       }),
     });
 
-    await new Promise((res) => setTimeout(res, 3000));
+    const createData = await createRes.json();
+
+    const tokenGerado = createData.hash?.token || createData.instance?.token;
+
+    await prisma.shop.update({
+      where: { id: shopId },
+      data: {
+        whatsappInstance: instanceName,
+        whatsappToken: tokenGerado || "",
+      },
+    });
+
+    await new Promise((res) => setTimeout(res, 5000));
 
     const url = `${EVO_URL}/instance/connect/${instanceName}?number=${cleanNumber}`;
-
     const response = await fetch(url, {
       method: "GET",
       headers: {
         apikey: EVO_KEY as string,
         "Content-Type": "application/json",
       },
-      cache: "no-store",
     });
 
     const data = await response.json();
@@ -310,8 +312,10 @@ export async function getPairingCodeAction(
       return { success: true, pairingCode: data.pairingCode };
     }
 
-    console.error("Resposta inesperada da API:", data);
-    return { success: false, error: "Falha ao gerar pairingCode." };
+    return {
+      success: false,
+      error: data.message || "Falha ao gerar pairingCode.",
+    };
   } catch (error) {
     console.error("Erro na Action:", error);
     return { success: false, error: "Erro interno no servidor." };
