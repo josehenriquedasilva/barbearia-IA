@@ -256,6 +256,7 @@ export async function getPairingCodeAction(
 ) {
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
 
   try {
     const shop = await prisma.shop.findUnique({
@@ -294,6 +295,25 @@ export async function getPairingCodeAction(
         whatsappToken: tokenGerado || "",
       },
     });
+
+    if (SITE_URL) {
+      await fetch(`${EVO_URL}/webhook/set/${instanceName}`, {
+        method: "POST",
+        headers: {
+          apikey: EVO_KEY!,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          enabled: true,
+          url: `${SITE_URL}/api/whatsapp`,
+          webhook_by_events: false,
+          events: [
+            "MESSAGES_UPSERT",
+            "MESSAGES_UPDATE",
+          ],
+        }),
+      });
+    }
 
     await new Promise((res) => setTimeout(res, 5000));
 
