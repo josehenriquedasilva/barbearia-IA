@@ -4,6 +4,7 @@ import prisma from "@/lib/db";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
     const rawEvent = body.event || "";
     const event = rawEvent.toUpperCase();
     const fromMe = body.data?.key?.fromMe;
@@ -34,7 +35,6 @@ export async function POST(request: Request) {
       "";
 
     console.log(`Chamando IA para o shop ${shop.id} no número ${clientPhone}`);
-
     if (!messageText) return NextResponse.json({ ok: true });
 
     const currentMsg = await prisma.chatMessage.create({
@@ -64,7 +64,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    const host =
+      request.headers.get("x-forwarded-host") || request.headers.get("host");
+    const protocol = host?.includes("localhost") ? "http" : "https";
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `${protocol}://${host}`;
 
     const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
       method: "POST",
