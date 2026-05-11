@@ -297,22 +297,29 @@ export async function getPairingCodeAction(
     });
 
     if (SITE_URL) {
-      await fetch(`${EVO_URL}/webhook/set/${instanceName}`, {
-        method: "POST",
-        headers: {
-          apikey: EVO_KEY!,
-          "Content-Type": "application/json",
+      const cleanEvoUrl = EVO_URL?.endsWith("/")
+        ? EVO_URL.slice(0, -1)
+        : EVO_URL;
+
+      const webhookRes = await fetch(
+        `${cleanEvoUrl}/webhook/set/${instanceName}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: EVO_KEY!,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            // O segredo estava aqui: envolver tudo no objeto "webhook"
+            webhook: {
+              enabled: true,
+              url: `${SITE_URL}/api/whatsapp`,
+              webhook_by_events: false,
+              events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"],
+            },
+          }),
         },
-        body: JSON.stringify({
-          enabled: true,
-          url: `${SITE_URL}/api/whatsapp`,
-          webhook_by_events: false,
-          events: [
-            "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE",
-          ],
-        }),
-      });
+      );
     }
 
     await new Promise((res) => setTimeout(res, 5000));
