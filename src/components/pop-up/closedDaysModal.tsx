@@ -185,6 +185,7 @@ export default function ClosedDaysModal({
                   type="text"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
+                  maxLength={50}
                   placeholder="Ex: Feriado, Manutenção..."
                   className="w-full bg-neutral-900 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent placeholder:text-neutral-500"
                 />
@@ -193,7 +194,7 @@ export default function ClosedDaysModal({
               <button
                 onClick={handleAddClosedDay}
                 disabled={!selectedDate}
-                className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-700 disabled:cursor-not-allowed text-neutral-950 disabled:text-neutral-500 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-700 disabled:cursor-not-allowed text-neutral-950 disabled:text-neutral-500 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <BiPlus className="w-5 h-5" />
                 <span>Adicionar</span>
@@ -212,25 +213,46 @@ export default function ClosedDaysModal({
                 {futureClosedDays.map((date) => (
                   <div
                     key={date.date}
-                    className="bg-neutral-800 border border-neutral-700 rounded-lg p-4 flex items-center justify-between hover:border-amber-600/30 transition-colors"
+                    className="group bg-neutral-800/40 border border-neutral-700/50 rounded-xl p-4 flex items-center gap-4 hover:border-amber-500/50 hover:bg-neutral-800 transition-all duration-300"
                   >
-                    <div>
-                      <div className="text-neutral-50 font-medium">
-                        {formatDateBR(date.date)}
+                    <div className="flex flex-col items-center justify-center min-w-[65px] h-[65px] bg-neutral-900 border border-neutral-700 rounded-lg group-hover:border-amber-500/30 transition-colors">
+                      <span className="text-[10px] uppercase tracking-widest text-amber-500 font-bold">
+                        {getDayOfWeek(date.date).substring(0, 3)}
+                      </span>
+                      <span className="text-xl font-bold text-neutral-50 leading-none">
+                        {date.date.split("-")[2]}
+                      </span>
+                      <span className="text-[10px] text-neutral-400">
+                        {new Intl.DateTimeFormat("pt-BR", { month: "short" })
+                          .format(new Date(date.date + "T00:00:00"))
+                          .replace(".", "")}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-200 font-medium truncate">
+                          {formatDateBR(date.date)}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-700 text-neutral-400 uppercase font-semibold">
+                          {getDayOfWeek(date.date)}
+                        </span>
                       </div>
-                      <div className="text-neutral-400 text-sm mt-1">
-                        {getDayOfWeek(date.date)}
-                      </div>
-                      <div className="text-neutral-400 text-sm mt-1">
-                        {date.reason}
+
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50" />
+                        <p className="text-neutral-400 text-sm italic truncate">
+                          {date.reason || "Sem motivo informado"}
+                        </p>
                       </div>
                     </div>
+
                     <button
                       onClick={() => handleRemoveClosedDay(date.date)}
-                      className="p-2 hover:bg-neutral-700 rounded-lg transition-colors cursor-pointer"
-                      title="Remover"
+                      className="p-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg transition-all duration-200 cursor-pointer opacity-0 group-hover:opacity-100"
+                      title="Remover dia"
                     >
-                      <BsTrash2 className="w-5 h-5 text-red-500" />
+                      <BsTrash2 className="w-5 h-5" />
                     </button>
                   </div>
                 ))}

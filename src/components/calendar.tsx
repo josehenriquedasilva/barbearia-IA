@@ -74,11 +74,11 @@ export default function Calendar({
               onClick={previousMonth}
               className="p-1 hover:bg-neutral-800 rounded transition-colors"
             >
-              <BiChevronLeft className="w-4 h-4 md:w-5 md:h-5 text-neutral-400" />
+              <BiChevronLeft className="w-4 h-4 md:w-5 md:h-5 text-neutral-400 cursor-pointer" />
             </button>
             <button
               onClick={nextMonth}
-              className="p-1 hover:bg-neutral-800 rounded transition-colors"
+              className="p-1 hover:bg-neutral-800 rounded transition-colors cursor-pointer"
             >
               <BiChevronRight className="w-4 h-4 md:w-5 md:h-5 text-neutral-400" />
             </button>
@@ -113,7 +113,7 @@ export default function Calendar({
                   )
                 }
                 className={`
-            aspect-square flex items-center justify-center rounded-lg text-xs md:text-sm transition-all
+            aspect-square flex items-center justify-center rounded-lg text-xs md:text-sm transition-all cursor-pointer
             ${
               isSelected(day)
                 ? "bg-amber-600 text-neutral-950"
