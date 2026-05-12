@@ -301,25 +301,38 @@ export async function getPairingCodeAction(
         ? EVO_URL.slice(0, -1)
         : EVO_URL;
 
-      const webhookRes = await fetch(
-        `${cleanEvoUrl}/webhook/set/${instanceName}`,
-        {
-          method: "POST",
-          headers: {
-            apikey: EVO_KEY!,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            // O segredo estava aqui: envolver tudo no objeto "webhook"
-            webhook: {
-              enabled: true,
-              url: `${SITE_URL}/api/whatsapp`,
-              webhook_by_events: false,
-              events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"],
-            },
-          }),
+      await fetch(`${cleanEvoUrl}/webhook/set/${instanceName}`, {
+        method: "POST",
+        headers: {
+          apikey: EVO_KEY!,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          webhook: {
+            enabled: true,
+            url: `${SITE_URL}/api/whatsapp`,
+            webhook_by_events: false,
+            events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"],
+          },
+        }),
+      });
+
+      await fetch(`${cleanEvoUrl}/settings/set/${instanceName}`, {
+        method: "POST",
+        headers: {
+          apikey: EVO_KEY!,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rejectCall: false,
+          groupsIgnore: true,
+          alwaysOnline: true,
+          readMessages: false,
+          readStatus: false,
+          syncFullHistory: false,
+          proxy: null,
+        }),
+      });
     }
 
     await new Promise((res) => setTimeout(res, 5000));
