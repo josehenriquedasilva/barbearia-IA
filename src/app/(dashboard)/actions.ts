@@ -58,6 +58,30 @@ export async function createBarberAction(
   }
 }
 
+// Concluir agendamentos (auto)
+export async function updateAppointmentsStatusAction(shopId: number) {
+  try {
+    const now = new Date();
+
+    await prisma.appointment.updateMany({
+      where: {
+        shopId,
+        status: "CONFIRMED",
+        endTime: { lt: now },
+      },
+      data: {
+        status: "COMPLETED",
+      },
+    });
+
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao atualizar status:", error);
+    return { success: false };
+  }
+}
+
 // Cancelar agendamentos
 export async function cancelAppointmentAction(
   appointmentId: number,

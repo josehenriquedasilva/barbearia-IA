@@ -28,6 +28,7 @@ import {
   createBarberAction,
   getBarbersAction,
   logout,
+  updateAppointmentsStatusAction,
   updateClosedDays,
   updateServicesAction,
 } from "../../actions";
@@ -81,6 +82,25 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     }
     loadBarbers();
   }, [user.shopId]);
+
+  useEffect(() => {
+    async function syncStatus() {
+      const now = new Date();
+      const hasPendingStatus = appointments?.some(
+        (a: AppointmentData) =>
+          a.status === "CONFIRMED" && new Date(a.endTime) < now,
+      );
+
+      if (hasPendingStatus) {
+        await updateAppointmentsStatusAction(user.shopId);
+        mutate();
+      }
+    }
+
+    syncStatus();
+    const interval = setInterval(syncStatus, 10000);
+    return () => clearInterval(interval);
+  }, [appointments, user.shopId, mutate]);
 
   const handleSaveSettings = async (payload: SettingsPayload) => {
     try {
