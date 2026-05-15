@@ -23,7 +23,7 @@ export function WhatsAppStatus({
   defaultPhoneNumber,
 }: WhatsAppStatusProps) {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>("019293");
   const [loading, setLoading] = useState(false);
   const formattedPhone = formatPhone(defaultPhoneNumber);
   const [error, setError] = useState<string | null>(null);
@@ -144,8 +144,8 @@ export function WhatsAppStatus({
 
                   <div className="h-10 w-px bg-zinc-800 hidden sm:block" />
 
-                  <div className="max-w-[140px]">
-                    <p className="text-[10px] text-zinc-400 leading-tight">
+                  <div className="max-w-[140px] flex flex-col items-center">
+                    <p className="text-[10px] text-zinc-400 leading-tight flex flex-col">
                       No WhatsApp, escolha{" "}
                       <span className="text-amber-500 font-bold italic">
                         Conectar com número
@@ -156,7 +156,7 @@ export function WhatsAppStatus({
                         setPairingCode(null);
                         handleGenerateCode();
                       }}
-                      className="text-amber-500 text-[11px] font-bold mt-2 hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1"
+                      className="text-[11px] mt-3 hover:text-amber-400 cursor-pointer flex items-center gap-1 bg-amber-500 p-2 hover:bg-amber-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-amber-900/20"
                     >
                       Gerar novo código
                     </button>

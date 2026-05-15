@@ -68,6 +68,8 @@ export async function POST(request: Request) {
       clientPhone: rawClientPhone,
     } = await request.json();
 
+    // Verificae se o número está sendo armazenado no banco com o 55
+
     const clientPhone = rawClientPhone.replace(/^55/, "");
 
     if (!shopId) {
