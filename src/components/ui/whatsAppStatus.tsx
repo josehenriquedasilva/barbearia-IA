@@ -23,7 +23,7 @@ export function WhatsAppStatus({
   defaultPhoneNumber,
 }: WhatsAppStatusProps) {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
-  const [pairingCode, setPairingCode] = useState<string | null>("019293");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const formattedPhone = formatPhone(defaultPhoneNumber);
   const [error, setError] = useState<string | null>(null);
