@@ -647,7 +647,11 @@ Lista de serviços resumida: ${listaResumida}.`;
         }
 
         await prisma.chatMessage.deleteMany({
-          where: { shopId: Number(shopId), clientPhone },
+          where: {
+            shopId: Number(shopId),
+            clientPhone,
+            createdAt: { lt: new Date() },
+          },
         });
 
         const successMsg = upcomingAppointment
