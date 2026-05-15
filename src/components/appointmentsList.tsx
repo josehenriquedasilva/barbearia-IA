@@ -11,7 +11,7 @@ export default function Appointments({
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 5000);
+    const interval = setInterval(() => setTick((t) => t + 1), 6000);
     return () => clearInterval(interval);
   }, []);
 
@@ -25,7 +25,6 @@ export default function Appointments({
 
   const completed = list.filter((a) => {
     const isPast = new Date(a.endTime) <= now;
-    // Se no banco está COMPLETED OU se é um CONFIRMED que já passou do tempo
     return a.status === "COMPLETED" || (a.status === "CONFIRMED" && isPast);
   });
 
