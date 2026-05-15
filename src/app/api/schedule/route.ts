@@ -647,7 +647,8 @@ Lista de serviços resumida: ${listaResumida}.`;
 
         return NextResponse.json({
           status: "SUCCESS",
-          ai_response: [successMsg],
+          ai_response: successMsg,
+          details: finalAppointment,
         });
       }
 
