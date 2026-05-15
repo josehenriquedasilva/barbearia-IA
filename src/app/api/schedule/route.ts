@@ -68,8 +68,6 @@ export async function POST(request: Request) {
       clientPhone: rawClientPhone,
     } = await request.json();
 
-    // Verificae se o número está sendo armazenado no banco com o 55
-
     const clientPhone = rawClientPhone.replace(/^55/, "");
 
     if (!shopId) {
@@ -152,6 +150,15 @@ export async function POST(request: Request) {
         .slice(0, 3)
         .map((s) => s.name)
         .join(", ") + (shopData.services.length > 3 ? "..." : "");
+
+    await prisma.chatMessage.create({
+      data: {
+        role: "user",
+        content: message,
+        shopId: Number(shopId),
+        clientPhone: clientPhone,
+      },
+    });
 
     const lastMessages = await prisma.chatMessage.findMany({
       where: { shopId: Number(shopId), clientPhone },
@@ -639,13 +646,13 @@ Lista de serviços resumida: ${listaResumida}.`;
           });
         }
 
-        const successMsg = upcomingAppointment
-          ? "Certo. Seu horário foi alterado com sucesso!"
-          : "Agendado com sucesso!";
-
         await prisma.chatMessage.deleteMany({
           where: { shopId: Number(shopId), clientPhone },
         });
+
+        const successMsg = upcomingAppointment
+          ? "Certo. Seu horário foi alterado com sucesso!"
+          : "Agendado com sucesso!";
 
         return NextResponse.json({
           status: "SUCCESS",
