@@ -639,13 +639,13 @@ Lista de serviços resumida: ${listaResumida}.`;
           });
         }
 
-        await prisma.chatMessage.deleteMany({
-          where: { shopId: Number(shopId), clientPhone },
-        });
-
         const successMsg = upcomingAppointment
           ? "Certo. Seu horário foi alterado com sucesso!"
           : "Agendado com sucesso!";
+
+        await prisma.chatMessage.deleteMany({
+          where: { shopId: Number(shopId), clientPhone },
+        });
 
         return NextResponse.json({
           status: "SUCCESS",
