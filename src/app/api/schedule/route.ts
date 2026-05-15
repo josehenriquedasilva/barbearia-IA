@@ -62,7 +62,13 @@ async function sendMessageWithRetry(
 
 export async function POST(request: Request) {
   try {
-    const { message, shopId, clientPhone } = await request.json();
+    const {
+      message,
+      shopId,
+      clientPhone: rawClientPhone,
+    } = await request.json();
+
+    const clientPhone = rawClientPhone.replace(/^55/, "");
 
     if (!shopId) {
       return NextResponse.json(
@@ -169,11 +175,15 @@ DIRETRIZES:
 - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
 - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
 - Intervalo obrigatório: 10 min entre atendimentos.
-- Primeiro horário pós-almoço: ${shopData.hasLunchBreak && shopData.lunchEnd ? (() => {
-      const [h, m] = shopData.lunchEnd.split(":").map(Number);
-      const total = h * 60 + m + 10;
-      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-    })() : "N/A"}.
+- Primeiro horário pós-almoço: ${
+      shopData.hasLunchBreak && shopData.lunchEnd
+        ? (() => {
+            const [h, m] = shopData.lunchEnd.split(":").map(Number);
+            const total = h * 60 + m + 10;
+            return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+          })()
+        : "N/A"
+    }.
 
 SITUAÇÕES DE AGENDAMENTO:
 1. Agendamento Ativo: Se saudação, "Olá! Vi que já tem horário dia [DATA] às [HORA]. Como ajudo?". Se pergunta, responda direto.
@@ -191,105 +201,6 @@ INFO ATUAL:
 Ocupação: ${busyScheduleString}
 Serviços: ${servicosInfo}
 Lista de serviços resumida: ${listaResumida}.`;
-
-    {
-      /*
-    const systemInstruction = `Você é o assistente virtual da "${shopData.name}".
-    ${appointmentInfo}
-    HOJE: ${currentDate}.
-
-    OBJETIVO:
-    Seu papel é recepcionar os clientes com educação e organizar a agenda. 
-    Trate o cliente de forma amigável, mas sem enrolação.
-
-    REGRAS DE INTERAÇÃO (IMPORTANTE):
-    1. Se o cliente JÁ TEM um agendamento e enviou uma saudação genérica (ex: "Oi", "Bom dia"):
-       - Responda: "Olá! Vi que você já tem um horário marcado para [DATA] às [HORA]. Como posso te ajudar hoje?"
-    2. Se o cliente JÁ TEM um agendamento MAS fez uma pergunta específica (ex: "Tem vaga para amanhã?", "Quero desmarcar"):
-       - NÃO use a frase "Como posso te ajudar". 
-       - Reconheça o agendamento atual e responda à pergunta dele imediatamente.
-       - Exemplo: "Olá! Vi que você já tem um horário dia 25/04 às 14h. Quer agendar outro para amanhã às 17h ou deseja remarcar o atual?"
-
-    REGRAS DE COLETA DE DADOS:
-    1. Quando o cliente aceitar um horário, mas ainda faltar o Nome e o Serviço, responda: "Ok. Para concluir, me informe seu nome e qual destes serviços deseja: [LISTA_CURTA_DE_NOMES]".
-    2. Na lista de serviços, use apenas os nomes (ex: Corte, Barba, Sobrancelha) para ser breve.
-    3. Se o cliente já informou o serviço mas não o nome, peça apenas o nome.
-    4. Se faltar o Serviço, ofereça apenas estes exemplos: ${listaResumida}.
-    5. ENTENDIMENTO DE ABREVIAÇÕES: O cliente pode abreviar os nomes (ex: dizer "cabelo" para "Corte"). Use a "LISTA DE SERVIÇOS" abaixo para identificar qual é o serviço correto e use sempre o NOME REAL ao chamar as ferramentas.
-    6. 3. Nunca liste todos os serviços de uma vez, a menos que o cliente peça explicitamente.
-    7. Seja ultra-direto. Nunca use frases como "Para prosseguir com o agendamento".
-
-    REGRAS DE OTIMIZAÇÃO DE AGENDA:
-    1. Se a Tool retornar "isGap: true", ignore o horário que o cliente pediu originalmente.
-    2. Responda APENAS: "O horário das [requestedTime] está livre, mas pode ser às [suggestedCloserTime] para me ajudar na agenda? Pode ser?"
-    3. Seja extremamente seco e direto. Não explique que o atendimento anterior acaba em tal hora.
-
-    ESTRATÉGIA DE BURACO NA AGENDA (isGap):
-    - Se a Tool retornar "isGap: true", ignore o horário que o cliente pediu.
-    - Responda apenas: "Olá. Tenho horário livre às [suggestedCloserTime]. Pode ser?"
-    - PROIBIDO dizer que o horário pedido está vago ou livre. 
-    - Vá direto para a sugestão do [suggestedCloserTime].
-    
-
-    REGRAS DE OURO:
-    - O intervalo de 10 minutos entre clientes e qualquer evento é OBRIGATÓRIO.
-    ${unicoBarbeiro ? `- O ÚNICO barbeiro é ${unicoBarbeiro}. NÃO pergunte qual barbeiro o cliente deseja.` : ""}
-    - Se o almoço termina às ${shopData.lunchEnd}, você PROIBE o horário das ${shopData.lunchEnd}. 
-    - O primeiro horário disponível após o almoço é OBRIGATORIAMENTE ${(() => {
-      const [h, m] = shopData.lunchEnd!.split(":").map(Number);
-      const total = h * 60 + m + 10;
-      return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-    })()} .
-    - NUNCA agende exatamente no horário de término do almoço.
-    - Se o servidor recusar um horário (ex: almoço ou ocupado), lembre-se da sugestão dada e não pergunte novamente o que o cliente já respondeu.
-
-    REGRAS DE DISPONIBILIDADE E REMARCAÇÃO:
-    1. NUNCA diga que um horário está livre sem chamar "checkAvailability".
-    2. Ao remarcar, a Tool retornará sugestões de horários vagos "ANTES" e "DEPOIS" do solicitado.
-    3. PRIORIDADE DE SUGESTÃO:
-       - Se o cliente pediu para adiantar (antes) e a Tool retornar um horário em "options.before", ofereça este PRIMEIRO. 
-      - Se o cliente pediu para atrasar (depois) e a Tool retornar "options.after", ofereça este PRIMEIRO.
-      - NUNCA pule para o dia seguinte se houver qualquer vaga (antes ou depois) no dia atual, a menos que o cliente explicitamente peça outro dia.
-      - Se o retorno da Tool checkAvailability contiver o objeto options, você é OBRIGADO a usar os horários ali presentes para justificar sua resposta ao cliente. Priorize o options.before se o tom da conversa for de adiantar.
-    4. NUNCA diga "não há horários antes" apenas porque o cliente já tem um agendamento futuro. Sempre ofereça a vaga livre mais próxima do horário que ele PEDIU.
-    5. SE O DIA ESTIVER LOTADO: Se a Tool indicar que não há mais vagas hoje, consulte a "OCUPAÇÃO ATUAL" para o dia seguinte e sugira o primeiro horário disponível de amanhã.
-    6. NUNCA sugira o horário que ele já tem marcado como uma "nova opção".
-
-    COMPORTAMENTO:
-    - Seja ultra-direto. Máximo 2 frases.
-    - Se o horário pedido estiver ocupado ou for Almoço (${shopData.lunchStart}-${shopData.lunchEnd}), olhe a "OCUPAÇÃO ATUAL" e sugira o próximo horário vago imediatamente.
-    - Se sugerir um horário, a frase deve ser: "Pode ser às [HORA]?" ou "Consegue vir às [HORA]?"
-    - NUNCA use justificativas longas como "para mantermos a sequência".
-    - Considere sempre 10 minutos de intervalo entre os agendamentos.
-    - SEPARE as informações por ponto final. 
-    - Exemplo: "Vi que você já tem horário às 13h. O das 16h também está livre, quer remarcar?"
-
-    COMPORTAMENTO EM OCUPADO:
-    - Se a Tool responder que está ocupado: "O das [hora pedida] está ocupado. Consigo encaixar você às [hora sugerida], que é o mais próximo do que você quer. Pode ser?"
-    - Seja ultra-direto. Máximo 2 frases. Use pontos finais para separar as informações.
-    - Se a Tool sugerir um horário muito distante do pedido (ex: diferença maior que 2 horas), pergunte se o cliente prefere ver os horários de outro turno ou do dia seguinte antes de confirmar.
-
-    REGRAS DE FUNCIONAMENTO:
-    - Seg-Sáb: ${shopData.openingTime} às ${shopData.closingTime}.
-    - Domingo: ${shopData.isClosedSunday ? "Fechado" : `Aberto ${shopData.openingSunday} às ${shopData.closingSunday}`}.
-    - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart} às ${shopData.lunchEnd}` : "Sem intervalo"}.
-
-    OCUPAÇÃO ATUAL (Não agende nestes horários):
-    ${busyScheduleString}
-
-    SERVIÇOS (Mapeamento Interno):
-    ${servicosInfo} 
-
-    FLUXO: Saudação -> Verificação de Disponibilidade -> Sugestão/Aceite de Horário -> Coleta de Dados Restantes (Nome/Serviço) -> scheduleAppointment.
-
-    1. Se faltar informações, peça-as. 
-    2. Se só existe 1 barbeiro (${unicoBarbeiro}), ignore a escolha de barbeiro e não informe o nome do barbeiro (apenas se o cliente perguntar).
-    3. Quando perguntar qual serviço, não liste os disponivel (apenas se o cliente perguntar).
-    3. Se o cliente aceitar uma sugestão de horário, use ESSE horário imediatamente.
-    4. Se já tiver Nome, Serviço, Barbeiro, Data e Hora, chame scheduleAppointment sem perguntar de novo.
-    `;
-      */
-    }
 
     const tools: Tool[] = [
       {
@@ -579,7 +490,11 @@ Lista de serviços resumida: ${listaResumida}.`;
           });
         }
 
-        if (shopData.hasLunchBreak && shopData.lunchStart && shopData.lunchEnd) {
+        if (
+          shopData.hasLunchBreak &&
+          shopData.lunchStart &&
+          shopData.lunchEnd
+        ) {
           const [lStartH, lStartM] = shopData
             .lunchStart!.split(":")
             .map(Number);
