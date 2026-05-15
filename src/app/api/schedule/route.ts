@@ -151,15 +151,6 @@ export async function POST(request: Request) {
         .map((s) => s.name)
         .join(", ") + (shopData.services.length > 3 ? "..." : "");
 
-    await prisma.chatMessage.create({
-      data: {
-        role: "user",
-        content: message,
-        shopId: Number(shopId),
-        clientPhone: clientPhone,
-      },
-    });
-
     const lastMessages = await prisma.chatMessage.findMany({
       where: { shopId: Number(shopId), clientPhone },
       orderBy: { createdAt: "desc" },
@@ -656,8 +647,7 @@ Lista de serviços resumida: ${listaResumida}.`;
 
         return NextResponse.json({
           status: "SUCCESS",
-          ai_response: successMsg,
-          details: finalAppointment,
+          ai_response: [successMsg],
         });
       }
 

@@ -28,7 +28,8 @@ export async function POST(request: Request) {
     }
 
     const remoteJid = body.data.key.remoteJid;
-    const clientPhone = remoteJid.split("@")[0];
+    const rawPhone = remoteJid.split("@")[0];
+    const clientPhone = rawPhone.replace(/^55/, "");
     const messageText =
       body.data.message?.conversation ||
       body.data.message?.extendedTextMessage?.text ||
