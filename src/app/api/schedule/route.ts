@@ -157,6 +157,8 @@ export async function POST(request: Request) {
       take: 10,
     });
 
+    // Verificar pq não está deletando a msg do cliente do banco após fazer um agendamento mandando todas as informações de uma vez. OBS provalvelmente é por causa do filtro que tira o 55 do número
+
     const history = lastMessages.reverse().map((msg) => ({
       role: msg.role === "model" ? "model" : "user",
       parts: [{ text: msg.content }],
