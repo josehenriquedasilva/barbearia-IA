@@ -30,7 +30,6 @@ export async function POST(request: Request) {
     const remoteJid = body.data.key.remoteJid;
     const rawPhone = remoteJid.split("@")[0];
 
-    // CORREÇÃO 1: Trata o número para o padrão do Banco de Dados (Sem 55)
     const clientPhone = rawPhone.replace(/^55/, "");
 
     const messageText =
@@ -40,7 +39,6 @@ export async function POST(request: Request) {
 
     if (!messageText) return NextResponse.json({ ok: true });
 
-    // Salva no banco com o número limpo (Sem 55)
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -78,7 +76,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         message: messageText,
         shopId: shop.id,
-        clientPhone: clientPhone, // Envia limpo para a API da IA
+        clientPhone: clientPhone,
       }),
     });
 
@@ -98,7 +96,6 @@ export async function POST(request: Request) {
               apikey: process.env.EVOLUTION_API_KEY as string,
             },
             body: JSON.stringify({
-              // CORREÇÃO 2: Adiciona o 55 de volta APENAS para a Evolution API enviar o WhatsApp com sucesso
               number: `55${clientPhone}`,
               text: textPart.trim(),
               delay: 1200,

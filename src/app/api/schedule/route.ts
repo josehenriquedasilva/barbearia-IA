@@ -157,8 +157,6 @@ export async function POST(request: Request) {
       take: 10,
     });
 
-    // Verificar pq não está deletando a msg do cliente do banco após fazer um agendamento mandando todas as informações de uma vez. OBS provalvelmente é por causa do filtro que tira o 55 do número
-
     const history = lastMessages.reverse().map((msg) => ({
       role: msg.role === "model" ? "model" : "user",
       parts: [{ text: msg.content }],
@@ -173,7 +171,7 @@ ${appointmentInfo}
 Hoje: ${currentDate}.
 
 DIRETRIZES:
-- Se o cliente saudar e pedir horário (ex: "Olá, tem vaga..."): "Olá! Esse horário está livre. Para agendar, me informe seu nome e o serviço."
+- SEMPRE saude o cliente na primeira mensagem (ex: Olá, Bem vindo a ${shopData.name} "nome da barbearia".)
 - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
 - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
 - Intervalo obrigatório: 10 min entre atendimentos.
@@ -198,6 +196,7 @@ REGRAS GERAIS:
 - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
 - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
 - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
+- Analise sempre o histórico antes de responder.
 
 INFO ATUAL:
 Ocupação: ${busyScheduleString}
