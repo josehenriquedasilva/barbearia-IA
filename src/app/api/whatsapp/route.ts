@@ -15,62 +15,49 @@ async function processBackgroundAi({
   instanceName: string;
   host: string;
 }) {
-  // 1. Aumentamos para 4 segundos para garantir uma janela segura de digitação consecutiva
+  // Janela de segurança para agrupamento
   await new Promise((resolve) => setTimeout(resolve, 4000));
 
-  // 2. Busca a ÚLTIMA mensagem enviada por esse usuário específico no banco
+  // Verifica se esta ainda é a última mensagem que o usuário mandou
   const latestUserMsg = await prisma.chatMessage.findFirst({
-    where: {
-      shopId,
-      clientPhone,
-      role: "user",
-    },
-    orderBy: {
-      id: "desc", // Pega a mensagem mais recente de todas
-    },
-  });
-
-  // SE a mensagem mais recente do banco NÃO FOR a mensagem atual deste processo,
-  // significa que o usuário enviou outra mensagem depois. Esse processo antigo morre aqui.
-  if (!latestUserMsg || latestUserMsg.id !== currentMsgId) {
-    console.log(
-      `[Agrupador] Ignorando mensagem antiga ${currentMsgId}. O usuário já mandou outra mais nova.`,
-    );
-    return;
-  }
-
-  // 3. Se passou pelo IF, ESTE processo é oficialmente o da ÚLTIMA MENSAGEM DO BLOCO!
-  // Vamos buscar a última vez que a IA respondeu para este cliente
-  const lastModelMsg = await prisma.chatMessage.findFirst({
-    where: { shopId, clientPhone, role: "model" },
+    where: { shopId, clientPhone, role: "user" },
     orderBy: { id: "desc" },
   });
 
-  // 4. Pega todas as mensagens que o usuário enviou desde a última resposta da IA
+  if (!latestUserMsg || latestUserMsg.id !== currentMsgId) {
+    console.log(`[Agrupador] Ignorando mensagem antiga ${currentMsgId}.`);
+    return;
+  }
+
+  // 🔎 BUSCA APENAS O QUE NUNCA FOI PROCESSADO
   const unreadUserMessages = await prisma.chatMessage.findMany({
     where: {
       shopId,
       clientPhone,
       role: "user",
-      id: lastModelMsg ? { gt: lastModelMsg.id } : undefined,
+      processed: false, // 👈 O segredo está aqui
     },
     orderBy: { id: "asc" },
   });
 
   if (unreadUserMessages.length === 0) return;
 
-  // 5. Junta todas as mensagens em um único texto separado por quebra de linha
+  // 🔒 MARCA IMEDIATAMENTE COMO PROCESSADO NO BANCO
+  // Isso evita que qualquer outra requisição paralela tente ler as mesmas mensagens
+  const idsToUpdate = unreadUserMessages.map((m) => m.id);
+  await prisma.chatMessage.updateMany({
+    where: { id: { in: idsToUpdate } },
+    data: { processed: true },
+  });
+
   const combinedMessageText = unreadUserMessages
     .map((m) => m.content.trim())
     .join("\n");
 
-  console.log(
-    `[Agrupador] Disparando requisição ÚNICA para o Gemini com ${unreadUserMessages.length} mensagens agrupadas.`,
-  );
+  console.log(`[Agrupador] Enviando bloco para o Gemini.`);
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${host}`;
 
-  // Envia o bloco unificado para a API do schedule
   const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -110,32 +97,26 @@ async function processBackgroundAi({
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-
     const rawEvent = body.event || "";
     const event = rawEvent.toUpperCase();
     const fromMe = body.data?.key?.fromMe;
 
     const isCorrectEvent =
       event === "MESSAGES.UPSERT" || event === "MESSAGES_UPSERT";
-
     if (!isCorrectEvent || fromMe === true) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
     const instanceName = body.instance;
-
     const shop = await prisma.shop.findUnique({
       where: { whatsappInstance: instanceName },
-      select: { id: true, whatsappToken: true },
     });
 
-    if (!shop) {
+    if (!shop)
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
-    }
 
     const remoteJid = body.data.key.remoteJid;
-    const rawPhone = remoteJid.split("@")[0];
-    const clientPhone = rawPhone.replace(/^55/, "");
+    const clientPhone = remoteJid.split("@")[0].replace(/^55/, "");
 
     const messageText =
       body.data.message?.conversation ||
@@ -144,17 +125,17 @@ export async function POST(request: Request) {
 
     if (!messageText) return NextResponse.json({ ok: true });
 
-    // Salva a mensagem recebida imediatamente no banco de dados
+    // Cria a mensagem começando com processed: false por padrão
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
         content: messageText,
         shopId: shop.id,
         clientPhone,
+        processed: false,
       },
     });
 
-    // Passa o controle para a Vercel gerenciar em segundo plano
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
@@ -162,18 +143,12 @@ export async function POST(request: Request) {
         clientPhone,
         instanceName,
         host: request.headers.get("host") || "",
-      }).catch((err) =>
-        console.error("Erro no processamento em background:", err),
-      ),
+      }).catch((err) => console.error("Erro background:", err)),
     );
 
-    // Resposta imediata de sucesso para a Evolution API não reenviar o mesmo webhook
-    return NextResponse.json({
-      status: "processing",
-      message: "Mensagem recebida!",
-    });
+    return NextResponse.json({ status: "processing" });
   } catch (error) {
-    console.error("Erro no Webhook WhatsApp:", error);
+    console.error(error);
     return NextResponse.json({ error: "Internal Error" }, { status: 500 });
   }
 }

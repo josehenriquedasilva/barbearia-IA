@@ -139,6 +139,7 @@ model ChatMessage {
   createdAt DateTime @default(now()) @map("created_at")
 
   clientPhone String @map("client_phone")
+  processed    Boolean  @default(false)
   shopId      Int    @map("shop_id")
   shop        Shop   @relation(fields: [shopId], references: [id])
 
