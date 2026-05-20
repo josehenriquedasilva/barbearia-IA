@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { waitUntil } from "@vercel/functions"; // 👈 Essencial para rodar na Vercel
+import { waitUntil } from "@vercel/functions";
 
 async function processBackgroundAi({
   currentMsgId,
@@ -15,30 +15,38 @@ async function processBackgroundAi({
   instanceName: string;
   host: string;
 }) {
-  // Aguarda 2.5 segundos para agrupar mensagens consecutivas do cliente
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  // 1. Aumentamos para 4 segundos para garantir uma janela segura de digitação consecutiva
+  await new Promise((resolve) => setTimeout(resolve, 4000));
 
-  const newerMsg = await prisma.chatMessage.findFirst({
+  // 2. Busca a ÚLTIMA mensagem enviada por esse usuário específico no banco
+  const latestUserMsg = await prisma.chatMessage.findFirst({
     where: {
       shopId,
       clientPhone,
       role: "user",
-      id: { gt: currentMsgId },
+    },
+    orderBy: {
+      id: "desc", // Pega a mensagem mais recente de todas
     },
   });
 
-  if (newerMsg) {
+  // SE a mensagem mais recente do banco NÃO FOR a mensagem atual deste processo,
+  // significa que o usuário enviou outra mensagem depois. Esse processo antigo morre aqui.
+  if (!latestUserMsg || latestUserMsg.id !== currentMsgId) {
     console.log(
-      `[Agrupador] Mensagem ${currentMsgId} ignorada, há uma mais recente.`,
+      `[Agrupador] Ignorando mensagem antiga ${currentMsgId}. O usuário já mandou outra mais nova.`,
     );
     return;
   }
 
+  // 3. Se passou pelo IF, ESTE processo é oficialmente o da ÚLTIMA MENSAGEM DO BLOCO!
+  // Vamos buscar a última vez que a IA respondeu para este cliente
   const lastModelMsg = await prisma.chatMessage.findFirst({
     where: { shopId, clientPhone, role: "model" },
     orderBy: { id: "desc" },
   });
 
+  // 4. Pega todas as mensagens que o usuário enviou desde a última resposta da IA
   const unreadUserMessages = await prisma.chatMessage.findMany({
     where: {
       shopId,
@@ -51,16 +59,18 @@ async function processBackgroundAi({
 
   if (unreadUserMessages.length === 0) return;
 
+  // 5. Junta todas as mensagens em um único texto separado por quebra de linha
   const combinedMessageText = unreadUserMessages
     .map((m) => m.content.trim())
     .join("\n");
 
   console.log(
-    `[Agrupador] Enviando ${unreadUserMessages.length} mensagens combinadas para o Gemini.`,
+    `[Agrupador] Disparando requisição ÚNICA para o Gemini com ${unreadUserMessages.length} mensagens agrupadas.`,
   );
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${host}`;
 
+  // Envia o bloco unificado para a API do schedule
   const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -134,6 +144,7 @@ export async function POST(request: Request) {
 
     if (!messageText) return NextResponse.json({ ok: true });
 
+    // Salva a mensagem recebida imediatamente no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -143,9 +154,7 @@ export async function POST(request: Request) {
       },
     });
 
-    // 🔥 O SEGREDO PARA A VERCEL ESTÁ AQUI:
-    // O 'waitUntil' segura o ciclo de vida do servidor rodando em background
-    // mesmo após enviarmos o return logo abaixo.
+    // Passa o controle para a Vercel gerenciar em segundo plano
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
@@ -158,10 +167,10 @@ export async function POST(request: Request) {
       ),
     );
 
-    // Resposta imediata para a Evolution API/WhatsApp parar de tentar reenviar a mensagem
+    // Resposta imediata de sucesso para a Evolution API não reenviar o mesmo webhook
     return NextResponse.json({
       status: "processing",
-      message: "Recebido com sucesso!",
+      message: "Mensagem recebida!",
     });
   } catch (error) {
     console.error("Erro no Webhook WhatsApp:", error);
