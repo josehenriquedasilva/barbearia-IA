@@ -171,7 +171,9 @@ export async function POST(request: Request) {
     Hoje: ${currentDate}.
 
     DIRETRIZES:
-      - SEMPRE saude o cliente na primeira mensagem (ex: Olá, Bem vindo a ${shopData.name}.)
+      - Na primeira mensagem, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}."). 
+      - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?".
+      - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
       - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
       - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
       - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
@@ -690,7 +692,7 @@ export async function POST(request: Request) {
     } else {
       return NextResponse.json({
         status: "TEXT_RESPONSE",
-        ai_response: ["Entendido! Como posso ajudar em algo mais?"],
+        ai_response: ["Entendido! Posso ajudar em algo mais?"],
       });
     }
   } catch (error: unknown) {
