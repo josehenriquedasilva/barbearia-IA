@@ -15,10 +15,8 @@ async function processBackgroundAi({
   instanceName: string;
   host: string;
 }) {
-  // Janela de segurança para agrupamento
   await new Promise((resolve) => setTimeout(resolve, 4000));
 
-  // Verifica se esta ainda é a última mensagem que o usuário mandou
   const latestUserMsg = await prisma.chatMessage.findFirst({
     where: { shopId, clientPhone, role: "user" },
     orderBy: { id: "desc" },
@@ -29,21 +27,18 @@ async function processBackgroundAi({
     return;
   }
 
-  // 🔎 BUSCA APENAS O QUE NUNCA FOI PROCESSADO
   const unreadUserMessages = await prisma.chatMessage.findMany({
     where: {
       shopId,
       clientPhone,
       role: "user",
-      processed: false, // 👈 O segredo está aqui
+      processed: false,
     },
     orderBy: { id: "asc" },
   });
 
   if (unreadUserMessages.length === 0) return;
 
-  // 🔒 MARCA IMEDIATAMENTE COMO PROCESSADO NO BANCO
-  // Isso evita que qualquer outra requisição paralela tente ler as mesmas mensagens
   const idsToUpdate = unreadUserMessages.map((m) => m.id);
   await prisma.chatMessage.updateMany({
     where: { id: { in: idsToUpdate } },
@@ -121,11 +116,12 @@ export async function POST(request: Request) {
     const messageText =
       body.data.message?.conversation ||
       body.data.message?.extendedTextMessage?.text ||
+      body.data.transcription ||
+      body.data.messageText ||
       "";
 
     if (!messageText) return NextResponse.json({ ok: true });
 
-    // Cria a mensagem começando com processed: false por padrão
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",

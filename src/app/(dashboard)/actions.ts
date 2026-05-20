@@ -281,6 +281,7 @@ export async function getPairingCodeAction(
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
   const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+  const TRANSCRIPTION_KEY = process.env.TRANSCRIPTION_API_KEY;
 
   try {
     const shop = await prisma.shop.findUnique({
@@ -355,6 +356,12 @@ export async function getPairingCodeAction(
           readStatus: false,
           syncFullHistory: false,
           proxy: null,
+          transcription: {
+            enabled: true,
+            provider: "groq",
+            apiKey: TRANSCRIPTION_KEY || "SUA_CHAVE_AQUI",
+            language: "pt",
+          },
         }),
       });
     }
