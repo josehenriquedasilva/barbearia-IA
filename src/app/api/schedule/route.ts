@@ -107,10 +107,19 @@ export async function POST(request: Request) {
 
     let appointmentInfo = "";
     if (upcomingAppointment) {
-      const dateStr = upcomingAppointment.startTime.toLocaleDateString("pt-BR");
+      const dateStr = upcomingAppointment.startTime.toLocaleDateString(
+        "pt-BR",
+        {
+          timeZone: "America/Sao_Paulo",
+        },
+      );
       const timeStr = upcomingAppointment.startTime.toLocaleTimeString(
         "pt-BR",
-        { hour: "2-digit", minute: "2-digit" },
+        {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        },
       );
       appointmentInfo = `\n- O cliente JÁ TEM um agendamento para o dia ${dateStr} às ${timeStr} (${upcomingAppointment.service.name} com ${upcomingAppointment.barber.name}).`;
     }
@@ -132,12 +141,13 @@ export async function POST(request: Request) {
       orderBy: { startTime: "asc" },
     });
 
+    // CORREÇÃO 2: Adicionado fuso horário de Brasília para a lista de horários ocupados enviados à IA
     const busyScheduleString =
       busyAppointments.length > 0
         ? busyAppointments
             .map(
               (a) =>
-                `- ${a.startTime.toLocaleDateString("pt-BR")} às ${a.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} com ${a.barber.name}`,
+                `- ${a.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às ${a.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} com ${a.barber.name}`,
             )
             .join("\n")
         : "Nenhum horário ocupado nos próximos dias.";
@@ -224,8 +234,7 @@ export async function POST(request: Request) {
               properties: {
                 barberName: {
                   type: SchemaType.STRING,
-                  description:
-                    "Nome do barbeiro selecionado. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.",
+                  description: `Nome do barbeiro selecionado. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.`,
                 },
                 date: {
                   type: SchemaType.STRING,
@@ -589,7 +598,11 @@ export async function POST(request: Request) {
 
           const clientTime = upcomingAppointment?.startTime.toLocaleTimeString(
             "pt-BR",
-            { hour: "2-digit", minute: "2-digit" },
+            {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "America/Sao_Paulo",
+            },
           );
 
           if (suggestTime === clientTime) {
@@ -600,6 +613,7 @@ export async function POST(request: Request) {
             suggestTime = nextTick.toLocaleTimeString("pt-BR", {
               hour: "2-digit",
               minute: "2-digit",
+              timeZone: "America/Sao_Paulo",
             });
           }
 
