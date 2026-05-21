@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       message,
       shopId,
       clientPhone: rawClientPhone,
+      currentMessageIds = [],
     } = await request.json();
 
     const clientPhone = rawClientPhone.replace(/^55/, "");
@@ -152,7 +153,11 @@ export async function POST(request: Request) {
         .join(", ") + (shopData.services.length > 3 ? "..." : "");
 
     const lastMessages = await prisma.chatMessage.findMany({
-      where: { shopId: Number(shopId), clientPhone },
+      where: {
+        shopId: Number(shopId),
+        clientPhone,
+        id: { notIn: currentMessageIds },
+      },
       orderBy: { createdAt: "desc" },
       take: 10,
     });

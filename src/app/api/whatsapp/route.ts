@@ -132,6 +132,7 @@ async function processBackgroundAi({
       message: combinedMessageText,
       shopId,
       clientPhone,
+      currentMessageIds: idsToUpdate,
     }),
   });
 
