@@ -127,9 +127,7 @@ export async function POST(request: Request) {
     const barbeiroNames = shopData.barbers.map((b) => b.name);
     const currentDate = getFormattedCurrentDate();
     const unicoBarbeiro = barbeiroNames.length === 1 ? barbeiroNames[0] : null;
-
-    const unicoServico =
-      shopData.services.length === 1 ? shopData.services[0].name : null;
+    const unicoServico = shopData.services.length === 1 ? shopData.services[0].name : null;
 
     const searchLimit = new Date();
     searchLimit.setDate(searchLimit.getDate() + 2);
@@ -188,8 +186,8 @@ export async function POST(request: Request) {
     Hoje: ${currentDate}.
 
     DIRETRIZES:
-      - Na primeira mensagem, faça uma saudação corta (ex: "Olá, bem-vindo à ${shopData.name}."). 
-      - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?" ou "O que deseja?", EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.
+      - Na primeira mensagem, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}."). 
+      - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?, EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.".
       - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
       - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
       - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
@@ -207,17 +205,13 @@ export async function POST(request: Request) {
 
   SITUAÇÕES DE AGENDAMENTO:
     1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
-    2. Coleta de Dados: Analise criteriosamente o histórico da conversa atual. 
-       - Se faltarem TANTO o Nome DO CLIENTE quanto o SERVIÇO, peça AMBOS de uma vez só na mesma mensagem (ex: "Para prosseguir, me informe seu nome e qual serviço deseja?").
-       - Se faltar apenas um deles, peça apenas o que falta.
-       - Se o cliente já informou o serviço ou se a regra de 'Serviço único' estiver ativa, peça apenas o Nome.
+    2. Coleta de Dados: Olhe o histórico e peça APENAS o dado que está faltando (Nome ou Serviço). Se o cliente já falou o serviço, NUNCA repita o nome dele e nem mencione-o novamente; peça apenas o Nome.
     3. Se o cliente perguntar se determinado horário está disponivel, responde (ex: este horário está livre) e siga pedindo os dados restantes.
     4. isGap (Buraco): Ignore pedido original. Responda: "O das [requestedTime] está livre, mas pode ser às [suggestedCloserTime] para me ajudar na agenda? Pode ser?".
     5. Ocupado/Almoço: "O das [hora] está ocupado. Consigo às [hora sugerida], o mais próximo. Pode ser?".
 
   REGRAS GERAIS:
     - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoBarbeiro}"), a menos que o cliente pergunte explicitamente.` : ""}
-    - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA pergunte ao cliente qual serviço ele quer e nunca mencione opções. Assuma internamente que o serviço selecionado é '${unicoServico}' e colete apenas o Nome.` : ""}
     - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
     - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
     - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
@@ -253,7 +247,8 @@ export async function POST(request: Request) {
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: `O nome EXATO do serviço conforme a lista fornecida no sistema. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
+                  description:
+                    "O nome EXATO do serviço conforme a lista fornecida no sistema (ex: use 'Corte de Cabelo' mesmo que o cliente diga 'cabelo').",
                 },
                 clientName: {
                   type: SchemaType.STRING,
