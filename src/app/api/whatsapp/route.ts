@@ -2,20 +2,13 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
 
-// 🎙️ Nova função que pede o áudio descriptografado para a Evolution e manda para o Groq
 async function transcreverAudioComGroq(
   messageId: string,
   instanceName: string,
 ): Promise<string> {
   try {
-    // Aguarda 1 segundo para garantir que a Evolution terminou de registrar a mídia no banco dela
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    console.log(
-      `[Groq] Solicitando mídia descriptografada para a mensagem: ${messageId}`,
-    );
-
-    // 1. Busca o Base64 do áudio descriptografado pela Evolution
     const responseMedia = await fetch(
       `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
       {
@@ -51,12 +44,10 @@ async function transcreverAudioComGroq(
       throw new Error("Base64 vazio");
     }
 
-    // Remove o cabeçalho data:audio/... se existir na string
     if (base64String.includes(",")) {
       base64String = base64String.split(",")[1];
     }
 
-    // 2. Transforma o Base64 em um arquivo binário (Blob) legível para o Groq
     const audioBuffer = Buffer.from(base64String, "base64");
     const audioBlob = new Blob([audioBuffer], { type: "audio/ogg" });
 
@@ -65,7 +56,6 @@ async function transcreverAudioComGroq(
     formData.append("model", "whisper-large-v3-turbo");
     formData.append("language", "pt");
 
-    // 3. Envia o arquivo descriptografado para o Groq
     const groqResponse = await fetch(
       "https://api.groq.com/openai/v1/audio/transcriptions",
       {
@@ -112,7 +102,6 @@ async function processBackgroundAi({
   });
 
   if (!latestUserMsg || latestUserMsg.id !== currentMsgId) {
-    console.log(`[Agrupador] Ignorando mensagem antiga ${currentMsgId}.`);
     return;
   }
 
@@ -207,13 +196,8 @@ export async function POST(request: Request) {
       body.data.messageType === "audioMessage" ||
       body.data.message?.audioMessage;
 
-    // Se for áudio, pegamos o ID da mensagem e acionamos a descriptografia + Groq
     if (isAudio && messageId) {
-      console.log(
-        "[Webhook] Áudio detectado! Iniciando extração e transcrição via Groq...",
-      );
       messageText = await transcreverAudioComGroq(messageId, instanceName);
-      console.log(`[Webhook] Transcrição do Groq concluída: "${messageText}"`);
     }
 
     if (!messageText) {
