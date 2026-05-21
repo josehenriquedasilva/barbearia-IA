@@ -281,7 +281,6 @@ export async function getPairingCodeAction(
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
   const EVO_KEY = process.env.EVOLUTION_API_KEY;
   const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
-  const TRANSCRIPTION_KEY = process.env.TRANSCRIPTION_API_KEY;
 
   try {
     const shop = await prisma.shop.findUnique({
@@ -337,7 +336,7 @@ export async function getPairingCodeAction(
             enabled: true,
             url: `${SITE_URL}/api/whatsapp`,
             webhook_by_events: false,
-            events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"],
+            events: ["MESSAGES_UPSERT"],
           },
         }),
       });
