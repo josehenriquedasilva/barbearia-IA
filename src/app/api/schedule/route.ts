@@ -127,7 +127,8 @@ export async function POST(request: Request) {
     const barbeiroNames = shopData.barbers.map((b) => b.name);
     const currentDate = getFormattedCurrentDate();
     const unicoBarbeiro = barbeiroNames.length === 1 ? barbeiroNames[0] : null;
-    const unicoServico = shopData.services.length === 1 ? shopData.services[0].name : null;
+    const unicoServico =
+      shopData.services.length === 1 ? shopData.services[0].name : null;
 
     const searchLimit = new Date();
     searchLimit.setDate(searchLimit.getDate() + 2);
@@ -211,6 +212,7 @@ export async function POST(request: Request) {
     5. Ocupado/Almoço: "O das [hora] está ocupado. Consigo às [hora sugerida], o mais próximo. Pode ser?".
 
   REGRAS GERAIS:
+    - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoServico}"), a menos que o cliente pergunte explicitamente.` : ""}
     - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoBarbeiro}"), a menos que o cliente pergunte explicitamente.` : ""}
     - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
     - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
@@ -247,8 +249,7 @@ export async function POST(request: Request) {
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description:
-                    "O nome EXATO do serviço conforme a lista fornecida no sistema (ex: use 'Corte de Cabelo' mesmo que o cliente diga 'cabelo').",
+                  description: `O nome EXATO do serviço conforme a lista fornecida no sistema. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
                 },
                 clientName: {
                   type: SchemaType.STRING,
