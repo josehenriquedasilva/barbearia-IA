@@ -92,13 +92,27 @@ async function processBackgroundAi({
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    // 🔍 LOG 1: Mostra absolutamente tudo que a Evolution está enviando para nós
+    console.log("=== [WEBHOOK EVOLUTION] NOVO PAYLOAD RECEBIDO ===");
+    console.log(JSON.stringify(body, null, 2));
+    console.log("=================================================");
+
     const rawEvent = body.event || "";
     const event = rawEvent.toUpperCase();
     const fromMe = body.data?.key?.fromMe;
 
+    // ✨ ALTERAÇÃO: Liberado os eventos UPDATE, essenciais para receber áudios processados
     const isCorrectEvent =
-      event === "MESSAGES.UPSERT" || event === "MESSAGES_UPSERT";
+      event === "MESSAGES.UPSERT" ||
+      event === "MESSAGES_UPSERT" ||
+      event === "MESSAGES.UPDATE" ||
+      event === "MESSAGES_UPDATE";
+
     if (!isCorrectEvent || fromMe === true) {
+      console.log(
+        `[Webhook] Evento desconsiderado: ${event} | deMim: ${fromMe}`,
+      );
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
@@ -107,20 +121,42 @@ export async function POST(request: Request) {
       where: { whatsappInstance: instanceName },
     });
 
-    if (!shop)
+    if (!shop) {
+      console.log(
+        `[Webhook Error] Nenhuma barbearia vinculada com a instância: ${instanceName}`,
+      );
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+    }
 
-    const remoteJid = body.data.key.remoteJid;
+    const remoteJid = body.data?.key?.remoteJid || body.data?.remoteJid;
+    if (!remoteJid) {
+      console.log("[Webhook] Ignorado: Falta o remoteJid.");
+      return NextResponse.json({ ok: true, status: "no-remote-jid" });
+    }
+
     const clientPhone = remoteJid.split("@")[0].replace(/^55/, "");
 
+    // ✨ ALTERAÇÃO: Mapeia de forma agressiva onde a transcrição pode estar aninhada
     const messageText =
       body.data.message?.conversation ||
       body.data.message?.extendedTextMessage?.text ||
-      body.data.transcription ||
+      body.data.transcription || // Transcrição direta (se configurado no upsert)
+      body.data.update?.transcription || // Transcrição que vem dentro da atualização (MESSAGES_UPDATE)
       body.data.messageText ||
       "";
 
-    if (!messageText) return NextResponse.json({ ok: true });
+    console.log(`[Webhook] Texto extraído do payload: "${messageText}"`);
+
+    if (!messageText) {
+      console.log(
+        "[Webhook] Ignorado: O evento entrou nas regras, mas não continha texto legível (pode ser o áudio em formato bruto, esperando transcrição).",
+      );
+      return NextResponse.json({ ok: true, status: "empty-text" });
+    }
+
+    console.log(
+      `[Webhook] Sucesso! Salvando mensagem no banco: "${messageText}"`,
+    );
 
     const currentMsg = await prisma.chatMessage.create({
       data: {
@@ -144,7 +180,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ status: "processing" });
   } catch (error) {
-    console.error(error);
+    console.error("Erro Crítico no Webhook Principal:", error);
     return NextResponse.json({ error: "Internal Error" }, { status: 500 });
   }
 }
