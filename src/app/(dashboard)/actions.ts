@@ -356,12 +356,6 @@ export async function getPairingCodeAction(
           readStatus: false,
           syncFullHistory: false,
           proxy: null,
-          transcription: {
-            enabled: true,
-            provider: "groq",
-            apiKey: TRANSCRIPTION_KEY || "SUA_CHAVE_AQUI",
-            language: "pt",
-          },
         }),
       });
     }
