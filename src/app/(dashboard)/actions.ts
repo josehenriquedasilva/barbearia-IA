@@ -336,7 +336,7 @@ export async function getPairingCodeAction(
             enabled: true,
             url: `${SITE_URL}/api/whatsapp`,
             webhook_by_events: false,
-            events: ["MESSAGES_UPSERT"],
+            events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"],
           },
         }),
       });
