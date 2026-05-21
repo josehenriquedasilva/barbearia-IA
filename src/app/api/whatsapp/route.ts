@@ -2,6 +2,48 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
 
+// Função auxiliar para baixar o áudio da Evolution e transcrever no Groq de graça
+async function transcreverAudioComGroq(audioUrl: string): Promise<string> {
+  try {
+    // 1. Baixa o arquivo de áudio da Evolution
+    const responseAudio = await fetch(audioUrl);
+    if (!responseAudio.ok)
+      throw new Error("Não foi possível baixar o áudio da Evolution");
+
+    const audioBlob = await responseAudio.blob();
+
+    // 2. Prepara o Form Data para enviar para o Whisper do Groq
+    const formData = new FormData();
+    formData.append("file", audioBlob, "audio.ogg");
+    formData.append("model", "whisper-large-v3-turbo"); // Modelo ultra rápido e grátis
+    formData.append("language", "pt");
+
+    // 3. Envia para o Groq
+    const groqResponse = await fetch(
+      "https://api.groq.com/openai/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: formData,
+      },
+    );
+
+    if (!groqResponse.ok) {
+      const errorText = await groqResponse.text();
+      console.error("[Groq Error]", errorText);
+      throw new Error("Falha na transcrição do Groq");
+    }
+
+    const groqData = await groqResponse.json();
+    return groqData.text || "";
+  } catch (err) {
+    console.error("Erro ao processar transcrição no Groq:", err);
+    return "";
+  }
+}
+
 async function processBackgroundAi({
   currentMsgId,
   shopId,
@@ -28,12 +70,7 @@ async function processBackgroundAi({
   }
 
   const unreadUserMessages = await prisma.chatMessage.findMany({
-    where: {
-      shopId,
-      clientPhone,
-      role: "user",
-      processed: false,
-    },
+    where: { shopId, clientPhone, role: "user", processed: false },
     orderBy: { id: "asc" },
   });
 
@@ -50,7 +87,6 @@ async function processBackgroundAi({
     .join("\n");
 
   console.log(`[Agrupador] Enviando bloco para o Gemini.`);
-
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${host}`;
 
   const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
@@ -68,7 +104,6 @@ async function processBackgroundAi({
 
   if (content) {
     const parts = Array.isArray(content) ? content : [content];
-
     for (const textPart of parts) {
       await fetch(
         `${process.env.NEXT_PUBLIC_EVOLUTION_URL}/message/sendText/${instanceName}`,
@@ -93,26 +128,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 🔍 LOG 1: Mostra absolutamente tudo que a Evolution está enviando para nós
-    console.log("=== [WEBHOOK EVOLUTION] NOVO PAYLOAD RECEBIDO ===");
-    console.log(JSON.stringify(body, null, 2));
-    console.log("=================================================");
-
     const rawEvent = body.event || "";
     const event = rawEvent.toUpperCase();
     const fromMe = body.data?.key?.fromMe;
 
-    // ✨ ALTERAÇÃO: Liberado os eventos UPDATE, essenciais para receber áudios processados
+    // Monitoramos apenas o UPSERT clássico (não precisamos mais do UPDATE!)
     const isCorrectEvent =
-      event === "MESSAGES.UPSERT" ||
-      event === "MESSAGES_UPSERT" ||
-      event === "MESSAGES.UPDATE" ||
-      event === "MESSAGES_UPDATE";
+      event === "MESSAGES.UPSERT" || event === "MESSAGES_UPSERT";
 
     if (!isCorrectEvent || fromMe === true) {
-      console.log(
-        `[Webhook] Evento desconsiderado: ${event} | deMim: ${fromMe}`,
-      );
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
@@ -121,42 +145,34 @@ export async function POST(request: Request) {
       where: { whatsappInstance: instanceName },
     });
 
-    if (!shop) {
-      console.log(
-        `[Webhook Error] Nenhuma barbearia vinculada com a instância: ${instanceName}`,
-      );
+    if (!shop)
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
-    }
 
-    const remoteJid = body.data?.key?.remoteJid || body.data?.remoteJid;
-    if (!remoteJid) {
-      console.log("[Webhook] Ignorado: Falta o remoteJid.");
-      return NextResponse.json({ ok: true, status: "no-remote-jid" });
-    }
-
+    const remoteJid = body.data?.key?.remoteJid;
     const clientPhone = remoteJid.split("@")[0].replace(/^55/, "");
 
-    // ✨ ALTERAÇÃO: Mapeia de forma agressiva onde a transcrição pode estar aninhada
-    const messageText =
+    let messageText =
       body.data.message?.conversation ||
       body.data.message?.extendedTextMessage?.text ||
-      body.data.transcription || // Transcrição direta (se configurado no upsert)
-      body.data.update?.transcription || // Transcrição que vem dentro da atualização (MESSAGES_UPDATE)
-      body.data.messageText ||
       "";
 
-    console.log(`[Webhook] Texto extraído do payload: "${messageText}"`);
+    // 🎙️ DETECÇÃO DE ÁUDIO: Se não veio texto, mas tem um objeto de áudio
+    const isAudio =
+      body.data.messageType === "audioMessage" ||
+      body.data.message?.audioMessage;
+    const audioUrl = body.data.message?.audioMessage?.url;
 
-    if (!messageText) {
+    if (isAudio && audioUrl) {
       console.log(
-        "[Webhook] Ignorado: O evento entrou nas regras, mas não continha texto legível (pode ser o áudio em formato bruto, esperando transcrição).",
+        "[Webhook] Áudio detectado! Iniciando transcrição via Groq...",
       );
-      return NextResponse.json({ ok: true, status: "empty-text" });
+      messageText = await transcreverAudioComGroq(audioUrl);
+      console.log(`[Webhook] Transcrição do Groq concluída: "${messageText}"`);
     }
 
-    console.log(
-      `[Webhook] Sucesso! Salvando mensagem no banco: "${messageText}"`,
-    );
+    if (!messageText) {
+      return NextResponse.json({ ok: true, status: "empty-text" });
+    }
 
     const currentMsg = await prisma.chatMessage.create({
       data: {
@@ -180,7 +196,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ status: "processing" });
   } catch (error) {
-    console.error("Erro Crítico no Webhook Principal:", error);
+    console.error("Erro Crítico:", error);
     return NextResponse.json({ error: "Internal Error" }, { status: 500 });
   }
 }
