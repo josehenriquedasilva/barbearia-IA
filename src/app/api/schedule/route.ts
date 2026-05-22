@@ -341,119 +341,198 @@ export async function POST(request: Request) {
             message: "Barbeiro ou serviço não encontrado.",
           };
         } else {
-          const totalDuration = targetService.durationMinutes + 10;
-          const endAt = new Date(startAt.getTime() + totalDuration * 60000);
+          const [hour, minute] = time.split(":").map(Number);
+          const appointmentMinutes = hour * 60 + minute;
+          const dataAgendamento = new Date(`${date}T12:00:00Z`);
+          const diaDaSemana = dataAgendamento.getUTCDay();
+          const diasSemanaMap: Record<string, number> = {
+            domingo: 0,
+            "segunda-feira": 1,
+            "terça-feira": 2,
+            "quarta-feira": 3,
+            "quinta-feira": 4,
+            "sexta-feira": 5,
+            sábado: 6,
+            segunda: 1,
+            terca: 2,
+          };
 
-          const isBusy = await prisma.appointment.findFirst({
-            where: {
-              barberId: targetBarber.id,
-              status: "CONFIRMED",
-              NOT: { id: upcomingAppointment?.id },
-              AND: [{ startTime: { lt: endAt } }, { endTime: { gt: startAt } }],
-            },
-          });
+          const [openH, openM] = shopData.openingTime.split(":").map(Number);
+          const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
+          const openingMinutes = openH * 60 + openM;
+          const closingMinutes = closeH * 60 + closeM;
+          const maxClosingMinutes = closingMinutes + 20;
+          const appointmentEndMinutes =
+            appointmentMinutes + targetService.durationMinutes;
 
-          if (isBusy) {
-            const lastAppointmentBefore = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                startTime: { lt: startAt, gte: startOfDay },
-                NOT: { id: upcomingAppointment?.id },
-              },
-              orderBy: { endTime: "desc" },
-            });
-
-            const nextAppointmentAfter = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                startTime: { gte: startAt, lte: endOfDay },
-                NOT: { id: upcomingAppointment?.id },
-              },
-              orderBy: { startTime: "asc" },
-            });
-
-            const timeToStr = (d: Date) =>
-              d.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
-              });
-
-            const suggestedBefore = lastAppointmentBefore
-              ? timeToStr(new Date(lastAppointmentBefore.endTime))
-              : shopData.openingTime;
-
-            const suggestedAfter = nextAppointmentAfter
-              ? timeToStr(nextAppointmentAfter.endTime)
-              : "sem mais vagas hoje";
-
+          if (diaDaSemana === 0 && shopData.isClosedSunday) {
             functionResponse = {
               available: false,
-              message: `O horário das ${time} está ocupado.`,
-              options: {
-                before: suggestedBefore,
-                after: suggestedAfter,
-              },
-              nextAvailableTime: suggestedBefore,
-              requestedTime: time,
+              message: "Não abrimos aos domingos. Pode escolher outro dia?",
+            };
+          } else if (
+            shopData.hasDayOff &&
+            shopData.dayOff &&
+            diaDaSemana === diasSemanaMap[shopData.dayOff.toLowerCase()]
+          ) {
+            functionResponse = {
+              available: false,
+              message: `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
+            };
+          } else if (
+            shopData.hasLunchBreak &&
+            shopData.lunchStart &&
+            shopData.lunchEnd &&
+            (() => {
+              const [lStartH, lStartM] = shopData.lunchStart
+                .split(":")
+                .map(Number);
+              const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
+              const lunchStartTotal = lStartH * 60 + lStartM;
+              const lunchEndTotal = lEndH * 60 + lEndM;
+              const firstSlotAfterLunch = lunchEndTotal + 10;
+              return (
+                appointmentMinutes >= lunchStartTotal &&
+                appointmentMinutes < firstSlotAfterLunch
+              );
+            })()
+          ) {
+            const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
+            const lunchEndTotal = lEndH * 60 + lEndM;
+            const firstSlotAfterLunch = lunchEndTotal + 10;
+            const suggestH = Math.floor(firstSlotAfterLunch / 60);
+            const suggestM = firstSlotAfterLunch % 60;
+            const suggestTime = `${String(suggestH).padStart(2, "0")}:${String(suggestM).padStart(2, "0")}`;
+            functionResponse = {
+              available: false,
+              message: `O horário das ${time} não está disponível devido ao intervalo de almoço. O primeiro horário livre pós-almoço é às ${suggestTime}.`,
+            };
+          } else if (
+            appointmentMinutes < openingMinutes ||
+            appointmentEndMinutes > maxClosingMinutes
+          ) {
+            functionResponse = {
+              available: false,
+              message: `Nosso expediente de atendimento vai até às ${shopData.closingTime}. Que tal escolher outro horário?`,
             };
           } else {
-            const lastBefore = await prisma.appointment.findFirst({
+            const totalDuration = targetService.durationMinutes + 10;
+            const endAt = new Date(startAt.getTime() + totalDuration * 60000);
+
+            const isBusy = await prisma.appointment.findFirst({
               where: {
                 barberId: targetBarber.id,
                 status: "CONFIRMED",
-                startTime: { lt: startAt, gte: startOfDay },
                 NOT: { id: upcomingAppointment?.id },
+                AND: [
+                  { startTime: { lt: endAt } },
+                  { endTime: { gt: startAt } },
+                ],
               },
-              orderBy: { endTime: "desc" },
             });
 
-            const timeToStr = (d: Date) =>
-              d.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
+            if (isBusy) {
+              const lastAppointmentBefore = await prisma.appointment.findFirst({
+                where: {
+                  barberId: targetBarber.id,
+                  status: "CONFIRMED",
+                  startTime: { lt: startAt, gte: startOfDay },
+                  NOT: { id: upcomingAppointment?.id },
+                },
+                orderBy: { endTime: "desc" },
               });
 
-            if (lastBefore) {
-              const idealStartTime = new Date(lastBefore.endTime);
+              const nextAppointmentAfter = await prisma.appointment.findFirst({
+                where: {
+                  barberId: targetBarber.id,
+                  status: "CONFIRMED",
+                  startTime: { gte: startAt, lte: endOfDay },
+                  NOT: { id: upcomingAppointment?.id },
+                },
+                orderBy: { startTime: "asc" },
+              });
 
-              const diffInMinutes =
-                (startAt.getTime() - idealStartTime.getTime()) / 60000;
+              const timeToStr = (d: Date) =>
+                d.toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "America/Sao_Paulo",
+                });
 
-              if (diffInMinutes > 0 && diffInMinutes <= 45) {
-                functionResponse = {
-                  available: true,
-                  isGap: true,
-                  suggestedCloserTime: timeToStr(idealStartTime),
-                  requestedTime: time,
-                };
-              } else {
-                functionResponse = { available: true };
-              }
+              const suggestedBefore = lastAppointmentBefore
+                ? timeToStr(new Date(lastAppointmentBefore.endTime))
+                : shopData.openingTime;
+
+              const suggestedAfter = nextAppointmentAfter
+                ? timeToStr(nextAppointmentAfter.endTime)
+                : "sem mais vagas hoje";
+
+              functionResponse = {
+                available: false,
+                message: `O horário das ${time} está ocupado.`,
+                options: {
+                  before: suggestedBefore,
+                  after: suggestedAfter,
+                },
+                nextAvailableTime: suggestedBefore,
+                requestedTime: time,
+              };
             } else {
-              const [openH, openM] = shopData.openingTime
-                .split(":")
-                .map(Number);
+              const lastBefore = await prisma.appointment.findFirst({
+                where: {
+                  barberId: targetBarber.id,
+                  status: "CONFIRMED",
+                  startTime: { lt: startAt, gte: startOfDay },
+                  NOT: { id: upcomingAppointment?.id },
+                },
+                orderBy: { endTime: "desc" },
+              });
 
-              const openingDate = new Date(startAt);
+              const timeToStr = (d: Date) =>
+                d.toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "America/Sao_Paulo",
+                });
 
-              openingDate.setHours(openH, openM, 0, 0);
+              if (lastBefore) {
+                const idealStartTime = new Date(lastBefore.endTime);
 
-              const diffFromOpening =
-                (startAt.getTime() - openingDate.getTime()) / 60000;
+                const diffInMinutes =
+                  (startAt.getTime() - idealStartTime.getTime()) / 60000;
 
-              if (diffFromOpening > 10 && diffFromOpening <= 45) {
-                functionResponse = {
-                  available: true,
-                  isGap: true,
-                  suggestedCloserTime: shopData.openingTime,
-                  requestedTime: time,
-                };
+                if (diffInMinutes > 0 && diffInMinutes <= 45) {
+                  functionResponse = {
+                    available: true,
+                    isGap: true,
+                    suggestedCloserTime: timeToStr(idealStartTime),
+                    requestedTime: time,
+                  };
+                } else {
+                  functionResponse = { available: true };
+                }
               } else {
-                functionResponse = { available: true };
+                const [openH, openM] = shopData.openingTime
+                  .split(":")
+                  .map(Number);
+
+                const openingDate = new Date(startAt);
+
+                openingDate.setHours(openH, openM, 0, 0);
+
+                const diffFromOpening =
+                  (startAt.getTime() - openingDate.getTime()) / 60000;
+
+                if (diffFromOpening > 10 && diffFromOpening <= 45) {
+                  functionResponse = {
+                    available: true,
+                    isGap: true,
+                    suggestedCloserTime: shopData.openingTime,
+                    requestedTime: time,
+                  };
+                } else {
+                  functionResponse = { available: true };
+                }
               }
             }
           }
