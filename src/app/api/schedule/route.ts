@@ -340,115 +340,265 @@ export async function POST(request: Request) {
           const totalDuration = targetService.durationMinutes + 10;
           const endAt = new Date(startAt.getTime() + totalDuration * 60000);
 
-          const isBusy = await prisma.appointment.findFirst({
-            where: {
-              barberId: targetBarber.id,
-              status: "CONFIRMED",
-              NOT: { id: upcomingAppointment?.id },
-              AND: [{ startTime: { lt: endAt } }, { endTime: { gt: startAt } }],
-            },
-          });
+          /* ========================================================================
+            ALTERAÇÃO 1: MAPEAMENTO E VALIDAÇÃO DE DIAS DE FUNCIONAMENTO (checkAvailability)
+            ========================================================================
+            Garante que dias fechados (domingos ou folgas específicas) retornem "available: false"
+            diretamente pela ferramenta.
+          */
+          const checkDateUTC = new Date(`${date}T12:00:00Z`);
+          const dayOfWeekIdx = checkDateUTC.getUTCDay();
+          const diasSemanaMap: Record<string, number> = {
+            domingo: 0,
+            "segunda-feira": 1,
+            "terça-feira": 2,
+            "quarta-feira": 3,
+            "quinta-feira": 4,
+            "sexta-feira": 5,
+            sábado: 6,
+            segunda: 1,
+            terca: 2,
+          };
 
-          if (isBusy) {
-            const lastAppointmentBefore = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                startTime: { lt: startAt, gte: startOfDay },
-                NOT: { id: upcomingAppointment?.id },
-              },
-              orderBy: { endTime: "desc" },
-            });
-
-            const nextAppointmentAfter = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                startTime: { gte: startAt, lte: endOfDay },
-                NOT: { id: upcomingAppointment?.id },
-              },
-              orderBy: { startTime: "asc" },
-            });
-
-            const timeToStr = (d: Date) =>
-              d.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
-              });
-
-            const suggestedBefore = lastAppointmentBefore
-              ? timeToStr(new Date(lastAppointmentBefore.endTime))
-              : shopData.openingTime;
-
-            const suggestedAfter = nextAppointmentAfter
-              ? timeToStr(nextAppointmentAfter.endTime)
-              : "sem mais vagas hoje";
-
+          if (dayOfWeekIdx === 0 && shopData.isClosedSunday) {
             functionResponse = {
               available: false,
-              message: `O horário das ${time} está ocupado.`,
-              options: {
-                before: suggestedBefore,
-                after: suggestedAfter,
-              },
-              requestedTime: time,
+              message: "A barbearia está fechada aos domingos.",
+            };
+          } else if (
+            shopData.hasDayOff &&
+            shopData.dayOff &&
+            dayOfWeekIdx === diasSemanaMap[shopData.dayOff.toLowerCase()]
+          ) {
+            functionResponse = {
+              available: false,
+              message: `A barbearia está fechada às ${shopData.dayOff}s.`,
             };
           } else {
-            const lastBefore = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                startTime: { lt: startAt, gte: startOfDay },
-                NOT: { id: upcomingAppointment?.id },
-              },
-              orderBy: { endTime: "desc" },
-            });
+            /* ========================================================================
+              ALTERAÇÃO 2: VALIDAÇÃO DE LIMITES DE HORÁRIO (ABERTURA, ENCERRAMENTO E ALMOÇO)
+              ========================================================================
+              Converte as strings de hora em minutos absolutos para evitar falsos positivos.
+              Isso impede que horários antes de abrir (como as 08:00 do seu teste) passem batido.
+            */
+            const [reqH, reqM] = time.split(":").map(Number);
+            const reqMinutes = reqH * 60 + reqM;
 
-            const timeToStr = (d: Date) =>
-              d.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
+            const [openH, openM] = shopData.openingTime.split(":").map(Number);
+            const [closeH, closeM] = shopData.closingTime
+              .split(":")
+              .map(Number);
+            const openingMinutes = openH * 60 + openM;
+            const closingMinutes = closeH * 60 + closeM;
+            const endMinutes = reqMinutes + targetService.durationMinutes + 10;
+
+            // Tratamento caso o cliente selecione um horário antes da abertura da loja
+            if (reqMinutes < openingMinutes) {
+              // Verifica se já existe um agendamento marcado exatamente no horário de abertura (ex: 09:00)
+              const firstAppointment = await prisma.appointment.findFirst({
+                where: {
+                  barberId: targetBarber.id,
+                  status: "CONFIRMED",
+                  startTime: { gte: startOfDay, lte: endOfDay },
+                  NOT: { id: upcomingAppointment?.id },
+                },
+                orderBy: { startTime: "asc" },
               });
 
-            if (lastBefore) {
-              const idealStartTime = new Date(lastBefore.endTime);
+              let suggestedAfter = shopData.openingTime;
 
-              const diffInMinutes =
-                (startAt.getTime() - idealStartTime.getTime()) / 60000;
-
-              if (diffInMinutes > 0 && diffInMinutes <= 45) {
-                functionResponse = {
-                  available: true,
-                  isGap: true,
-                  suggestedCloserTime: timeToStr(idealStartTime),
-                  requestedTime: time,
-                };
-              } else {
-                functionResponse = { available: true };
+              // Se o primeiro horário (09:00) estiver ocupado, sugere o endTime dele (que já contém a duração + 10 min)
+              if (firstAppointment) {
+                const firstAppTimeStr =
+                  firstAppointment.startTime.toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "America/Sao_Paulo",
+                  });
+                if (firstAppTimeStr === shopData.openingTime) {
+                  suggestedAfter = firstAppointment.endTime.toLocaleTimeString(
+                    "pt-BR",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "America/Sao_Paulo",
+                    },
+                  );
+                }
               }
-            } else {
-              const [openH, openM] = shopData.openingTime
+
+              functionResponse = {
+                available: false,
+                message: `A barbearia abre às ${shopData.openingTime}. O horário das ${time} está fora do expediente.`,
+                options: {
+                  before: "fechado",
+                  after: suggestedAfter, // Garante que a IA vai sugerir o horário correto pós-intervalo de 10 minutos
+                },
+                requestedTime: time,
+              };
+            }
+            // Tratamento caso o atendimento extrapole o horário de encerramento
+            else if (endMinutes > closingMinutes) {
+              functionResponse = {
+                available: false,
+                message: `O horário das ${time} ultrapassa o expediente. Fechamos às ${shopData.closingTime}.`,
+                options: {
+                  before: "verificar horários anteriores",
+                  after: "fechado",
+                },
+                requestedTime: time,
+              };
+            }
+            // Tratamento completo do intervalo de almoço dentro da ferramenta checkAvailability
+            else if (
+              shopData.hasLunchBreak &&
+              shopData.lunchStart &&
+              shopData.lunchEnd
+            ) {
+              const [lStartH, lStartM] = shopData.lunchStart
                 .split(":")
                 .map(Number);
+              const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
+              const lunchStartTotal = lStartH * 60 + lStartM;
+              const lunchEndTotal = lEndH * 60 + lEndM;
+              const firstSlotAfterLunch = lunchEndTotal + 10;
 
-              const openingDate = new Date(startAt);
-
-              openingDate.setHours(openH, openM, 0, 0);
-
-              const diffFromOpening =
-                (startAt.getTime() - openingDate.getTime()) / 60000;
-
-              if (diffFromOpening > 10 && diffFromOpening <= 45) {
+              if (
+                reqMinutes >= lunchStartTotal &&
+                reqMinutes < firstSlotAfterLunch
+              ) {
+                const suggestTimeAfterLunch = `${String(Math.floor(firstSlotAfterLunch / 60)).padStart(2, "0")}:${String(firstSlotAfterLunch % 60).padStart(2, "0")}`;
                 functionResponse = {
-                  available: true,
-                  isGap: true,
-                  suggestedCloserTime: shopData.openingTime,
+                  available: false,
+                  message: `O horário das ${time} está dentro do horário de almoço.`,
+                  options: {
+                    before: shopData.lunchStart,
+                    after: suggestTimeAfterLunch,
+                  },
+                  requestedTime: time,
+                };
+              }
+            }
+
+            // Se nenhuma das travas acima foi ativada, executa a checagem tradicional de agendamentos no banco
+            if (!functionResponse.message) {
+              const isBusy = await prisma.appointment.findFirst({
+                where: {
+                  barberId: targetBarber.id,
+                  status: "CONFIRMED",
+                  NOT: { id: upcomingAppointment?.id },
+                  AND: [
+                    { startTime: { lt: endAt } },
+                    { endTime: { gt: startAt } },
+                  ],
+                },
+              });
+
+              if (isBusy) {
+                const lastAppointmentBefore =
+                  await prisma.appointment.findFirst({
+                    where: {
+                      barberId: targetBarber.id,
+                      status: "CONFIRMED",
+                      startTime: { lt: startAt, gte: startOfDay },
+                      NOT: { id: upcomingAppointment?.id },
+                    },
+                    orderBy: { endTime: "desc" },
+                  });
+
+                const nextAppointmentAfter = await prisma.appointment.findFirst(
+                  {
+                    where: {
+                      barberId: targetBarber.id,
+                      status: "CONFIRMED",
+                      startTime: { gte: startAt, lte: endOfDay },
+                      NOT: { id: upcomingAppointment?.id },
+                    },
+                    orderBy: { startTime: "asc" },
+                  },
+                );
+
+                const timeToStr = (d: Date) =>
+                  d.toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "America/Sao_Paulo",
+                  });
+
+                const suggestedBefore = lastAppointmentBefore
+                  ? timeToStr(new Date(lastAppointmentBefore.endTime))
+                  : shopData.openingTime;
+
+                const suggestedAfter = nextAppointmentAfter
+                  ? timeToStr(nextAppointmentAfter.endTime)
+                  : "sem mais vagas hoje";
+
+                functionResponse = {
+                  available: false,
+                  message: `O horário das ${time} está ocupado.`,
+                  options: {
+                    before: suggestedBefore,
+                    after: suggestedAfter,
+                  },
                   requestedTime: time,
                 };
               } else {
-                functionResponse = { available: true };
+                const lastBefore = await prisma.appointment.findFirst({
+                  where: {
+                    barberId: targetBarber.id,
+                    status: "CONFIRMED",
+                    startTime: { lt: startAt, gte: startOfDay },
+                    NOT: { id: upcomingAppointment?.id },
+                  },
+                  orderBy: { endTime: "desc" },
+                });
+
+                const timeToStr = (d: Date) =>
+                  d.toLocaleTimeString("pt-BR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "America/Sao_Paulo",
+                  });
+
+                if (lastBefore) {
+                  const idealStartTime = new Date(lastBefore.endTime);
+
+                  const diffInMinutes =
+                    (startAt.getTime() - idealStartTime.getTime()) / 60000;
+
+                  if (diffInMinutes > 0 && diffInMinutes <= 45) {
+                    functionResponse = {
+                      available: true,
+                      isGap: true,
+                      suggestedCloserTime: timeToStr(idealStartTime),
+                      requestedTime: time,
+                    };
+                  } else {
+                    functionResponse = { available: true };
+                  }
+                } else {
+                  const [openH, openM] = shopData.openingTime
+                    .split(":")
+                    .map(Number);
+
+                  const openingDate = new Date(startAt);
+
+                  openingDate.setHours(openH, openM, 0, 0);
+
+                  const diffFromOpening =
+                    (startAt.getTime() - openingDate.getTime()) / 60000;
+
+                  if (diffFromOpening > 10 && diffFromOpening <= 45) {
+                    functionResponse = {
+                      available: true,
+                      isGap: true,
+                      suggestedCloserTime: shopData.openingTime,
+                      requestedTime: time,
+                    };
+                  } else {
+                    functionResponse = { available: true };
+                  }
+                }
               }
             }
           }
@@ -502,6 +652,31 @@ export async function POST(request: Request) {
           segunda: 1,
           terca: 2,
         };
+
+        /* ========================================================================
+          ALTERAÇÃO 3: VALIDAÇÃO DE HORÁRIOS EXTREMOS NO AGENDAMENTO DEFINITIVO
+          ========================================================================
+          Uma trava de segurança extra na persistência do agendamento para impedir
+          criações indevidas fora do horário de funcionamento padrão da barbearia.
+        */
+        const [openH, openM] = shopData.openingTime.split(":").map(Number);
+        const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
+        const openingMinutes = openH * 60 + openM;
+        const closingMinutes = closeH * 60 + closeM;
+
+        if (appointmentMinutes < openingMinutes) {
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: `Não estamos abertos às ${args.time}. Nosso horário de funcionamento começa às ${shopData.openingTime}.`,
+          });
+        }
+
+        if (appointmentMinutes >= closingMinutes) {
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: `Não estamos funcionando às ${args.time}. Encerramos o expediente às ${shopData.closingTime}.`,
+          });
+        }
 
         if (diaDaSemana === 0 && shopData.isClosedSunday) {
           return NextResponse.json({
