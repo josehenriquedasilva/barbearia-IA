@@ -580,106 +580,221 @@ export async function POST(request: Request) {
         }
 
         const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
+        const startOfDay = new Date(`${args.date}T00:00:00-03:00`);
 
         const durationWithInterval = targetService.durationMinutes + 10;
         const endTime = new Date(
           startAt.getTime() + durationWithInterval * 60000,
         );
 
-        const existing = await prisma.appointment.findFirst({
-          where: {
-            barberId: targetBarber.id,
-            status: "CONFIRMED",
-            NOT: { id: upcomingAppointment?.id },
-            AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startAt } }],
-          },
-        });
+        try {
+          // Executa a checagem e gravação de forma isolada e segura contra concorrência
+          const finalAppointment = await prisma.$transaction(async (tx) => {
+            // 1. Checa colisão exata de horários
+            const existing = await tx.appointment.findFirst({
+              where: {
+                barberId: targetBarber.id,
+                status: "CONFIRMED",
+                NOT: { id: upcomingAppointment?.id },
+                AND: [
+                  { startTime: { lt: endTime } },
+                  { endTime: { gt: startAt } },
+                ],
+              },
+            });
 
-        if (existing) {
-          let suggestTime = existing.endTime.toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            timeZone: "America/Sao_Paulo",
+            if (existing) {
+              throw new Error("TIME_SLOT_TAKEN");
+            }
+
+            // 2. Validação de Buraco (Gap) - Mesma lógica do checkAvailability
+            const lastBefore = await tx.appointment.findFirst({
+              where: {
+                barberId: targetBarber.id,
+                status: "CONFIRMED",
+                startTime: { lt: startAt, gte: startOfDay },
+                NOT: { id: upcomingAppointment?.id },
+              },
+              orderBy: { endTime: "desc" },
+            });
+
+            const timeToStr = (d: Date) =>
+              d.toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "America/Sao_Paulo",
+              });
+
+            let isGap = false;
+            let suggestedCloserTime = "";
+
+            if (lastBefore) {
+              const idealStartTime = new Date(lastBefore.endTime);
+              const diffInMinutes =
+                (startAt.getTime() - idealStartTime.getTime()) / 60000;
+
+              if (diffInMinutes > 0 && diffInMinutes <= 45) {
+                isGap = true;
+                suggestedCloserTime = timeToStr(idealStartTime);
+              }
+            } else {
+              const [openH, openM] = shopData.openingTime
+                .split(":")
+                .map(Number);
+              const openingDate = new Date(startAt);
+              openingDate.setHours(openH, openM, 0, 0);
+
+              const diffFromOpening =
+                (startAt.getTime() - openingDate.getTime()) / 60000;
+
+              if (diffFromOpening > 10 && diffFromOpening <= 45) {
+                isGap = true;
+                suggestedCloserTime = shopData.openingTime;
+              }
+            }
+
+            // Se gerar um buraco na agenda, precisamos validar se o cliente já recusou antes
+            if (isGap) {
+              // Verifica se a mensagem de sugestão de buraco já foi enviada no histórico recente
+              const alreadySuggested = history.some(
+                (msg) =>
+                  msg.role === "model" &&
+                  msg.parts.some(
+                    (p) =>
+                      typeof p.text === "string" &&
+                      p.text.includes("ajudar na agenda"),
+                  ),
+              );
+
+              // Se ainda não sugeriu, bloqueia o agendamento direto e força a pergunta
+              if (!alreadySuggested) {
+                throw new Error(`GAP_DETECTED:${suggestedCloserTime}`);
+              }
+            }
+
+            // 3. Persistência dos dados caso passe nas regras acima
+            if (upcomingAppointment) {
+              return await tx.appointment.update({
+                where: { id: upcomingAppointment.id },
+                data: {
+                  startTime: startAt,
+                  endTime: endTime,
+                  barberId: targetBarber.id,
+                  serviceId: targetService.id,
+                  status: "CONFIRMED",
+                },
+              });
+            } else {
+              return await tx.appointment.create({
+                data: {
+                  clientName: args.clientName,
+                  clientPhone,
+                  shopId: shopData.id,
+                  barberId: targetBarber.id,
+                  serviceId: targetService.id,
+                  startTime: startAt,
+                  endTime: endTime,
+                },
+              });
+            }
           });
 
-          const clientTime = upcomingAppointment?.startTime.toLocaleTimeString(
-            "pt-BR",
-            {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "America/Sao_Paulo",
-            },
-          );
+          // Limpa o histórico de chat em caso de sucesso total
+          await prisma.chatMessage.deleteMany({
+            where: { shopId: Number(shopId), clientPhone },
+          });
 
-          if (suggestTime === clientTime) {
-            const nextTick = new Date(
-              upcomingAppointment!.endTime.getTime() + 10 * 60000,
-            );
+          const successMsg = upcomingAppointment
+            ? "Certo. Seu horário foi alterado com sucesso!"
+            : "Agendado com sucesso!";
 
-            suggestTime = nextTick.toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "America/Sao_Paulo",
+          return NextResponse.json({
+            status: "SUCCESS",
+            ai_response: successMsg,
+            details: finalAppointment,
+          });
+        } catch (txError: unknown) {
+          const errorMessage = txError instanceof Error ? txError.message : "";
+
+          if (errorMessage === "TIME_SLOT_TAKEN") {
+            const existingCollision = await prisma.appointment.findFirst({
+              where: {
+                barberId: targetBarber.id,
+                status: "CONFIRMED",
+                NOT: { id: upcomingAppointment?.id },
+                AND: [
+                  { startTime: { lt: endTime } },
+                  { endTime: { gt: startAt } },
+                ],
+              },
+            });
+
+            let suggestTime = existingCollision
+              ? existingCollision.endTime.toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "America/Sao_Paulo",
+                })
+              : args.time;
+
+            const clientTime =
+              upcomingAppointment?.startTime.toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "America/Sao_Paulo",
+              });
+
+            if (suggestTime === clientTime && upcomingAppointment) {
+              const nextTick = new Date(
+                upcomingAppointment.endTime.getTime() + 10 * 60000,
+              );
+              suggestTime = nextTick.toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "America/Sao_Paulo",
+              });
+            }
+
+            const ai_response = `O horário das ${args.time} já está ocupado com ${targetBarber.name}. O próximo horário disponível com ele é às ${suggestTime}. Pode ser?`;
+
+            await prisma.chatMessage.create({
+              data: {
+                role: "model",
+                content: ai_response,
+                shopId: Number(shopId),
+                clientPhone,
+              },
+            });
+
+            return NextResponse.json({
+              status: "UNAVAILABLE",
+              ai_response: ai_response,
             });
           }
 
-          const ai_response = `O horário das ${args.time} já está ocupado com ${targetBarber.name}. O próximo horário disponível com ele é às ${suggestTime}. Pode ser?`;
+          // Trata a interceptação de Buraco (Gap) detectado no fluxo direto
+          if (errorMessage.startsWith("GAP_DETECTED:")) {
+            const closerTime = errorMessage.split(":")[1];
+            const ai_response = `O das ${args.time} está livre, mas pode ser às ${closerTime} para me ajudar na agenda? Pode ser?`;
 
-          await prisma.chatMessage.create({
-            data: {
-              role: "model",
-              content: ai_response,
-              shopId: Number(shopId),
-              clientPhone,
-            },
-          });
+            await prisma.chatMessage.create({
+              data: {
+                role: "model",
+                content: ai_response,
+                shopId: Number(shopId),
+                clientPhone,
+              },
+            });
 
-          return NextResponse.json({
-            status: "UNAVAILABLE",
-            ai_response: ai_response,
-          });
+            return NextResponse.json({
+              status: "GAP_DETECTED",
+              ai_response: ai_response,
+            });
+          }
+
+          // Repassa o erro adiante se for uma falha crítica não mapeada
+          throw txError;
         }
-
-        let finalAppointment;
-
-        if (upcomingAppointment) {
-          finalAppointment = await prisma.appointment.update({
-            where: { id: upcomingAppointment.id },
-            data: {
-              startTime: startAt,
-              endTime: endTime,
-              barberId: targetBarber.id,
-              serviceId: targetService.id,
-              status: "CONFIRMED",
-            },
-          });
-        } else {
-          finalAppointment = await prisma.appointment.create({
-            data: {
-              clientName: args.clientName,
-              clientPhone,
-              shopId: shopData.id,
-              barberId: targetBarber.id,
-              serviceId: targetService.id,
-              startTime: startAt,
-              endTime: endTime,
-            },
-          });
-        }
-
-        await prisma.chatMessage.deleteMany({
-          where: { shopId: Number(shopId), clientPhone },
-        });
-
-        const successMsg = upcomingAppointment
-          ? "Certo. Seu horário foi alterado com sucesso!"
-          : "Agendado com sucesso!";
-
-        return NextResponse.json({
-          status: "SUCCESS",
-          ai_response: successMsg,
-          details: finalAppointment,
-        });
       }
 
       result = await sendMessageWithRetry(chat, [
