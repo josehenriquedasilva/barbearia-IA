@@ -139,7 +139,11 @@ export async function POST(request: Request) {
         startTime: { gte: new Date(), lte: searchLimit },
         status: "CONFIRMED",
       },
-      select: { startTime: true, barber: { select: { name: true } } },
+      select: {
+        startTime: true,
+        endTime: true,
+        barber: { select: { name: true } },
+      },
       orderBy: { startTime: "asc" },
     });
 
@@ -148,7 +152,7 @@ export async function POST(request: Request) {
         ? busyAppointments
             .map(
               (a) =>
-                `- ${a.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às ${a.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} com ${a.barber.name}`,
+                `- ${a.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} das ${a.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} até às ${a.endTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} com ${a.barber.name}`,
             )
             .join("\n")
         : "Nenhum horário ocupado nos próximos dias.";
@@ -392,6 +396,7 @@ export async function POST(request: Request) {
                 before: suggestedBefore,
                 after: suggestedAfter,
               },
+              nextAvailableTime: suggestedBefore,
               requestedTime: time,
             };
           } else {
