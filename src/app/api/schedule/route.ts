@@ -653,6 +653,31 @@ export async function POST(request: Request) {
           terca: 2,
         };
 
+        /* ========================================================================
+          ALTERAÇÃO 3: VALIDAÇÃO DE HORÁRIOS EXTREMOS NO AGENDAMENTO DEFINITIVO
+          ========================================================================
+          Uma trava de segurança extra na persistência do agendamento para impedir
+          criações indevidas fora do horário de funcionamento padrão da barbearia.
+        */
+        const [openH, openM] = shopData.openingTime.split(":").map(Number);
+        const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
+        const openingMinutes = openH * 60 + openM;
+        const closingMinutes = closeH * 60 + closeM;
+
+        if (appointmentMinutes < openingMinutes) {
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: `Não estamos abertos às ${args.time}. Nosso horário de funcionamento começa às ${shopData.openingTime}.`,
+          });
+        }
+
+        if (appointmentMinutes >= closingMinutes) {
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: `Não estamos funcionando às ${args.time}. Encerramos o expediente às ${shopData.closingTime}.`,
+          });
+        }
+
         if (diaDaSemana === 0 && shopData.isClosedSunday) {
           return NextResponse.json({
             status: "CLOSED",
