@@ -579,6 +579,29 @@ export async function POST(request: Request) {
           });
         }
 
+        const [openH, openM] = shopData.openingTime.split(":").map(Number);
+        const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
+        const openingMinutes = openH * 60 + openM;
+        const closingMinutes = closeH * 60 + closeM;
+
+        const maxClosingMinutes = closingMinutes + 20;
+        const appointmentEndMinutes =
+          appointmentMinutes + targetService.durationMinutes;
+
+        if (
+          appointmentMinutes < openingMinutes ||
+          appointmentEndMinutes > maxClosingMinutes
+        ) {
+          const maxCloseH = Math.floor(maxClosingMinutes / 60);
+          const maxCloseM = maxClosingMinutes % 60;
+          const maxCloseTimeStr = `${String(maxCloseH).padStart(2, "0")}:${String(maxCloseM).padStart(2, "0")}`;
+
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: `No momento estamos fechados nesse horário. Nosso expediente de atendimento vai até às ${shopData.closingTime}, permitindo serviços que finalizem até no máximo às ${maxCloseTimeStr}. Que tal escolher outro horário?`,
+          });
+        }
+
         const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
         const startOfDay = new Date(`${args.date}T00:00:00-03:00`);
 
@@ -588,9 +611,7 @@ export async function POST(request: Request) {
         );
 
         try {
-          // Executa a checagem e gravação de forma isolada e segura contra concorrência
           const finalAppointment = await prisma.$transaction(async (tx) => {
-            // 1. Checa colisão exata de horários
             const existing = await tx.appointment.findFirst({
               where: {
                 barberId: targetBarber.id,
@@ -607,7 +628,6 @@ export async function POST(request: Request) {
               throw new Error("TIME_SLOT_TAKEN");
             }
 
-            // 2. Validação de Buraco (Gap) - Mesma lógica do checkAvailability
             const lastBefore = await tx.appointment.findFirst({
               where: {
                 barberId: targetBarber.id,
@@ -653,9 +673,7 @@ export async function POST(request: Request) {
               }
             }
 
-            // Se gerar um buraco na agenda, precisamos validar se o cliente já recusou antes
             if (isGap) {
-              // Verifica se a mensagem de sugestão de buraco já foi enviada no histórico recente
               const alreadySuggested = history.some(
                 (msg) =>
                   msg.role === "model" &&
@@ -666,13 +684,11 @@ export async function POST(request: Request) {
                   ),
               );
 
-              // Se ainda não sugeriu, bloqueia o agendamento direto e força a pergunta
               if (!alreadySuggested) {
                 throw new Error(`GAP_DETECTED:${suggestedCloserTime}`);
               }
             }
 
-            // 3. Persistência dos dados caso passe nas regras acima
             if (upcomingAppointment) {
               return await tx.appointment.update({
                 where: { id: upcomingAppointment.id },
@@ -699,7 +715,6 @@ export async function POST(request: Request) {
             }
           });
 
-          // Limpa o histórico de chat em caso de sucesso total
           await prisma.chatMessage.deleteMany({
             where: { shopId: Number(shopId), clientPhone },
           });
@@ -772,7 +787,6 @@ export async function POST(request: Request) {
             });
           }
 
-          // Trata a interceptação de Buraco (Gap) detectado no fluxo direto
           if (errorMessage.startsWith("GAP_DETECTED:")) {
             const closerTime = errorMessage.split(":")[1];
             const ai_response = `O das ${args.time} está livre, mas pode ser às ${closerTime} para me ajudar na agenda? Pode ser?`;
@@ -792,7 +806,6 @@ export async function POST(request: Request) {
             });
           }
 
-          // Repassa o erro adiante se for uma falha crítica não mapeada
           throw txError;
         }
       }
@@ -850,7 +863,6 @@ export async function POST(request: Request) {
         ai_response: [
           "Ops, tive um pequeno problema.",
           "Repita sua última mensagem para eu tentar de novo.",
-          "Ou aguarde que iremos lhe responder em breve.",
         ],
       });
     }
