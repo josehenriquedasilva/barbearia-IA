@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { startNewChat } from "@/lib/gemini";
 import { ChatSession, Part, SchemaType, Tool } from "@google/generative-ai";
+import { getAvailableSlotsForDay } from "@/utils/slots";
 
 export const dynamic = "force-dynamic";
 
@@ -187,46 +188,46 @@ export async function POST(request: Request) {
     }
 
     const systemInstruction = `Você é o assistente da "${shopData.name}".
-    ${appointmentInfo}
-    Hoje: ${currentDate}.
+${appointmentInfo}
+Hoje: ${currentDate}.
 
-    DIRETRIZES:
-      - Na primeira mensagem, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}.") e pergunte para qual horário ele deseja agendar. 
-      - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?, EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.".
-      - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
-      - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
-      - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
-      - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
-      - Intervalo obrigatório: 10 min entre atendimentos.
-      - Primeiro horário pós-almoço: ${
-        shopData.hasLunchBreak && shopData.lunchEnd
-          ? (() => {
-              const [h, m] = shopData.lunchEnd.split(":").map(Number);
-              const total = h * 60 + m + 10;
-              return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-            })()
-          : "N/A"
-      }.
+DIRETRIZES:
+  - Na primeira mensagem, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}.") e pergunte para qual horário ele deseja agendar. 
+  - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?, EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.".
+  - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
+  - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
+  - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
+  - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
+  - Intervalo obrigatório: 10 min entre atendimentos.
+  - Primeiro horário pós-almoço: ${
+    shopData.hasLunchBreak && shopData.lunchEnd
+      ? (() => {
+          const [h, m] = shopData.lunchEnd.split(":").map(Number);
+          const total = h * 60 + m + 10;
+          return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+        })()
+      : "N/A"
+  }.
 
-  SITUAÇÕES DE AGENDAMENTO:
-    1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
-    2. Coleta de Dados: Olhe o histórico e peça APENAS o dado que está faltando (Nome ou Serviço). Se o cliente já falou o serviço, NUNCA repita o nome dele e nem mencione-o novamente; peça apenas o Nome.
-    3. Se o cliente perguntar se determinado horário está disponivel, responde (ex: este horário está livre) e siga pedindo os dados restantes.
-    4. isGap (Buraco): Ignore pedido original. Responda: "O das [requestedTime] está livre, mas pode ser às [suggestedCloserTime] para me ajudar na agenda? Pode ser?".
-    5. Ocupado/Almoço: "O das [hora] está ocupado. Consigo às [hora sugerida], o mais próximo. Pode ser?".
+SITUAÇÕES DE AGENDAMENTO:
+  1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
+  2. Coleta de Dados: Olhe o histórico e peça APENAS o dado que está faltando (Nome ou Serviço). Se o cliente já falou o serviço, NUNCA repita o nome dele e nem mencione-o novamente; peça apenas o Nome.
+  3. Confirmação de Horário: Se o cliente perguntar se determinado horário está disponível, responda (ex: "Este horário está livre") e siga pedindo os dados restantes.
+  4. Ocupado/Almoço: "O das [hora] está ocupado. Consigo às [hora sugerida], o mais próximo. Pode ser?".
+  5. Consulta de Horários: Sempre que o cliente quiser saber os horários ou sugerir um dia, use a ferramenta 'getAvailableSlots'. Mostre as opções e priorize sugerir os horários marcados como preferenciais (SIM), pois eles evitam buracos na agenda.
 
-  REGRAS GERAIS:
-    - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoServico}"), a menos que o cliente pergunte explicitamente.` : ""}
-    - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoBarbeiro}"), a menos que o cliente pergunte explicitamente.` : ""}
-    - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
-    - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
-    - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
-    - Analise rigorosamente o histórico antes de responder para nunca pedir dados já fornecidos.
+REGRAS GERAIS:
+  - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoServico}"), a menos que o cliente pergunte explicitamente.` : ""}
+  - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoBarbeiro}"), a menos que o cliente pergunte explicitamente.` : ""}
+  - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
+  - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
+  - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
+  - Analise rigorosamente o histórico antes de responder para nunca pedir dados já fornecidos.
 
-  INFO ATUAL:
-    Ocupação: ${busyScheduleString}
-    Serviços: ${servicosInfo}
-    Lista de serviços resumida: ${listaResumida}.`;
+INFO ATUAL:
+  Ocupação: ${busyScheduleString}
+  Serviços: ${servicosInfo}
+  Lista de serviços resumida: ${listaResumida}.`;
 
     const tools: Tool[] = [
       {
@@ -283,9 +284,9 @@ export async function POST(request: Request) {
             },
           },
           {
-            name: "checkAvailability",
+            name: "getAvailableSlots",
             description:
-              "Verifica se um horário específico está disponível antes de sugerir ao cliente ou antes de tentar agendar.",
+              "Busca a grade completa de horários de um dia específico (livres, ocupados e recomendados) para o barbeiro e serviço escolhido.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -293,20 +294,16 @@ export async function POST(request: Request) {
                   type: SchemaType.STRING,
                   description: "Data no formato YYYY-MM-DD",
                 },
-                time: {
-                  type: SchemaType.STRING,
-                  description: "Hora no formato HH:MM",
-                },
                 barberName: {
                   type: SchemaType.STRING,
-                  description: "Nome do barbeiro",
+                  description: "Nome do barbeiro.",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: "Nome do serviço",
+                  description: "Nome do serviço desejado.",
                 },
               },
-              required: ["date", "time", "barberName", "serviceName"],
+              required: ["date", "barberName", "serviceName"],
             },
           },
         ],
@@ -322,12 +319,10 @@ export async function POST(request: Request) {
       const call = calls[0];
       let functionResponse: Record<string, unknown> = {};
 
-      if (call.name === "checkAvailability") {
-        const { date, time, barberName, serviceName } =
+      if (call.name === "getAvailableSlots") {
+        const { date, barberName, serviceName } =
           call.args as unknown as CheckArgs;
-        const startAt = new Date(`${date}T${time}:00-03:00`);
-        const startOfDay = new Date(`${date}T00:00:00-03:00`);
-        const endOfDay = new Date(`${date}T23:59:59-03:00`);
+
         const targetBarber = shopData.barbers.find(
           (b) => b.name.toLowerCase() === barberName.toLowerCase(),
         );
@@ -337,207 +332,36 @@ export async function POST(request: Request) {
 
         if (!targetBarber || !targetService) {
           functionResponse = {
-            available: false,
-            message: "Barbeiro ou serviço não encontrado.",
+            error: true,
+            message: "Barbeiro ou serviço inválido para essa loja.",
           };
         } else {
-          const [hour, minute] = time.split(":").map(Number);
-          const appointmentMinutes = hour * 60 + minute;
-          const dataAgendamento = new Date(`${date}T12:00:00Z`);
-          const diaDaSemana = dataAgendamento.getUTCDay();
-          const diasSemanaMap: Record<string, number> = {
-            domingo: 0,
-            "segunda-feira": 1,
-            "terça-feira": 2,
-            "quarta-feira": 3,
-            "quinta-feira": 4,
-            "sexta-feira": 5,
-            sábado: 6,
-            segunda: 1,
-            terca: 2,
+          // Chama a função robusta do utils
+          const slotsGrid = await getAvailableSlotsForDay(
+            Number(shopId),
+            date,
+            targetBarber.id,
+            targetService.durationMinutes,
+          );
+
+          // Filtramos para enviar à IA apenas o que ela precisa saber de forma resumida
+          // Economiza tokens e deixa a resposta ultra rápida
+          const slotsDisponiveis = slotsGrid.filter(
+            (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
+          );
+
+          functionResponse = {
+            date,
+            barberName,
+            serviceName,
+            grid: slotsDisponiveis.map((s) => ({
+              horario: s.time,
+              preferencial:
+                s.status === "RECOMENDADO"
+                  ? "SIM (Ofereça esse primeiro para o cliente)"
+                  : "NÃO",
+            })),
           };
-
-          // Veirifar a possobilidade de criar uma tabela de horários dinâmica no banco de dados
-
-          const [openH, openM] = shopData.openingTime.split(":").map(Number);
-          const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
-          const openingMinutes = openH * 60 + openM;
-          const closingMinutes = closeH * 60 + closeM;
-          const maxClosingMinutes = closingMinutes + 20;
-          const appointmentEndMinutes =
-            appointmentMinutes + targetService.durationMinutes;
-
-          if (diaDaSemana === 0 && shopData.isClosedSunday) {
-            functionResponse = {
-              available: false,
-              message: "Não abrimos aos domingos. Pode escolher outro dia?",
-            };
-          } else if (
-            shopData.hasDayOff &&
-            shopData.dayOff &&
-            diaDaSemana === diasSemanaMap[shopData.dayOff.toLowerCase()]
-          ) {
-            functionResponse = {
-              available: false,
-              message: `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
-            };
-          } else if (
-            shopData.hasLunchBreak &&
-            shopData.lunchStart &&
-            shopData.lunchEnd &&
-            (() => {
-              const [lStartH, lStartM] = shopData.lunchStart
-                .split(":")
-                .map(Number);
-              const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
-              const lunchStartTotal = lStartH * 60 + lStartM;
-              const lunchEndTotal = lEndH * 60 + lEndM;
-              const firstSlotAfterLunch = lunchEndTotal + 10;
-              return (
-                appointmentMinutes >= lunchStartTotal &&
-                appointmentMinutes < firstSlotAfterLunch
-              );
-            })()
-          ) {
-            const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
-            const lunchEndTotal = lEndH * 60 + lEndM;
-            const firstSlotAfterLunch = lunchEndTotal + 10;
-            const suggestH = Math.floor(firstSlotAfterLunch / 60);
-            const suggestM = firstSlotAfterLunch % 60;
-            const suggestTime = `${String(suggestH).padStart(2, "0")}:${String(suggestM).padStart(2, "0")}`;
-            functionResponse = {
-              available: false,
-              message: `O horário das ${time} não está disponível devido ao intervalo de almoço. O primeiro horário livre pós-almoço é às ${suggestTime}.`,
-            };
-          } else if (
-            appointmentMinutes < openingMinutes ||
-            appointmentEndMinutes > maxClosingMinutes
-          ) {
-            functionResponse = {
-              available: false,
-              message: `Nosso expediente de atendimento vai até às ${shopData.closingTime}. Que tal escolher outro horário?`,
-            };
-          } else {
-            const totalDuration = targetService.durationMinutes + 10;
-            const endAt = new Date(startAt.getTime() + totalDuration * 60000);
-
-            const isBusy = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                NOT: { id: upcomingAppointment?.id },
-                AND: [
-                  { startTime: { lt: endAt } },
-                  { endTime: { gt: startAt } },
-                ],
-              },
-            });
-
-            if (isBusy) {
-              const lastAppointmentBefore = await prisma.appointment.findFirst({
-                where: {
-                  barberId: targetBarber.id,
-                  status: "CONFIRMED",
-                  startTime: { lt: startAt, gte: startOfDay },
-                  NOT: { id: upcomingAppointment?.id },
-                },
-                orderBy: { endTime: "desc" },
-              });
-
-              const nextAppointmentAfter = await prisma.appointment.findFirst({
-                where: {
-                  barberId: targetBarber.id,
-                  status: "CONFIRMED",
-                  startTime: { gte: startAt, lte: endOfDay },
-                  NOT: { id: upcomingAppointment?.id },
-                },
-                orderBy: { startTime: "asc" },
-              });
-
-              const timeToStr = (d: Date) =>
-                d.toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: "America/Sao_Paulo",
-                });
-
-              const suggestedBefore = lastAppointmentBefore
-                ? timeToStr(new Date(lastAppointmentBefore.endTime))
-                : shopData.openingTime;
-
-              const suggestedAfter = nextAppointmentAfter
-                ? timeToStr(nextAppointmentAfter.endTime)
-                : "sem mais vagas hoje";
-
-              functionResponse = {
-                available: false,
-                message: `O horário das ${time} está ocupado.`,
-                options: {
-                  before: suggestedBefore,
-                  after: suggestedAfter,
-                },
-                nextAvailableTime: suggestedBefore,
-                requestedTime: time,
-              };
-            } else {
-              const lastBefore = await prisma.appointment.findFirst({
-                where: {
-                  barberId: targetBarber.id,
-                  status: "CONFIRMED",
-                  startTime: { lt: startAt, gte: startOfDay },
-                  NOT: { id: upcomingAppointment?.id },
-                },
-                orderBy: { endTime: "desc" },
-              });
-
-              const timeToStr = (d: Date) =>
-                d.toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: "America/Sao_Paulo",
-                });
-
-              if (lastBefore) {
-                const idealStartTime = new Date(lastBefore.endTime);
-
-                const diffInMinutes =
-                  (startAt.getTime() - idealStartTime.getTime()) / 60000;
-
-                if (diffInMinutes > 0 && diffInMinutes <= 45) {
-                  functionResponse = {
-                    available: true,
-                    isGap: true,
-                    suggestedCloserTime: timeToStr(idealStartTime),
-                    requestedTime: time,
-                  };
-                } else {
-                  functionResponse = { available: true };
-                }
-              } else {
-                const [openH, openM] = shopData.openingTime
-                  .split(":")
-                  .map(Number);
-
-                const openingDate = new Date(startAt);
-
-                openingDate.setHours(openH, openM, 0, 0);
-
-                const diffFromOpening =
-                  (startAt.getTime() - openingDate.getTime()) / 60000;
-
-                if (diffFromOpening > 10 && diffFromOpening <= 45) {
-                  functionResponse = {
-                    available: true,
-                    isGap: true,
-                    suggestedCloserTime: shopData.openingTime,
-                    requestedTime: time,
-                  };
-                } else {
-                  functionResponse = { available: true };
-                }
-              }
-            }
-          }
         }
       }
 
@@ -754,6 +578,7 @@ export async function POST(request: Request) {
               }
             }
 
+            // Altere essa parte dentro do seu prisma.$transaction:
             if (isGap) {
               const alreadySuggested = history.some(
                 (msg) =>
@@ -761,7 +586,9 @@ export async function POST(request: Request) {
                   msg.parts.some(
                     (p) =>
                       typeof p.text === "string" &&
-                      p.text.includes("ajudar na agenda"),
+                      (p.text.includes("ajudar na agenda") ||
+                        p.text.includes("horários disponíveis") ||
+                        p.text.includes("Disponíveis:")),
                   ),
               );
 
