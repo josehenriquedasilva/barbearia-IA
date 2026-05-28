@@ -191,7 +191,7 @@ export async function POST(request: Request) {
     Hoje: ${currentDate}.
 
     DIRETRIZES:
-      - Na primeira mensagem, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}."). 
+      - Na primeira mensagem, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}.") e pergunte para qual horário ele deseja agendar. 
       - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?, EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.".
       - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
       - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
@@ -356,6 +356,8 @@ export async function POST(request: Request) {
             segunda: 1,
             terca: 2,
           };
+
+          // Veirifar a possobilidade de criar uma tabela de horários dinâmica no banco de dados
 
           const [openH, openM] = shopData.openingTime.split(":").map(Number);
           const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
