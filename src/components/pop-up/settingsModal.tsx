@@ -1,6 +1,6 @@
 import { Service, SettingsModalProps } from "@/types/types";
 import { useEffect, useState } from "react";
-import { BiCheckCircle, BiCoffeeTogo, BiPlus, BiX } from "react-icons/bi";
+import { BiCheckCircle, BiCoffeeTogo, BiInfoCircle, BiPlus, BiX } from "react-icons/bi";
 import { BsClock, BsScissors, BsTrash2 } from "react-icons/bs";
 import { CiSettings } from "react-icons/ci";
 import { FaDollarSign } from "react-icons/fa";
@@ -532,6 +532,45 @@ export default function SettingsModal({
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="bg-amber-600/5 border border-amber-600/20 rounded-xl p-4 flex gap-3">
+                <BiInfoCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <h5 className="text-sm font-bold text-neutral-200">
+                    Regras Automáticas da Agenda
+                  </h5>
+                  <p className="text-xs text-neutral-400 leading-relaxed">
+                    Para garantir a organização do seu dia, o sistema aplica
+                    automaticamente algumas margens de segurança padrão:
+                  </p>
+                  <ul className="text-xs space-y-1.5 text-neutral-300 list-disc list-inside pl-1">
+                    <li>
+                      <span className="font-semibold text-neutral-200">
+                        Intervalo de Limpeza:
+                      </span>{" "}
+                      Pula obrigatória de{" "}
+                      <span className="text-amber-500 font-medium">10 min</span>{" "}
+                      entre cada atendimento.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-neutral-200">
+                        Tolerância do Almoço:
+                      </span>{" "}
+                      Clientes podem agendar serviços que invadam até{" "}
+                      <span className="text-amber-500 font-medium">10 min</span>{" "}
+                      do seu almoço.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-neutral-200">
+                        Tolerância de Fechamento:
+                      </span>{" "}
+                      O último corte do dia pode se estender até{" "}
+                      <span className="text-amber-500 font-medium">20 min</span>{" "}
+                      após o fechamento da loja.
+                    </li>
+                  </ul>
+                </div>
               </div>
             </section>
           </div>

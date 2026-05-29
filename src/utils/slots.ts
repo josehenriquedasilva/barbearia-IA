@@ -128,6 +128,3 @@ export async function getAvailableSlotsForDay(
 
   return slots;
 }
-
-// Fazer com que a IA responda "Qual prefere?" quando sugeriri dois horários.
-// Tirar dúvida se é boa ideia informar no dashboard os horários fixos de intervalo e os de invasão de almoço e fechamento
