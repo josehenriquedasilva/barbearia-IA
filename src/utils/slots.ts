@@ -53,14 +53,12 @@ export async function getAvailableSlotsForDay(
       minute: "2-digit",
       timeZone: "America/Sao_Paulo",
     });
-    return {
-      start: timeToMinutes(startLocal),
-      end: timeToMinutes(endLocal),
-    };
+    return { start: timeToMinutes(startLocal), end: timeToMinutes(endLocal) };
   });
 
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
+  const maxCloseMin = closeMin + 20; // Tolerância de 20 min no fechamento
 
   const lunchStartMin =
     shop.hasLunchBreak && shop.lunchStart
@@ -68,41 +66,56 @@ export async function getAvailableSlotsForDay(
       : null;
   const lunchEndMin =
     shop.hasLunchBreak && shop.lunchEnd ? timeToMinutes(shop.lunchEnd) : null;
+  const maxLunchStartMin = lunchStartMin !== null ? lunchStartMin + 10 : null; // Tolerância de 10 min no almoço
 
   const slots: Slot[] = [];
-  const step = 15;
+  const interval = 10;
 
-  for (let min = openMin; min <= closeMin - serviceDuration; min += step) {
+  let min = openMin;
+
+  // O loop agora roda permitindo que a duração caiba dentro do limite estendido de fechamento
+  while (min <= maxCloseMin - serviceDuration) {
     const slotStart = min;
     const slotEnd = min + serviceDuration;
     const timeString = minutesToTime(slotStart);
 
-    if (lunchStartMin !== null && lunchEndMin !== null) {
-      if (
-        (slotStart >= lunchStartMin && slotStart < lunchEndMin) ||
-        (slotEnd > lunchStartMin && slotEnd <= lunchEndMin)
-      ) {
+    // 1. VERIFICAÇÃO DE ALMOÇO (COM TOLERÂNCIA)
+    if (
+      lunchStartMin !== null &&
+      lunchEndMin !== null &&
+      maxLunchStartMin !== null
+    ) {
+      const invadesLunchPastTolerance =
+        slotEnd > maxLunchStartMin && slotStart < lunchEndMin;
+      const startsDuringLunch =
+        slotStart >= lunchStartMin && slotStart < lunchEndMin;
+
+      if (invadesLunchPastTolerance || startsDuringLunch) {
         slots.push({ time: timeString, status: "ALMOCO" });
+        min = lunchEndMin + interval; // Pula direto para o primeiro horário pós-almoço
         continue;
       }
     }
 
-    const hasOverlap = busyRanges.some((range) => {
-      return slotStart < range.end && slotEnd > range.start;
-    });
+    // 2. VERIFICAÇÃO DE HORÁRIO OCUPADO
+    const conflictingApp = busyRanges.find(
+      (range) => slotStart < range.end && slotEnd > range.start,
+    );
 
-    if (hasOverlap) {
+    if (conflictingApp) {
       slots.push({ time: timeString, status: "OCUPADO" });
+      min = conflictingApp.end;
       continue;
     }
 
+    // 3. HORÁRIO DISPONÍVEL
+    const isBeginningOfDay = slotStart === openMin;
     const isBackToBackWithPrevious = busyRanges.some(
       (range) => range.end === slotStart,
     );
     const isBackToBackWithNext = busyRanges.some(
-      (range) => range.start === slotEnd + 10,
+      (range) => range.start === slotEnd + interval,
     );
-    const isBeginningOfDay = slotStart === openMin;
 
     if (isBeginningOfDay || isBackToBackWithPrevious || isBackToBackWithNext) {
       slots.push({
@@ -113,6 +126,8 @@ export async function getAvailableSlotsForDay(
     } else {
       slots.push({ time: timeString, status: "DISPONIVEL" });
     }
+
+    min += serviceDuration + interval;
   }
 
   return slots;

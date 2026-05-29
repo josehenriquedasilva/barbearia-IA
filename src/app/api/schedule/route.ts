@@ -422,23 +422,49 @@ INFO ATUAL:
           shopData.lunchStart &&
           shopData.lunchEnd
         ) {
-          const [lStartH, lStartM] = shopData
-            .lunchStart!.split(":")
-            .map(Number);
-          const [lEndH, lEndM] = shopData.lunchEnd!.split(":").map(Number);
+          const [lStartH, lStartM] = shopData.lunchStart.split(":").map(Number);
+          const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
           const lunchStartTotal = lStartH * 60 + lStartM;
           const lunchEndTotal = lEndH * 60 + lEndM;
           const firstSlotAfterLunch = lunchEndTotal + 10;
 
-          if (
+          // Busca a duração do serviço atual para calcular o término real do atendimento
+          const serviceForLunchCheck = shopData.services.find(
+            (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
+          );
+          const serviceDuration = serviceForLunchCheck
+            ? serviceForLunchCheck.durationMinutes
+            : 0;
+          const appointmentEndMinutesNoInterval =
+            appointmentMinutes + serviceDuration;
+
+          // Define o limite máximo que o corte pode invadir o almoço (Início + 10 minutos)
+          const maxLunchInvasion = lunchStartTotal + 10;
+
+          // 1. Bloqueia se o serviço terminar DEPOIS da tolerância de 10 min e começou antes do almoço terminar
+          const invadesLunchPastTolerance =
+            appointmentEndMinutesNoInterval > maxLunchInvasion &&
+            appointmentMinutes < lunchEndTotal;
+
+          // 2. Bloqueia se o cliente tentar iniciar o serviço depois que o almoço já começou
+          const startsDuringLunch =
             appointmentMinutes >= lunchStartTotal &&
-            appointmentMinutes < firstSlotAfterLunch
+            appointmentMinutes < lunchEndTotal;
+
+          // 3. Bloqueia se tentar iniciar no buffer de intervalo de 10 min logo após o almoço
+          const insidePostLunchBuffer =
+            appointmentMinutes >= lunchEndTotal &&
+            appointmentMinutes < firstSlotAfterLunch;
+
+          if (
+            invadesLunchPastTolerance ||
+            startsDuringLunch ||
+            insidePostLunchBuffer
           ) {
             const suggestH = Math.floor(firstSlotAfterLunch / 60);
             const suggestM = firstSlotAfterLunch % 60;
             const suggestTime = `${String(suggestH).padStart(2, "0")}:${String(suggestM).padStart(2, "0")}`;
 
-            // Ajustado para o novo formato formal de almoço
             const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
@@ -495,13 +521,9 @@ INFO ATUAL:
           appointmentMinutes < openingMinutes ||
           appointmentEndMinutes > maxClosingMinutes
         ) {
-          const maxCloseH = Math.floor(maxClosingMinutes / 60);
-          const maxCloseM = maxClosingMinutes % 60;
-          const maxCloseTimeStr = `${String(maxCloseH).padStart(2, "0")}:${String(maxCloseM).padStart(2, "0")}`;
-
           return NextResponse.json({
             status: "CLOSED",
-            ai_response: `No momento estamos fechados nesse horário. Nosso expediente de atendimento vai até às ${shopData.closingTime}, permitindo serviços que finalizem até no máximo às ${maxCloseTimeStr}. Que tal escolher outro horário?`,
+            ai_response: `No momento estamos fechados nesse horário. Nosso expediente de atendimento vai até às ${shopData.closingTime}, permitindo serviços que finalizem até no máximo 20 minutos após o fechamento. Que tal escolher outro horário?`,
           });
         }
 
