@@ -213,7 +213,7 @@ SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
   2. Coleta de Dados: Olhe o histórico e peça APENAS o dado que está faltando (Nome ou Serviço). Se o cliente já falou o serviço, NUNCA repita o nome dele e nem mencione-o novamente; peça apenas o Nome.
   3. Confirmação de Horário: Se o cliente perguntar se determinado horário está disponível, responda (ex: "Este horário está livre") e siga pedindo os dados restantes.
-  4. Ocupado/Almoço: "O das [hora] está ocupado. Consigo às [hora sugerida], o mais próximo. Pode ser?".
+  4. Ocupado/Almoço: "Temos horário disponível às [hora sugerida]. Pode ser?".
   5. Consulta de Horários: Sempre que o cliente quiser saber os horários ou sugerir um dia, use a ferramenta 'getAvailableSlots'. Mostre as opções e priorize sugerir os horários marcados como preferenciais (SIM), pois eles evitam buracos na agenda.
 
 REGRAS GERAIS:
@@ -250,7 +250,7 @@ INFO ATUAL:
                 time: {
                   type: SchemaType.STRING,
                   description:
-                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use o horário sugerido.",
+                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use the horário sugerido.",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
@@ -336,7 +336,6 @@ INFO ATUAL:
             message: "Barbeiro ou serviço inválido para essa loja.",
           };
         } else {
-          // Chama a função robusta do utils
           const slotsGrid = await getAvailableSlotsForDay(
             Number(shopId),
             date,
@@ -344,8 +343,6 @@ INFO ATUAL:
             targetService.durationMinutes,
           );
 
-          // Filtramos para enviar à IA apenas o que ela precisa saber de forma resumida
-          // Economiza tokens e deixa a resposta ultra rápida
           const slotsDisponiveis = slotsGrid.filter(
             (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
           );
@@ -441,7 +438,8 @@ INFO ATUAL:
             const suggestM = firstSlotAfterLunch % 60;
             const suggestTime = `${String(suggestH).padStart(2, "0")}:${String(suggestM).padStart(2, "0")}`;
 
-            const ai_response = `O horário das ${args.time} não está disponível O primeiro horário livre é às ${suggestTime}. Pode ser?`;
+            // Ajustado para o novo formato formal de almoço
+            const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
               data: {
@@ -578,7 +576,6 @@ INFO ATUAL:
               }
             }
 
-            // Altere essa parte dentro do seu prisma.$transaction:
             if (isGap) {
               const alreadySuggested = history.some(
                 (msg) =>
@@ -678,7 +675,8 @@ INFO ATUAL:
               });
             }
 
-            const ai_response = `O horário das ${args.time} já está ocupado com ${targetBarber.name}. O próximo horário disponível com ele é às ${suggestTime}. Pode ser?`;
+            // Ajustado para o novo formato formal de Horário Ocupado
+            const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
               data: {
@@ -697,7 +695,9 @@ INFO ATUAL:
 
           if (errorMessage.startsWith("GAP_DETECTED:")) {
             const closerTime = errorMessage.split(":")[1];
-            const ai_response = `O das ${args.time} está livre, mas pode ser às ${closerTime} para me ajudar na agenda? Pode ser?`;
+
+            // Ajustado para o novo formato formal de Otimização de Agenda/Gap
+            const ai_response = `Temos horário disponível às ${closerTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
               data: {
