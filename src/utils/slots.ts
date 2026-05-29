@@ -58,7 +58,7 @@ export async function getAvailableSlotsForDay(
 
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
-  const maxCloseMin = closeMin + 20; // Tolerância de 20 min no fechamento
+  const maxCloseMin = closeMin + 20;
 
   const lunchStartMin =
     shop.hasLunchBreak && shop.lunchStart
@@ -66,20 +66,18 @@ export async function getAvailableSlotsForDay(
       : null;
   const lunchEndMin =
     shop.hasLunchBreak && shop.lunchEnd ? timeToMinutes(shop.lunchEnd) : null;
-  const maxLunchStartMin = lunchStartMin !== null ? lunchStartMin + 10 : null; // Tolerância de 10 min no almoço
+  const maxLunchStartMin = lunchStartMin !== null ? lunchStartMin + 10 : null;
 
   const slots: Slot[] = [];
   const interval = 10;
 
   let min = openMin;
 
-  // O loop agora roda permitindo que a duração caiba dentro do limite estendido de fechamento
   while (min <= maxCloseMin - serviceDuration) {
     const slotStart = min;
     const slotEnd = min + serviceDuration;
     const timeString = minutesToTime(slotStart);
 
-    // 1. VERIFICAÇÃO DE ALMOÇO (COM TOLERÂNCIA)
     if (
       lunchStartMin !== null &&
       lunchEndMin !== null &&
@@ -92,12 +90,11 @@ export async function getAvailableSlotsForDay(
 
       if (invadesLunchPastTolerance || startsDuringLunch) {
         slots.push({ time: timeString, status: "ALMOCO" });
-        min = lunchEndMin + interval; // Pula direto para o primeiro horário pós-almoço
+        min = lunchEndMin + interval;
         continue;
       }
     }
 
-    // 2. VERIFICAÇÃO DE HORÁRIO OCUPADO
     const conflictingApp = busyRanges.find(
       (range) => slotStart < range.end && slotEnd > range.start,
     );
@@ -108,7 +105,6 @@ export async function getAvailableSlotsForDay(
       continue;
     }
 
-    // 3. HORÁRIO DISPONÍVEL
     const isBeginningOfDay = slotStart === openMin;
     const isBackToBackWithPrevious = busyRanges.some(
       (range) => range.end === slotStart,
@@ -132,3 +128,6 @@ export async function getAvailableSlotsForDay(
 
   return slots;
 }
+
+// Fazer com que a IA responda "Qual prefere?" quando sugeriri dois horários.
+// Tirar dúvida se é boa ideia informar no dashboard os horários fixos de intervalo e os de invasão de almoço e fechamento
