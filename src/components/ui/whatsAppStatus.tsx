@@ -3,13 +3,15 @@
 import {
   checkWhatsAppStatusAction,
   getPairingCodeAction,
+  disconnectWhatsAppAction,
 } from "@/app/(dashboard)/actions";
 import { useState, useEffect } from "react";
-import { BiCheckCircle, BiErrorCircle, BiRefresh } from "react-icons/bi";
+import { BiErrorCircle, BiRefresh } from "react-icons/bi";
 import { TbLoader2 } from "react-icons/tb";
 import { BsPhoneVibrate, BsWhatsapp } from "react-icons/bs";
 import { formatPhone } from "@/utils/formatters";
 import { IoClose } from "react-icons/io5";
+import { VscDebugDisconnect } from "react-icons/vsc";
 
 interface WhatsAppStatusProps {
   shopId: number;
@@ -61,22 +63,89 @@ export function WhatsAppStatus({
     setLoading(false);
   }
 
+  // Trocar esse aviso de corfirm/delete por um pop-up/modal
+  async function handleDisconnect() {
+    const confirmDisconnect = confirm(
+      "Tem certeza que deseja desconectar o WhatsApp da sua IA? Ela parará de responder seus clientes imediatamente.",
+    );
+    if (!confirmDisconnect) return;
+
+    setLoading(true);
+    setError(null);
+    const res = await disconnectWhatsAppAction(shopId, slug);
+    if (res.success) {
+      setIsConnected(false);
+      setPairingCode(null);
+    } else {
+      setError(res.error || "Erro ao desconectar. Tente novamente.");
+    }
+    setLoading(false);
+  }
+
   if (isConnected === null) return null;
 
   return (
     <div className="mb-8 w-full">
+      {error && (
+        <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-3 mb-4 animate-in fade-in slide-in-from-top-2">
+          <BiErrorCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-[11px] font-bold text-red-500 uppercase tracking-wider">
+              Erro
+            </p>
+            <p className="text-xs text-red-200/70">
+              Recarregue a página e tente novamente.
+            </p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-zinc-500 hover:text-white cursor-pointer"
+          >
+            <IoClose size={16} />
+          </button>
+        </div>
+      )}
+
       {isConnected ? (
-        <div className="flex items-center gap-3 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-xl w-fit">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <span className="text-sm font-bold text-green-500">
-            IA Assistente Ativa
-          </span>
-          <BiCheckCircle className="w-5 h-5 text-green-500" />
+        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-300">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-green-500/10 rounded-2xl text-green-500 shrink-0 border border-green-500/20 relative">
+              <BsWhatsapp className="w-6 h-6" />
+              <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#1a1a1a] absolute -top-0.5 -right-0.5 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                IA Assistente Ativa
+                <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full uppercase tracking-tighter font-bold border border-green-500/30">
+                  Online
+                </span>
+              </h3>
+              <p className="text-sm text-zinc-400 max-w-md leading-relaxed">
+                O assistente virtual está conectado e respondendo no número{" "}
+                <span className="text-zinc-200 font-semibold underline decoration-green-500/30">
+                  {formattedPhone}
+                </span>
+                .
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleDisconnect}
+            disabled={loading}
+            className="w-full sm:w-auto px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+          >
+            {loading ? (
+              <TbLoader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <VscDebugDisconnect />
+            )}
+            Desconectar Número
+          </button>
         </div>
       ) : (
-        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="flex flex-col lg:flex-row items-stretch">
-            {/* Lado Esquerdo: Info */}
             <div className="flex-1 p-5 sm:p-6 flex items-start gap-4">
               <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-500 shrink-0 border border-amber-500/20">
                 <BsWhatsapp className="w-6 h-6" />
@@ -98,31 +167,12 @@ export function WhatsAppStatus({
               </div>
             </div>
 
-            {/* Lado Direito: Ações/Código */}
             <div className="bg-zinc-900/50 border-t lg:border-t-0 lg:border-l border-zinc-800 p-5 sm:p-6 flex flex-col items-center justify-center min-w-full lg:min-w-[340px] gap-4">
-              {error && (
-                <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-                  <BiErrorCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-[11px] font-bold text-red-500 uppercase tracking-wider">
-                      Erro
-                    </p>
-                    <p className="text-xs text-red-200/70">{error}</p>
-                  </div>
-                  <button
-                    onClick={() => setError(null)}
-                    className="text-zinc-500 hover:text-white cursor-pointer"
-                  >
-                    <IoClose size={16} />
-                  </button>
-                </div>
-              )}
-
               {!pairingCode ? (
                 <button
                   onClick={handleGenerateCode}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-2 md:py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-xs ransition-all shadow-lg active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                 >
                   {loading ? (
                     <TbLoader2 className="w-5 h-5 animate-spin" />
@@ -133,7 +183,6 @@ export function WhatsAppStatus({
                 </button>
               ) : (
                 <div className="w-full flex flex-col sm:flex-row items-center gap-5 sm:gap-6 animate-in zoom-in-95 duration-300">
-                  {/* Bloco do Código */}
                   <div className="flex flex-col items-center sm:items-start space-y-1">
                     <span className="text-[9px] uppercase font-bold text-zinc-500 tracking-[0.2em]">
                       Seu Código
@@ -143,10 +192,8 @@ export function WhatsAppStatus({
                     </span>
                   </div>
 
-                  {/* Divisor Visual (Oculto no mobile extremo) */}
                   <div className="h-12 w-px bg-zinc-800 hidden sm:block" />
 
-                  {/* Instrução e Novo Código */}
                   <div className="flex-1 flex flex-col items-center sm:items-start text-center sm:text-left gap-3">
                     <p className="text-[11px] text-zinc-400 leading-tight">
                       No WhatsApp, toque em <br />

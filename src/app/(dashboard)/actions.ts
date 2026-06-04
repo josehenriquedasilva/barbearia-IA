@@ -386,6 +386,47 @@ export async function getPairingCodeAction(
   }
 }
 
+// Desconexão da instancia "IA"
+export async function disconnectWhatsAppAction(
+  shopId: number,
+  instanceName: string,
+) {
+  const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
+  const EVO_KEY = process.env.EVOLUTION_API_KEY;
+
+  try {
+    const response = await fetch(`${EVO_URL}/instance/logout/${instanceName}`, {
+      method: "DELETE",
+      headers: {
+        apikey: EVO_KEY as string,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Erro retorno Evolution no Logout:", errorData);
+      return {
+        success: false,
+        error:
+          errorData.message ||
+          "A API da Evolution recusou o comando de logout. Verifique se o número já não estava desconectado.",
+      };
+    }
+
+    await new Promise((res) => setTimeout(res, 2500));
+
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao desconectar WhatsApp:", error);
+    return {
+      success: false,
+      error: "Erro interno no servidor ao tentar desconectar.",
+    };
+  }
+}
+
 // Verificar status da conexão com IA
 export async function checkWhatsAppStatusAction(instanceName: string) {
   const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
