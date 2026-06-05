@@ -11,6 +11,7 @@ import { TbLoader2 } from "react-icons/tb";
 import { BsPhoneVibrate, BsWhatsapp } from "react-icons/bs";
 import { formatPhone } from "@/utils/formatters";
 import { IoClose } from "react-icons/io5";
+import DisconnectModal from "@/components/pop-up/disconnectModal";
 import { VscDebugDisconnect } from "react-icons/vsc";
 
 interface WhatsAppStatusProps {
@@ -29,6 +30,8 @@ export function WhatsAppStatus({
   const [loading, setLoading] = useState(false);
   const formattedPhone = formatPhone(defaultPhoneNumber);
   const [error, setError] = useState<string | null>(null);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     async function checkStatus() {
@@ -63,21 +66,17 @@ export function WhatsAppStatus({
     setLoading(false);
   }
 
-  // Trocar esse aviso de corfirm/delete por um pop-up/modal
   async function handleDisconnect() {
-    const confirmDisconnect = confirm(
-      "Tem certeza que deseja desconectar o WhatsApp da sua IA? Ela parará de responder seus clientes imediatamente.",
-    );
-    if (!confirmDisconnect) return;
-
     setLoading(true);
     setError(null);
     const res = await disconnectWhatsAppAction(shopId, slug);
     if (res.success) {
       setIsConnected(false);
       setPairingCode(null);
+      setIsModalOpen(false);
     } else {
       setError(res.error || "Erro ao desconectar. Tente novamente.");
+      setIsModalOpen(false);
     }
     setLoading(false);
   }
@@ -85,7 +84,7 @@ export function WhatsAppStatus({
   if (isConnected === null) return null;
 
   return (
-    <div className="mb-8 w-full">
+    <div className="mb-2 w-full">
       {error && (
         <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-3 mb-4 animate-in fade-in slide-in-from-top-2">
           <BiErrorCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
@@ -93,9 +92,7 @@ export function WhatsAppStatus({
             <p className="text-[11px] font-bold text-red-500 uppercase tracking-wider">
               Erro
             </p>
-            <p className="text-xs text-red-200/70">
-              Recarregue a página e tente novamente.
-            </p>
+            <p className="text-xs text-red-200/70">{error}</p>
           </div>
           <button
             onClick={() => setError(null)}
@@ -131,15 +128,10 @@ export function WhatsAppStatus({
           </div>
 
           <button
-            onClick={handleDisconnect}
-            disabled={loading}
-            className="w-full sm:w-auto px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+            onClick={() => setIsModalOpen(true)}
+            className="w-full sm:w-auto px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
           >
-            {loading ? (
-              <TbLoader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <VscDebugDisconnect />
-            )}
+            <VscDebugDisconnect size={14} />
             Desconectar Número
           </button>
         </div>
@@ -172,7 +164,7 @@ export function WhatsAppStatus({
                 <button
                   onClick={handleGenerateCode}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-2 md:py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-xs ransition-all shadow-lg active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                  className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                 >
                   {loading ? (
                     <TbLoader2 className="w-5 h-5 animate-spin" />
@@ -219,6 +211,13 @@ export function WhatsAppStatus({
           </div>
         </div>
       )}
+
+      <DisconnectModal
+        isOpen={isModalOpen}
+        loading={loading}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleDisconnect}
+      />
     </div>
   );
 }
