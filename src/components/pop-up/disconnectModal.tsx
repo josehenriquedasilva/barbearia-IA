@@ -44,8 +44,7 @@ export default function DisconnectModal({
           </h3>
 
           <p className="text-sm text-neutral-400 mt-2 leading-relaxed">
-            Tem certeza que deseja desconectar o WhatsApp da sua IA? Ela
-            <strong>parará de responder</strong> seus clientes e agendar
+            Tem certeza que deseja desconectar o WhatsApp da sua IA? Ela <strong>parará de responder</strong> seus clientes e agendar
             horários imediatamente.
           </p>
         </div>
