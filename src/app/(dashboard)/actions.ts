@@ -457,16 +457,12 @@ export async function checkWhatsAppStatusAction(instanceName: string) {
 // Atualizar o número de telefone da barbearia
 export async function updateShopPhoneAction(shopId: number, newPhone: string) {
   try {
-    // Remove tudo o que não for número
     let cleanNumber = newPhone.replace(/\D/g, "");
 
-    // Se o usuário digitou o código do país "55" no início, nós removemos 
-    // (Geralmente números com 55 + DDD + Número possuem 12 ou 13 dígitos)
     if (cleanNumber.startsWith("55") && (cleanNumber.length === 12 || cleanNumber.length === 13)) {
       cleanNumber = cleanNumber.substring(2);
     }
 
-    // Validação: Um número brasileiro com DDD precisa ter 10 (fixo) ou 11 dígitos (celular com 9)
     if (cleanNumber.length < 10 || cleanNumber.length > 11) {
       return { 
         success: false, 
@@ -476,7 +472,7 @@ export async function updateShopPhoneAction(shopId: number, newPhone: string) {
 
     await prisma.shop.update({
       where: { id: shopId },
-      data: { phone: cleanNumber }, // Salva apenas o DDD + Número (ex: 11999999999)
+      data: { phone: cleanNumber },
     });
 
     revalidatePath("/dashboard");
