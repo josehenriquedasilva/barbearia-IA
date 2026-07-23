@@ -1,21 +1,26 @@
-// @/lib/whatsApp.ts
-
 export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
   text: string,
 ) {
-  // Se WHATSAPP_API_URL não existir, ele usa a NEXT_PUBLIC_EVOLUTION_URL que já está no seu .env
+  // 1. Busca as variáveis do Pilot Status (com fallback para as antigas)
   const baseUrl =
-    process.env.WHATSAPP_API_URL || process.env.NEXT_PUBLIC_EVOLUTION_URL;
-  const apiKey = process.env.WHATSAPP_API_KEY || process.env.EVOLUTION_API_KEY;
+    process.env.PILOT_STATUS_NATIVE_URL ||
+    process.env.WHATSAPP_API_URL ||
+    process.env.NEXT_PUBLIC_EVOLUTION_URL;
+
+  const apiKey =
+    process.env.EVOLUTION_TENANT_KEY ||
+    process.env.WHATSAPP_API_KEY ||
+    process.env.EVOLUTION_API_KEY;
 
   if (!baseUrl || !apiKey) {
-    console.error("Configurações da Evolution API não encontradas no .env");
+    console.error(
+      "[WhatsApp Error] Variáveis de ambiente (PILOT_STATUS_NATIVE_URL ou EVOLUTION_TENANT_KEY) não encontradas.",
+    );
     return null;
   }
 
-  // Garante que a URL não termine com barra sobressalente
   const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   const url = `${cleanBaseUrl}/message/sendText/${instanceName}`;
 
@@ -29,22 +34,28 @@ export async function sendWhatsAppMessage(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: apiKey,
+        "x-api-key": apiKey as string, // 👈 CORREÇÃO: O Pilot Status exige x-api-key
       },
       body: JSON.stringify({
         number: finalNumber,
-        options: {
-          delay: 1200,
-          presence: "composing",
-        },
         text: text,
+        delay: 1200,
       }),
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `[WhatsApp Send Error - Status ${response.status}]:`,
+        errorText,
+      );
+      return null;
+    }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Erro ao enviar WhatsApp:", error);
+    console.error("[WhatsApp Send Exception]:", error);
     return null;
   }
 }
