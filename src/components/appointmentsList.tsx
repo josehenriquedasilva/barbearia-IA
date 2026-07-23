@@ -4,6 +4,9 @@ import { AppointmentsListProps } from "@/types/types";
 import AppointmentsCard from "./ui/appointmentsCard";
 import { useEffect, useState } from "react";
 
+// Fazer alterações que está na IA para não alucinar a IA quando enviar msg de aviso e o cliente envia outra querendo marcar outro horário
+// Refoçar instruções da IA para que ela NUNCA marque um agendamento sem ter o nome do cliente, mesmo se ele enviar tudo em apenas uma única msg
+
 export default function Appointments({
   appointments,
   onOpenCancelModal,

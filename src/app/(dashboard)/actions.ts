@@ -8,6 +8,9 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+const PILOT_STATUS_NATIVE_URL = process.env.PILOT_STATUS_NATIVE_URL;
+const EVOLUTION_TENANT_KEY = process.env.EVOLUTION_TENANT_KEY;
+
 // Buscar barbearia no banco de dados
 export async function getBarbersAction(shopId: number) {
   return await prisma.barber.findMany({
@@ -90,7 +93,7 @@ export async function cancelAppointmentAction(
   try {
     const app = await prisma.appointment.findUnique({
       where: { id: appointmentId },
-      include: { service: true, barber: true },
+      include: { service: true, barber: true, shop: true },
     });
 
     if (!app) {
@@ -102,9 +105,11 @@ export async function cancelAppointmentAction(
       data: { status: "CANCELED", cancelReason: reason },
     });
 
-    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${app.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}`;
+    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${app.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.
+    Veja outro horário disponível enviando uma mensagem por aqui.`;
 
-    await sendWhatsAppMessage(app.clientPhone, message);
+    const instanceName = app.shop.whatsappInstance || app.shop.slug;
+    await sendWhatsAppMessage(instanceName, app.clientPhone, message);
 
     revalidatePath("/dashboard");
     return { success: true };
@@ -121,6 +126,12 @@ export async function updateClosedDays(
 ) {
   try {
     await prisma.$transaction(async (tx) => {
+      const shop = await tx.shop.findUnique({
+        where: { id: shopId },
+        select: { slug: true, whatsappInstance: true },
+      });
+      const instanceName = shop?.whatsappInstance || shop?.slug || "";
+
       await tx.closedDay.deleteMany({ where: { shopId } });
       await tx.closedDay.createMany({
         data: days.map((d) => ({
@@ -151,9 +162,9 @@ export async function updateClosedDays(
             },
           });
 
-          const msg = `Olá *${app.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${day.date} (*Motivo: ${day.reason}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data no nosso chat!`;
+          const msg = `Olá *${app.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${day.date} (*Motivo: ${day.reason}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data enviando uma mensagem por aqui.`;
 
-          await sendWhatsAppMessage(app.clientPhone, msg);
+          await sendWhatsAppMessage(instanceName, app.clientPhone, msg);
         }
       }
     });
@@ -176,6 +187,12 @@ export async function updateServicesAction(
 ) {
   try {
     await prisma.$transaction(async (tx) => {
+      const shop = await tx.shop.findUnique({
+        where: { id: shopId },
+        select: { slug: true, whatsappInstance: true },
+      });
+      const instanceName = shop?.whatsappInstance || shop?.slug || "";
+
       await tx.shop.update({
         where: { id: shopId },
         data: {
@@ -225,9 +242,9 @@ export async function updateServicesAction(
             },
           });
 
-          const msg = `Olá *${app.clientName}*, informamos que o serviço *${service.name}* não está mais disponível em nossa unidade. Por este motivo, seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} foi cancelado. Por favor, verifique nossos outros serviços disponíveis no chat!`;
+          const msg = `Olá *${app.clientName}*, informamos que o serviço *${service.name}* não está mais disponível em nossa unidade. Por este motivo, seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} foi cancelado. Por favor, verifique nossos outros serviços disponíveis enviando uma mensagem por aqui.`;
 
-          await sendWhatsAppMessage(app.clientPhone, msg);
+          await sendWhatsAppMessage(instanceName, app.clientPhone, msg);
         }
       }
 
@@ -278,111 +295,84 @@ export async function getPairingCodeAction(
   shopId: number,
   phoneNumber: string,
 ) {
-  const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
-  const EVO_KEY = process.env.EVOLUTION_API_KEY;
-  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
-
   try {
     const shop = await prisma.shop.findUnique({
       where: { id: shopId },
-      select: { slug: true },
+      select: { name: true, slug: true, whatsappInstance: true },
     });
 
-    if (!shop?.slug)
+    if (!shop) {
       return { success: false, error: "Barbearia não encontrada." };
+    }
 
-    const instanceName = shop.slug;
     let cleanNumber = phoneNumber.replace(/\D/g, "");
     if (!cleanNumber.startsWith("55")) cleanNumber = `55${cleanNumber}`;
+    const formattedPhone = `+${cleanNumber}`;
 
-    const createRes = await fetch(`${EVO_URL}/instance/create`, {
+    const res = await fetch(`${PILOT_STATUS_NATIVE_URL}/numbers`, {
       method: "POST",
       headers: {
-        apikey: EVO_KEY as string,
         "Content-Type": "application/json",
+        "x-api-key": EVOLUTION_TENANT_KEY as string,
       },
       body: JSON.stringify({
-        instanceName,
-        qrcode: false,
-        integration: "WHATSAPP-BAILEYS",
+        name: shop.name || shop.slug,
+        number: formattedPhone,
       }),
     });
 
-    const createData = await createRes.json();
+    let data = await res.json();
 
-    const tokenGerado = createData.hash?.token || createData.instance?.token;
-
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: {
-        whatsappInstance: instanceName,
-        whatsappToken: tokenGerado || "",
-      },
-    });
-
-    if (SITE_URL) {
-      const cleanEvoUrl = EVO_URL?.endsWith("/")
-        ? EVO_URL.slice(0, -1)
-        : EVO_URL;
-
-      await fetch(`${cleanEvoUrl}/webhook/set/${instanceName}`, {
-        method: "POST",
-        headers: {
-          apikey: EVO_KEY!,
-          "Content-Type": "application/json",
+    if (res.status === 409 && shop.whatsappInstance) {
+      const connectRes = await fetch(
+        `${PILOT_STATUS_NATIVE_URL}/numbers/${shop.whatsappInstance}/connect`,
+        {
+          headers: { "x-api-key": EVOLUTION_TENANT_KEY as string },
         },
-        body: JSON.stringify({
-          webhook: {
-            enabled: true,
-            url: `${SITE_URL}/api/whatsapp`,
-            webhook_by_events: false,
-            events: ["MESSAGES_UPSERT"],
-          },
-        }),
-      });
+      );
+      data = await connectRes.json();
 
-      await fetch(`${cleanEvoUrl}/settings/set/${instanceName}`, {
-        method: "POST",
-        headers: {
-          apikey: EVO_KEY!,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          rejectCall: false,
-          groupsIgnore: true,
-          alwaysOnline: true,
-          readMessages: false,
-          readStatus: false,
-          syncFullHistory: false,
-          proxy: null,
-        }),
-      });
+      if (data.pairingCode || data.qrcodeBase64) {
+        return {
+          success: true,
+          pairingCode: data.pairingCode,
+          qrcodeBase64: data.qrcodeBase64,
+          instanceId: shop.whatsappInstance,
+        };
+      }
     }
 
-    await new Promise((res) => setTimeout(res, 5000));
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data.error || data.message || "Falha ao registrar número.",
+      };
+    }
 
-    const url = `${EVO_URL}/instance/connect/${instanceName}?number=${cleanNumber}`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        apikey: EVO_KEY as string,
-        "Content-Type": "application/json",
-      },
-    });
+    const instanceId = data.instance?.id || data.id || data.instanceId;
 
-    const data = await response.json();
-
-    if (data.pairingCode) {
-      return { success: true, pairingCode: data.pairingCode };
+    if (instanceId) {
+      await prisma.shop.update({
+        where: { id: shopId },
+        data: {
+          whatsappInstance: instanceId,
+          whatsappToken: data.instance?.number || cleanNumber,
+        },
+      });
     }
 
     return {
-      success: false,
-      error: data.message || "Falha ao gerar pairingCode.",
+      success: true,
+      pairingCode: data.pairingCode,
+      qrcodeBase64: data.qrcodeBase64,
+      instanceId: instanceId,
     };
   } catch (error) {
-    console.error("Erro na Action:", error);
-    return { success: false, error: "Erro interno no servidor." };
+    console.error("Erro na integração com Pilot Status:", error);
+    return {
+      success: false,
+      error: "Erro interno no servidor.",
+    };
   }
 }
 
@@ -391,30 +381,30 @@ export async function disconnectWhatsAppAction(
   shopId: number,
   instanceName: string,
 ) {
-  const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
-  const EVO_KEY = process.env.EVOLUTION_API_KEY;
-
   try {
-    const response = await fetch(`${EVO_URL}/instance/logout/${instanceName}`, {
-      method: "DELETE",
-      headers: {
-        apikey: EVO_KEY as string,
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `${PILOT_STATUS_NATIVE_URL}/numbers/${instanceName}/disconnect`,
+      {
+        method: "POST",
+        headers: {
+          "x-api-key": EVOLUTION_TENANT_KEY as string,
+          "Content-Type": "application/json",
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("Erro retorno Evolution no Logout:", errorData);
+      console.error("Erro no desligamento do Pilot Status:", errorData);
       return {
         success: false,
         error:
           errorData.message ||
-          "A API da Evolution recusou o comando de logout. Verifique se o número já não estava desconectado.",
+          "A API do Pilot Status recusou o comando de desconexão.",
       };
     }
 
-    await new Promise((res) => setTimeout(res, 2500));
+    await new Promise((res) => setTimeout(res, 2000));
 
     revalidatePath("/dashboard");
     return { success: true };
@@ -428,29 +418,41 @@ export async function disconnectWhatsAppAction(
 }
 
 // Verificar status da conexão com IA
-export async function checkWhatsAppStatusAction(instanceName: string) {
-  const EVO_URL = process.env.NEXT_PUBLIC_EVOLUTION_URL;
-  const EVO_KEY = process.env.EVOLUTION_API_KEY;
+export async function checkWhatsAppStatusAction(instanceId: string) {
+  if (!instanceId) {
+    return { connected: false, state: "CLOSE" };
+  }
 
   try {
     const response = await fetch(
-      `${EVO_URL}/instance/connectionState/${instanceName}`,
+      `${PILOT_STATUS_NATIVE_URL}/numbers/${instanceId}/status`,
       {
         method: "GET",
-        headers: { apikey: EVO_KEY as string },
+        headers: {
+          "x-api-key": EVOLUTION_TENANT_KEY as string,
+        },
         cache: "no-store",
       },
     );
 
+    if (!response.ok) {
+      return { connected: false, state: "CLOSE" };
+    }
+
     const data = await response.json();
 
+    const isConnected =
+      data.state === "OPEN" ||
+      data.status === "CONNECTED" ||
+      data.connected === true;
+
     return {
-      success: true,
-      connected: data.instance?.state === "open",
+      connected: isConnected,
+      state: isConnected ? "OPEN" : data.state || "CLOSE",
     };
   } catch (error) {
-    console.error("Erro Evolution Connection:", error);
-    return { success: false, connected: false };
+    console.error("Erro ao verificar status na Pilot Status:", error);
+    return { connected: false, state: "CLOSE" };
   }
 }
 
@@ -459,14 +461,18 @@ export async function updateShopPhoneAction(shopId: number, newPhone: string) {
   try {
     let cleanNumber = newPhone.replace(/\D/g, "");
 
-    if (cleanNumber.startsWith("55") && (cleanNumber.length === 12 || cleanNumber.length === 13)) {
+    if (
+      cleanNumber.startsWith("55") &&
+      (cleanNumber.length === 12 || cleanNumber.length === 13)
+    ) {
       cleanNumber = cleanNumber.substring(2);
     }
 
     if (cleanNumber.length < 10 || cleanNumber.length > 11) {
-      return { 
-        success: false, 
-        error: "Por favor, insira um número de WhatsApp válido com DDD (ex: 11999999999)." 
+      return {
+        success: false,
+        error:
+          "Por favor, insira um número de WhatsApp válido com DDD (ex: 11999999999).",
       };
     }
 

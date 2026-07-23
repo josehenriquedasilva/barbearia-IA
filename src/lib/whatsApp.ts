@@ -1,5 +1,23 @@
-export async function sendWhatsAppMessage(number: string, text: string) {
-  const url = `${process.env.WHATSAPP_API_URL}/message/sendText/${process.env.WHATSAPP_INSTANCE_NAME}`;
+// @/lib/whatsApp.ts
+
+export async function sendWhatsAppMessage(
+  instanceName: string,
+  number: string,
+  text: string,
+) {
+  // Se WHATSAPP_API_URL não existir, ele usa a NEXT_PUBLIC_EVOLUTION_URL que já está no seu .env
+  const baseUrl =
+    process.env.WHATSAPP_API_URL || process.env.NEXT_PUBLIC_EVOLUTION_URL;
+  const apiKey = process.env.WHATSAPP_API_KEY || process.env.EVOLUTION_API_KEY;
+
+  if (!baseUrl || !apiKey) {
+    console.error("Configurações da Evolution API não encontradas no .env");
+    return null;
+  }
+
+  // Garante que a URL não termine com barra sobressalente
+  const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const url = `${cleanBaseUrl}/message/sendText/${instanceName}`;
 
   const formattedNumber = number.replace(/\D/g, "");
   const finalNumber = formattedNumber.startsWith("55")
@@ -11,7 +29,7 @@ export async function sendWhatsAppMessage(number: string, text: string) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: process.env.WHATSAPP_API_KEY || "",
+        apikey: apiKey,
       },
       body: JSON.stringify({
         number: finalNumber,
