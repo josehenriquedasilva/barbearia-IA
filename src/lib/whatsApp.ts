@@ -1,9 +1,11 @@
+// @/lib/whatsapp.ts
+
+// 1. Função para ENVIAR mensagens via Pilot Status
 export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
   text: string,
 ) {
-  // 1. Busca as variáveis do Pilot Status (com fallback para as antigas)
   const baseUrl =
     process.env.PILOT_STATUS_NATIVE_URL ||
     process.env.WHATSAPP_API_URL ||
@@ -34,7 +36,7 @@ export async function sendWhatsAppMessage(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey as string, // 👈 CORREÇÃO: O Pilot Status exige x-api-key
+        "x-api-key": apiKey as string,
       },
       body: JSON.stringify({
         number: finalNumber,
@@ -57,5 +59,74 @@ export async function sendWhatsAppMessage(
   } catch (error) {
     console.error("[WhatsApp Send Exception]:", error);
     return null;
+  }
+}
+
+// 2. Função para CRIAR/CONFIGURAR o Webhook automaticamente
+export async function setWebhookForInstance(instanceId: string) {
+  const baseUrl =
+    process.env.PILOT_STATUS_NATIVE_URL ||
+    process.env.WHATSAPP_API_URL ||
+    process.env.NEXT_PUBLIC_EVOLUTION_URL;
+
+  const apiKey =
+    process.env.EVOLUTION_TENANT_KEY ||
+    process.env.WHATSAPP_API_KEY ||
+    process.env.EVOLUTION_API_KEY;
+
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || "https://sua-url.vercel.app";
+  const webhookUrl = `${siteUrl.replace(/\/$/, "")}/api/whatsapp`;
+
+  if (!baseUrl || !apiKey) {
+    console.error(
+      "[Pilot Status] Variáveis de ambiente não encontradas para o Webhook.",
+    );
+    return false;
+  }
+
+  const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+
+  try {
+    const response = await fetch(`${cleanBaseUrl}/webhooks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        url: webhookUrl,
+        events: ["message.received"],
+        numberId: instanceId,
+      }),
+    });
+
+    if (response.ok) {
+      console.log(
+        `[Pilot Status] Webhook registrado com sucesso para o ID: ${instanceId}`,
+      );
+      return true;
+    }
+
+    // Tentativa em endpoint alternativo caso o /webhooks exija o ID na rota
+    const altResponse = await fetch(
+      `${cleanBaseUrl}/numbers/${instanceId}/webhooks`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          url: webhookUrl,
+          events: ["message.received"],
+        }),
+      },
+    );
+
+    return altResponse.ok;
+  } catch (error) {
+    console.error("[Pilot Status] Erro ao registrar webhook:", error);
+    return false;
   }
 }

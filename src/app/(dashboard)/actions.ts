@@ -1,7 +1,7 @@
 "use server";
 
 import prisma from "@/lib/db";
-import { sendWhatsAppMessage } from "@/lib/whatsApp";
+import { sendWhatsAppMessage, setWebhookForInstance } from "@/lib/whatsApp";
 import { SettingsPayload } from "@/types/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
@@ -333,6 +333,8 @@ export async function getPairingCodeAction(
       data = await connectRes.json();
 
       if (data.pairingCode || data.qrcodeBase64) {
+        await setWebhookForInstance(shop.whatsappInstance);
+
         return {
           success: true,
           pairingCode: data.pairingCode,
@@ -359,6 +361,7 @@ export async function getPairingCodeAction(
           whatsappToken: data.instance?.number || cleanNumber,
         },
       });
+      await setWebhookForInstance(instanceId);
     }
 
     return {
