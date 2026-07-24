@@ -63,12 +63,8 @@ export async function sendWhatsAppMessage(
 }
 
 // 2. Função para CRIAR/CONFIGURAR o Webhook automaticamente
-export async function setWebhookForInstance(
-  instanceId: string,
-  numberApiKey?: string, // 👈 Adicionamos esse segundo parâmetro opcional aqui!
-) {
+export async function setWebhookForInstance(instanceId: string) {
   const apiKey =
-    numberApiKey ||
     process.env.EVOLUTION_TENANT_KEY ||
     process.env.WHATSAPP_API_KEY ||
     process.env.EVOLUTION_API_KEY;
@@ -77,62 +73,45 @@ export async function setWebhookForInstance(
     process.env.NEXT_PUBLIC_SITE_URL || "https://barbearia-ia.vercel.app";
   const webhookUrl = `${siteUrl.replace(/\/$/, "")}/api/whatsapp`;
 
-  const rawBaseUrl =
+  let rawBaseUrl =
     process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
   let baseUrl = rawBaseUrl.replace(/\/$/, "");
   if (!baseUrl.endsWith("/v1")) {
     baseUrl = `${baseUrl}/v1`;
   }
 
-  if (!apiKey) {
-    console.error("[Pilot Status] API Key não encontrada.");
+  if (!apiKey || !instanceId) {
+    console.error(
+      "[Pilot Status] API Key ou instanceId ausentes para registrar o Webhook.",
+    );
     return false;
   }
 
-  const sendWebhookRequest = async (includeNumberIdInBody: boolean) => {
-    const payload: Record<string, any> = {
-      url: webhookUrl,
-      name: `Barbearia IA - ${instanceId}`,
-      events: ["message.received", "number.connected"],
-    };
-
-    if (includeNumberIdInBody && instanceId) {
-      payload.whatsappNumberId = instanceId;
-    }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey as string,
-    };
-
-    if (includeNumberIdInBody && instanceId) {
-      headers["x-whatsapp-number-id"] = instanceId;
-    }
-
-    return await fetch(`${baseUrl}/webhooks`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-  };
-
   try {
-    let response = await sendWebhookRequest(true);
-    let data = await response.json();
+    const response = await fetch(`${baseUrl}/webhooks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey as string,
+        "x-whatsapp-number-id": instanceId,
+      },
+      body: JSON.stringify({
+        url: webhookUrl,
+        name: `Barbearia IA - ${instanceId}`,
+        events: ["message.received", "number.connected"],
+        whatsappNumberId: instanceId, // 👈 OBRIGATÓRIO PELA API
+      }),
+    });
 
-    if (!response.ok && data?.code === "NUMBER_MISMATCH") {
-      console.warn(
-        "[Pilot Status] Retentando criar webhook sem vincular whatsappNumberId...",
-      );
-      response = await sendWebhookRequest(false);
-      data = await response.json();
-    }
+    const data = await response.json();
 
     console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
     console.log("[DEBUG PILOT STATUS RESPONSE]:", data);
 
     if (response.ok) {
-      console.log(`[Pilot Status] Webhook registrado com sucesso!`);
+      console.log(
+        `[Pilot Status] Webhook registrado com SUCESSO para o ID ${instanceId}!`,
+      );
       return true;
     } else {
       console.error("[Pilot Status Error] Falha ao registrar webhook:", data);
