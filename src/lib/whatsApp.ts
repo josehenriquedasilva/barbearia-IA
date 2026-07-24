@@ -63,11 +63,81 @@ export async function sendWhatsAppMessage(
 }
 
 // 2. Função para CRIAR/CONFIGURAR o Webhook automaticamente
+// @/lib/whatsapp.ts
+
+/**
+ * Busca a API Key específica de um determinado número no Pilot Status
+ */
+async function getApiKeyForNumber(instanceId: string): Promise<string | null> {
+  try {
+    const tenantApiKey = process.env.EVOLUTION_TENANT_KEY as string;
+    let rawBaseUrl =
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+    let baseUrl = rawBaseUrl.replace(/\/$/, "");
+    if (!baseUrl.endsWith("/v1")) {
+      baseUrl = `${baseUrl}/v1`;
+    }
+
+    // Busca a lista de API Keys vinculadas à conta Tenant
+    const res = await fetch(`${baseUrl}/api-keys`, {
+      method: "GET",
+      headers: {
+        "x-api-key": tenantApiKey,
+      },
+    });
+
+    if (!res.ok) {
+      console.error(
+        "[Pilot Status] Erro ao listar API Keys:",
+        await res.text(),
+      );
+      return null;
+    }
+
+    const data = await res.json();
+    const keysList = Array.isArray(data) ? data : data.data || data.keys || [];
+
+    // Encontra a chave pertencente ao whatsappNumberId/instanceId
+    const found = keysList.find(
+      (k: any) =>
+        k.whatsappNumberId === instanceId ||
+        k.numberId === instanceId ||
+        k.number?.id === instanceId ||
+        k.instanceId === instanceId,
+    );
+
+    const individualKey = found?.key || found?.apiKey || found?.token;
+
+    if (individualKey) {
+      console.log(
+        `[Pilot Status] API Key individual encontrada para o número ${instanceId}: "${individualKey.slice(0, 8)}..."`,
+      );
+      return individualKey;
+    }
+
+    console.warn(
+      `[Pilot Status] Nenhuma API Key individual encontrada para o ID ${instanceId}`,
+    );
+    return null;
+  } catch (error) {
+    console.error("[Pilot Status] Exceção ao buscar API Key do número:", error);
+    return null;
+  }
+}
+
+/**
+ * Registra o Webhook utilizando a API Key individual do número
+ */
 export async function setWebhookForInstance(instanceId: string) {
-  const apiKey =
-    process.env.EVOLUTION_TENANT_KEY ||
-    process.env.WHATSAPP_API_KEY ||
-    process.env.EVOLUTION_API_KEY;
+  // 1. Busca a API Key individual do número
+  const numberApiKey = await getApiKeyForNumber(instanceId);
+
+  if (!numberApiKey) {
+    console.error(
+      `[Pilot Status Error] Impossível criar webhook: API Key individual não encontrada para o número ${instanceId}.`,
+    );
+    return false;
+  }
 
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL || "https://barbearia-ia.vercel.app";
@@ -80,25 +150,13 @@ export async function setWebhookForInstance(instanceId: string) {
     baseUrl = `${baseUrl}/v1`;
   }
 
-  // 🔍 LOG DE DIAGNÓSTICO
-  console.log(
-    `[DEBUG WEBHOOK] Enviando whatsappNumberId: "${instanceId}" com a API Key que começa em: "${apiKey?.slice(0, 8)}..."`,
-  );
-
-  if (!apiKey || !instanceId) {
-    console.error(
-      "[Pilot Status] API Key ou instanceId ausentes para registrar o Webhook.",
-    );
-    return false;
-  }
-
   try {
+    // 2. Faz o registro do webhook passando a API Key do número
     const response = await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey as string,
-        "x-whatsapp-number-id": instanceId,
+        "x-api-key": numberApiKey, // 👈 USANDO A CHAVE INDIVIDUAL DO NÚMERO
       },
       body: JSON.stringify({
         url: webhookUrl,
@@ -115,7 +173,7 @@ export async function setWebhookForInstance(instanceId: string) {
 
     if (response.ok) {
       console.log(
-        `[Pilot Status] Webhook registrado com SUCESSO para o ID ${instanceId}!`,
+        `[Pilot Status] Webhook registrado com SUCESSO para o número ${instanceId}!`,
       );
       return true;
     } else {
