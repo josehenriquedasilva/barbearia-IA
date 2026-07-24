@@ -104,6 +104,9 @@ export async function setWebhookForInstance(instanceName?: string) {
       }),
     });
 
+    const responseData = await response.json();
+    console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
+    console.log("[DEBUG PILOT STATUS RESPONSE]:", JSON.stringify(responseData));
     const data = await response.json();
 
     if (response.ok) {
