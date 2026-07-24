@@ -65,7 +65,7 @@ export async function sendWhatsAppMessage(
   }
 }
 
-export async function setWebhookForInstance(instanceId: string) {
+export async function setWebhookForInstance(numberId: string) {
   const tenantKey =
     process.env.EVOLUTION_TENANT_KEY ||
     process.env.PILOT_STATUS_API_KEY ||
@@ -82,19 +82,20 @@ export async function setWebhookForInstance(instanceId: string) {
     baseUrl = `${baseUrl}/v1`;
   }
 
-  if (!tenantKey || !instanceId) {
+  if (!tenantKey || !numberId) {
     console.error(
-      "[Pilot Status Error] Chave Tenant ou instanceId ausentes para registrar o Webhook.",
+      "[Pilot Status Error] Chave Tenant ou numberId ausentes para registrar o Webhook.",
     );
     return false;
   }
 
   try {
     console.log(
-      `[Pilot Status] Criando Webhook para ${instanceId} usando a chave TENANT...`,
+      `[Pilot Status] Tentando criar Webhook para ${numberId} com a chave TENANT...`,
     );
 
-    const response = await fetch(`${baseUrl}/webhooks`, {
+    // Tentativa 1: Passando o whatsappNumberId no corpo
+    let response = await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -102,21 +103,41 @@ export async function setWebhookForInstance(instanceId: string) {
       },
       body: JSON.stringify({
         url: webhookUrl,
-        name: `Barbearia IA - ${instanceId}`,
+        name: `Barbearia IA - ${numberId}`,
         events: ["message.received", "number.connected"],
-        whatsappNumberId: instanceId,
+        whatsappNumberId: numberId,
       }),
     });
 
-    const data = await response.json();
+    let data = await response.json();
+
+    // Se der 404 (número não encontrado por esse ID específico), tenta sem filtrar por whatsappNumberId (Webhook global da Tenant)
+    if (response.status === 404) {
+      console.warn(
+        `[Pilot Status Warn] ID ${numberId} não encontrado no filtro de webhooks. Tentando registro global de Webhook...`,
+      );
+
+      response = await fetch(`${baseUrl}/webhooks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": tenantKey,
+        },
+        body: JSON.stringify({
+          url: webhookUrl,
+          name: `Barbearia IA Global`,
+          events: ["message.received", "number.connected"],
+        }),
+      });
+
+      data = await response.json();
+    }
 
     console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
     console.log("[DEBUG PILOT STATUS RESPONSE]:", data);
 
     if (response.ok) {
-      console.log(
-        `✅ [Pilot Status] Webhook registrado com SUCESSO para ${instanceId}!`,
-      );
+      console.log(`✅ [Pilot Status] Webhook registrado com SUCESSO!`);
       return true;
     }
 

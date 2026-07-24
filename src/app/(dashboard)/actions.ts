@@ -317,7 +317,13 @@ export async function getPairingCodeAction(
     if (!cleanNumber.startsWith("55")) cleanNumber = `55${cleanNumber}`;
     const formattedPhone = `+${cleanNumber}`;
 
-    const baseUrl = getPilotStatusBaseUrl();
+    let rawBaseUrl =
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+    let baseUrl = rawBaseUrl.replace(/\/$/, "");
+    if (!baseUrl.endsWith("/v1")) {
+      baseUrl = `${baseUrl}/v1`;
+    }
+
     const apiKey =
       process.env.EVOLUTION_TENANT_KEY ||
       process.env.PILOT_STATUS_API_KEY ||
@@ -326,12 +332,12 @@ export async function getPairingCodeAction(
     if (!apiKey) {
       return {
         success: false,
-        error: "Chave API (EVOLUTION_TENANT_KEY) não configurada no servidor.",
+        error: "Chave API (EVOLUTION_TENANT_KEY) não configurada.",
       };
     }
 
-    let realNumberId: string | null = null;
-    let connectInstanceId: string | null = null;
+    let targetNumberId: string | null = null;
+    let targetInstanceId: string | null = null;
 
     // 1. Consulta a lista de números no Pilot Status
     const listRes = await fetch(`${baseUrl}/numbers`, {
@@ -362,13 +368,15 @@ export async function getPairingCodeAction(
 
       if (found) {
         const inst = found.instance || found;
-        realNumberId =
+        // Captura explicitamente o ID do número (WhatsAppNumber.id)
+        targetNumberId =
           found.whatsappNumberId ||
           found.numberId ||
+          found.number?.id ||
           inst.whatsappNumberId ||
-          inst.id ||
           found.id;
-        connectInstanceId = inst.id || found.id || realNumberId;
+
+        targetInstanceId = inst.id || found.id || targetNumberId;
       }
     }
 
@@ -376,7 +384,7 @@ export async function getPairingCodeAction(
     let initialPairingCode: string | null = null;
 
     // 2. Se o número não existe, cria um novo
-    if (!realNumberId) {
+    if (!targetNumberId || !targetInstanceId) {
       const createRes = await fetch(`${baseUrl}/numbers`, {
         method: "POST",
         headers: {
@@ -399,64 +407,76 @@ export async function getPairingCodeAction(
         return { success: false, error: errMsg };
       }
 
-      // Desestrutura do objeto "instance" retornado pela API
-      const instanceObj = createData.instance || createData;
-      realNumberId =
-        instanceObj.whatsappNumberId || instanceObj.numberId || instanceObj.id;
-      connectInstanceId = instanceObj.id || realNumberId;
+      console.log(
+        "[DEBUG CREATE DATA DETALHADO]:",
+        JSON.stringify(createData, null, 2),
+      );
+
+      const instanceObj = createData.instance || {};
+
+      // Captura o ID do número específico se retornado, senão usa o ID retornado no topo
+      targetNumberId =
+        createData.whatsappNumberId ||
+        createData.numberId ||
+        createData.number?.id ||
+        instanceObj.whatsappNumberId ||
+        instanceObj.numberId ||
+        createData.id ||
+        instanceObj.id;
+
+      targetInstanceId = instanceObj.id || createData.id || targetNumberId;
 
       initialQrCode = createData.qrcodeBase64 || null;
       initialPairingCode = createData.pairingCode || null;
     }
 
-    if (!realNumberId || !connectInstanceId) {
+    if (!targetInstanceId) {
       return {
         success: false,
         error:
-          "Não foi possível extrair o ID do número na resposta do Pilot Status.",
+          "Não foi possível obter um ID de instância válido no Pilot Status.",
       };
     }
 
-    // 3. Solicita a conexão enviando o número no query param para forçar o código de pareamento
+    // 3. Conecta para gerar o Código de Pareamento / QR Code
     const connectRes = await fetch(
-      `${baseUrl}/numbers/${connectInstanceId}/connect?number=${cleanNumber}&phone=${cleanNumber}`,
+      `${baseUrl}/numbers/${targetInstanceId}/connect?number=${cleanNumber}`,
       {
         headers: { "x-api-key": apiKey },
         cache: "no-store",
       },
     );
-
     const connectData = await connectRes.json();
 
-    // 4. Salva o ID oficial no banco de dados
+    // 4. Salva o ID da instância no banco de dados
     await prisma.shop.update({
       where: { id: shopId },
       data: {
-        whatsappInstance: realNumberId,
+        whatsappInstance: targetInstanceId,
         whatsappToken: cleanNumber,
       },
     });
 
-    // 5. Registra o Webhook
-    await setWebhookForInstance(realNumberId);
-
-    const pairingCode =
-      connectData.pairingCode || connectData.code || initialPairingCode || null;
-
-    const qrcodeBase64 =
-      connectData.qrcodeBase64 || connectData.qrcode || initialQrCode || null;
+    // 5. Registra o Webhook usando o ID do NÚMERO (ou o ID da instância se forem idênticos)
+    const numberIdForWebhook = targetNumberId || targetInstanceId;
+    await setWebhookForInstance(numberIdForWebhook);
 
     return {
       success: true,
-      pairingCode,
-      qrcodeBase64,
-      instanceId: realNumberId,
+      pairingCode:
+        connectData.pairingCode ||
+        connectData.code ||
+        initialPairingCode ||
+        null,
+      qrcodeBase64:
+        connectData.qrcodeBase64 || connectData.qrcode || initialQrCode || null,
+      instanceId: targetInstanceId,
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Erro na integração com Pilot Status:", error);
     return {
       success: false,
-      error: error?.message || "Erro interno no servidor.",
+      error: "Erro interno no servidor.",
     };
   }
 }
