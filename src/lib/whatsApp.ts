@@ -63,7 +63,7 @@ export async function sendWhatsAppMessage(
 }
 
 // 2. Função para CRIAR/CONFIGURAR o Webhook automaticamente
-export async function setWebhookForInstance(instanceName?: string) {
+export async function setWebhookForInstance(instanceId: string) {
   const apiKey =
     process.env.EVOLUTION_TENANT_KEY ||
     process.env.WHATSAPP_API_KEY ||
@@ -75,16 +75,19 @@ export async function setWebhookForInstance(instanceName?: string) {
 
   const rawBaseUrl =
     process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-
-  // Normaliza para garantir que termine apontando para /v1 da API
   let baseUrl = rawBaseUrl.replace(/\/$/, "");
   if (!baseUrl.endsWith("/v1")) {
     baseUrl = `${baseUrl}/v1`;
   }
 
   if (!apiKey) {
+    console.error("[Pilot Status] API Key não encontrada.");
+    return false;
+  }
+
+  if (!instanceId) {
     console.error(
-      "[Pilot Status] API Key (EVOLUTION_TENANT_KEY) não encontrada.",
+      "[Pilot Status] instanceId é obrigatório para registrar o webhook.",
     );
     return false;
   }
@@ -95,32 +98,33 @@ export async function setWebhookForInstance(instanceName?: string) {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey as string,
+        "x-whatsapp-number-id": instanceId, // 👈 PASSANDO NO HEADER TAMBÉM
       },
       body: JSON.stringify({
         url: webhookUrl,
-        name: `Barbearia IA - ${instanceName || "Atendimento"}`,
-        // Incluímos 'message.received' para a IA responder e 'number.connected' para acompanhar conexões
+        name: `Barbearia IA - ${instanceId}`,
         events: ["message.received", "number.connected"],
+        whatsappNumberId: instanceId, // 👈 CAMPO OBRIGATÓRIO EXIGIDO PELA API
       }),
     });
 
-    const responseData = await response.json();
-    console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
-    console.log("[DEBUG PILOT STATUS RESPONSE]:", JSON.stringify(responseData));
+    // Lemos a resposta UMA ÚNICA VEZ
     const data = await response.json();
 
+    console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
+    console.log("[DEBUG PILOT STATUS RESPONSE]:", data);
+
     if (response.ok) {
-      console.log("[Pilot Status] Webhook v1 registrado com sucesso:", data);
+      console.log(
+        `[Pilot Status] Webhook registrado com sucesso para a instância ${instanceId}!`,
+      );
       return true;
     } else {
-      console.error("[Pilot Status Error] Erro ao criar webhook v1:", data);
+      console.error("[Pilot Status Error] Falha ao registrar webhook:", data);
       return false;
     }
   } catch (error) {
-    console.error(
-      "[Pilot Status Exception] Falha ao registrar webhook v1:",
-      error,
-    );
+    console.error("[Pilot Status Exception] Erro ao registrar webhook:", error);
     return false;
   }
 }
