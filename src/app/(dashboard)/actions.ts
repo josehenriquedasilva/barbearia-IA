@@ -11,6 +11,14 @@ import { redirect } from "next/navigation";
 const PILOT_STATUS_NATIVE_URL = process.env.PILOT_STATUS_NATIVE_URL;
 const EVOLUTION_TENANT_KEY = process.env.EVOLUTION_TENANT_KEY;
 
+// Helper para garantir a URL base correta com /v1
+function getPilotStatusBaseUrl() {
+  let rawBaseUrl =
+    process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+  let baseUrl = rawBaseUrl.replace(/\/$/, "");
+  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+}
+
 // Buscar barbearia no banco de dados
 export async function getBarbersAction(shopId: number) {
   return await prisma.barber.findMany({
@@ -419,12 +427,15 @@ export async function disconnectWhatsAppAction(
   instanceName: string,
 ) {
   try {
+    const baseUrl = getPilotStatusBaseUrl();
+    const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
+
     const response = await fetch(
-      `${PILOT_STATUS_NATIVE_URL}/numbers/${instanceName}/disconnect`,
+      `${baseUrl}/numbers/${instanceName}/disconnect`,
       {
         method: "POST",
         headers: {
-          "x-api-key": EVOLUTION_TENANT_KEY as string,
+          "x-api-key": apiKey,
           "Content-Type": "application/json",
         },
       },
@@ -461,16 +472,16 @@ export async function checkWhatsAppStatusAction(instanceId: string) {
   }
 
   try {
-    const response = await fetch(
-      `${PILOT_STATUS_NATIVE_URL}/numbers/${instanceId}/status`,
-      {
-        method: "GET",
-        headers: {
-          "x-api-key": EVOLUTION_TENANT_KEY as string,
-        },
-        cache: "no-store",
+    const baseUrl = getPilotStatusBaseUrl();
+    const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
+
+    const response = await fetch(`${baseUrl}/numbers/${instanceId}/status`, {
+      method: "GET",
+      headers: {
+        "x-api-key": apiKey,
       },
-    );
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       return { connected: false, state: "CLOSE" };
