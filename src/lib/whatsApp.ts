@@ -1,30 +1,33 @@
 // @/lib/whatsapp.ts
 
-// 1. Função para ENVIAR mensagens via Pilot Status
 export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
   text: string,
 ) {
-  const baseUrl =
+  const rawBaseUrl =
     process.env.PILOT_STATUS_NATIVE_URL ||
     process.env.WHATSAPP_API_URL ||
-    process.env.NEXT_PUBLIC_EVOLUTION_URL;
+    "https://pilotstatus.com.br";
 
   const apiKey =
     process.env.EVOLUTION_TENANT_KEY ||
     process.env.WHATSAPP_API_KEY ||
     process.env.EVOLUTION_API_KEY;
 
-  if (!baseUrl || !apiKey) {
+  if (!rawBaseUrl || !apiKey) {
     console.error(
       "[WhatsApp Error] Variáveis de ambiente (PILOT_STATUS_NATIVE_URL ou EVOLUTION_TENANT_KEY) não encontradas.",
     );
     return null;
   }
 
-  const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  const url = `${cleanBaseUrl}/message/sendText/${instanceName}`;
+  let baseUrl = rawBaseUrl.replace(/\/$/, "");
+  if (!baseUrl.endsWith("/v1")) {
+    baseUrl = `${baseUrl}/v1`;
+  }
+
+  const url = `${baseUrl}/messages/send`;
 
   const formattedNumber = number.replace(/\D/g, "");
   const finalNumber = formattedNumber.startsWith("55")
@@ -41,7 +44,7 @@ export async function sendWhatsAppMessage(
       body: JSON.stringify({
         number: finalNumber,
         text: text,
-        delay: 1200,
+        whatsappNumberId: instanceName,
       }),
     });
 
@@ -63,7 +66,6 @@ export async function sendWhatsAppMessage(
 }
 
 export async function setWebhookForInstance(instanceId: string) {
-  // Pega a chave TENANT (global) cadastrada nas variáveis de ambiente
   const tenantKey =
     process.env.EVOLUTION_TENANT_KEY ||
     process.env.PILOT_STATUS_API_KEY ||
@@ -96,13 +98,13 @@ export async function setWebhookForInstance(instanceId: string) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": tenantKey, // ← Usa a chave TENANT direto
+        "x-api-key": tenantKey,
       },
       body: JSON.stringify({
         url: webhookUrl,
         name: `Barbearia IA - ${instanceId}`,
         events: ["message.received", "number.connected"],
-        whatsappNumberId: instanceId, // ← Passa o ID do número no BODY
+        whatsappNumberId: instanceId,
       }),
     });
 
