@@ -323,6 +323,12 @@ export async function getPairingCodeAction(
 
     let data = await res.json();
 
+    // 🔍 LOG PARA VER A ESTRUTURA EXATA RETORNADA PELO PILOT STATUS
+    console.log(
+      "[DEBUG PILOT STATUS CREATE NUMBER]:",
+      JSON.stringify(data, null, 2),
+    );
+
     if (res.status === 409 && shop.whatsappInstance) {
       const connectRes = await fetch(
         `${PILOT_STATUS_NATIVE_URL}/numbers/${shop.whatsappInstance}/connect`,
@@ -333,7 +339,8 @@ export async function getPairingCodeAction(
       data = await connectRes.json();
 
       if (data.pairingCode || data.qrcodeBase64) {
-        await setWebhookForInstance(shop.whatsappInstance);
+        // Tenta registrar o webhook usando o ID salvo da instância
+        await setWebhookForInstance(shop.whatsappInstance, data.apiKey);
 
         return {
           success: true,
@@ -351,24 +358,36 @@ export async function getPairingCodeAction(
       };
     }
 
-    const instanceId = data.instance?.id || data.id || data.instanceId;
+    // ⚡ CAPTURA O ID REAL DO PILOT STATUS (ex: data.id, data.numberId ou data.number?.id)
+    const realNumberId =
+      data.id ||
+      data.numberId ||
+      data.instance?.id ||
+      data.number?.id ||
+      data.instanceId;
 
-    if (instanceId) {
+    // Se o Pilot Status retornar uma API key específica para este número, usamos ela
+    const perNumberApiKey = data.apiKey || data.number?.apiKey;
+
+    if (realNumberId) {
+      // 1. Atualiza no banco o ID real retornado pela API
       await prisma.shop.update({
         where: { id: shopId },
         data: {
-          whatsappInstance: instanceId,
-          whatsappToken: data.instance?.number || cleanNumber,
+          whatsappInstance: realNumberId,
+          whatsappToken: data.instance?.number || data.number || cleanNumber,
         },
       });
-      await setWebhookForInstance(instanceId);
+
+      // 2. Chama a criação do webhook passando o ID correto e a chave (se houver)
+      await setWebhookForInstance(realNumberId, perNumberApiKey);
     }
 
     return {
       success: true,
       pairingCode: data.pairingCode,
       qrcodeBase64: data.qrcodeBase64,
-      instanceId: instanceId,
+      instanceId: realNumberId,
     };
   } catch (error) {
     console.error("Erro na integração com Pilot Status:", error);

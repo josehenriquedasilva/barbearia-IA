@@ -63,8 +63,12 @@ export async function sendWhatsAppMessage(
 }
 
 // 2. Função para CRIAR/CONFIGURAR o Webhook automaticamente
-export async function setWebhookForInstance(instanceId: string) {
+export async function setWebhookForInstance(
+  instanceId: string,
+  numberApiKey?: string, // 👈 Adicionamos esse segundo parâmetro opcional aqui!
+) {
   const apiKey =
+    numberApiKey ||
     process.env.EVOLUTION_TENANT_KEY ||
     process.env.WHATSAPP_API_KEY ||
     process.env.EVOLUTION_API_KEY;
@@ -85,39 +89,50 @@ export async function setWebhookForInstance(instanceId: string) {
     return false;
   }
 
-  if (!instanceId) {
-    console.error(
-      "[Pilot Status] instanceId é obrigatório para registrar o webhook.",
-    );
-    return false;
-  }
+  const sendWebhookRequest = async (includeNumberIdInBody: boolean) => {
+    const payload: Record<string, any> = {
+      url: webhookUrl,
+      name: `Barbearia IA - ${instanceId}`,
+      events: ["message.received", "number.connected"],
+    };
+
+    if (includeNumberIdInBody && instanceId) {
+      payload.whatsappNumberId = instanceId;
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey as string,
+    };
+
+    if (includeNumberIdInBody && instanceId) {
+      headers["x-whatsapp-number-id"] = instanceId;
+    }
+
+    return await fetch(`${baseUrl}/webhooks`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  };
 
   try {
-    const response = await fetch(`${baseUrl}/webhooks`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey as string,
-        "x-whatsapp-number-id": instanceId, // 👈 PASSANDO NO HEADER TAMBÉM
-      },
-      body: JSON.stringify({
-        url: webhookUrl,
-        name: `Barbearia IA - ${instanceId}`,
-        events: ["message.received", "number.connected"],
-        whatsappNumberId: instanceId, // 👈 CAMPO OBRIGATÓRIO EXIGIDO PELA API
-      }),
-    });
+    let response = await sendWebhookRequest(true);
+    let data = await response.json();
 
-    // Lemos a resposta UMA ÚNICA VEZ
-    const data = await response.json();
+    if (!response.ok && data?.code === "NUMBER_MISMATCH") {
+      console.warn(
+        "[Pilot Status] Retentando criar webhook sem vincular whatsappNumberId...",
+      );
+      response = await sendWebhookRequest(false);
+      data = await response.json();
+    }
 
     console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
     console.log("[DEBUG PILOT STATUS RESPONSE]:", data);
 
     if (response.ok) {
-      console.log(
-        `[Pilot Status] Webhook registrado com sucesso para a instância ${instanceId}!`,
-      );
+      console.log(`[Pilot Status] Webhook registrado com sucesso!`);
       return true;
     } else {
       console.error("[Pilot Status Error] Falha ao registrar webhook:", data);
