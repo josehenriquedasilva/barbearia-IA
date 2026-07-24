@@ -318,43 +318,72 @@ export async function getPairingCodeAction(
     const formattedPhone = `+${cleanNumber}`;
 
     const baseUrl = getPilotStatusBaseUrl();
-    const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
+    const apiKey =
+      process.env.EVOLUTION_TENANT_KEY ||
+      process.env.PILOT_STATUS_API_KEY ||
+      process.env.WHATSAPP_API_KEY;
 
-    // 1. Consulta a lista de números no Pilot Status
-    const listRes = await fetch(`${baseUrl}/numbers`, {
-      headers: { "x-api-key": apiKey },
-    });
+    if (!apiKey) {
+      console.error("[Pilot Status] Nenhuma API Key encontrada no .env!");
+      return {
+        success: false,
+        error: "Chave API (EVOLUTION_TENANT_KEY) não configurada no servidor.",
+      };
+    }
 
     let realNumberId: string | null = null;
     let connectInstanceId: string | null = null;
+
+    // 1. Consulta a lista de números no Pilot Status
+    console.log(
+      `[Pilot Status] Buscando lista de números em ${baseUrl}/numbers ...`,
+    );
+    const listRes = await fetch(`${baseUrl}/numbers`, {
+      headers: { "x-api-key": apiKey },
+      cache: "no-store",
+    });
 
     if (listRes.ok) {
       const numbersList = await listRes.json();
       const items = Array.isArray(numbersList)
         ? numbersList
-        : numbersList.data || [];
+        : numbersList.data || numbersList.numbers || [];
 
       // Procura se esse número já existe na conta
       const found = items.find((item: any) => {
-        const itemPhone = (item.number || item.phone || "").replace(/\D/g, "");
+        const itemPhone = (
+          item.number?.number ||
+          item.number ||
+          item.phone ||
+          ""
+        )
+          .toString()
+          .replace(/\D/g, "");
         return (
           itemPhone.includes(cleanNumber) || cleanNumber.includes(itemPhone)
         );
       });
 
       if (found) {
-        // Captura prioritariamente o ID do Número que a API do Webhook exige
+        console.log(
+          "[Pilot Status] Número encontrado na lista existente:",
+          found,
+        );
         realNumberId =
           found.whatsappNumberId ||
           found.numberId ||
           found.number?.id ||
+          found.instance?.id ||
           found.id;
-        connectInstanceId = found.id || realNumberId;
+        connectInstanceId = found.instance?.id || found.id || realNumberId;
       }
     }
 
     // 2. Se o número ainda não existe na conta, cria um novo
     if (!realNumberId) {
+      console.log(
+        `[Pilot Status] Criando novo número para ${formattedPhone}...`,
+      );
       const createRes = await fetch(`${baseUrl}/numbers`, {
         method: "POST",
         headers: {
@@ -368,33 +397,66 @@ export async function getPairingCodeAction(
       });
 
       const createData = await createRes.json();
-      console.log("[DEBUG CREATE NUMBER]:", createData);
+      console.log(
+        "[DEBUG CREATE NUMBER RESPONSE]:",
+        createRes.status,
+        createData,
+      );
 
+      if (!createRes.ok) {
+        const errMsg =
+          createData.message ||
+          createData.error ||
+          `Erro HTTP ${createRes.status} ao criar número no Pilot Status.`;
+        return { success: false, error: errMsg };
+      }
+
+      // Procura o ID em todas as propriedades possíveis retornadas pela API
       realNumberId =
         createData.whatsappNumberId ||
         createData.numberId ||
         createData.number?.id ||
-        createData.id;
-      connectInstanceId = createData.id || realNumberId;
+        createData.instance?.id ||
+        createData.id ||
+        createData.data?.id;
+
+      connectInstanceId =
+        createData.instance?.id || createData.id || realNumberId;
     }
 
     if (!realNumberId) {
       return {
         success: false,
-        error: "Não foi possível obter um ID de número válido no Pilot Status.",
+        error:
+          "Não foi possível extrair o ID do número na resposta do Pilot Status.",
       };
     }
 
     // 3. Conecta para gerar o Código de Pareamento / QR Code
+    console.log(
+      `[Pilot Status] Solicitando conexão para o ID: ${connectInstanceId}...`,
+    );
     const connectRes = await fetch(
       `${baseUrl}/numbers/${connectInstanceId}/connect`,
       {
         headers: { "x-api-key": apiKey },
       },
     );
-    const connectData = await connectRes.json();
 
-    // 4. Salva o ID oficial do número no banco de dados
+    const connectData = await connectRes.json();
+    console.log("[DEBUG CONNECT RESPONSE]:", connectRes.status, connectData);
+
+    if (!connectRes.ok) {
+      return {
+        success: false,
+        error:
+          connectData.message ||
+          connectData.error ||
+          "Erro ao solicitar conexão no Pilot Status.",
+      };
+    }
+
+    // 4. Salva o ID oficial no banco de dados
     await prisma.shop.update({
       where: { id: shopId },
       data: {
@@ -403,20 +465,20 @@ export async function getPairingCodeAction(
       },
     });
 
-    // 5. Registra o Webhook passando o ID do número correto
+    // 5. Registra o Webhook passando o ID correto
     await setWebhookForInstance(realNumberId);
 
     return {
       success: true,
-      pairingCode: connectData.pairingCode,
-      qrcodeBase64: connectData.qrcodeBase64,
+      pairingCode: connectData.pairingCode || connectData.code,
+      qrcodeBase64: connectData.qrcodeBase64 || connectData.qrcode,
       instanceId: realNumberId,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro na integração com Pilot Status:", error);
     return {
       success: false,
-      error: "Erro interno no servidor.",
+      error: error?.message || "Erro interno no servidor.",
     };
   }
 }
