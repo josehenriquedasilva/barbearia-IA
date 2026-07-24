@@ -80,6 +80,11 @@ export async function setWebhookForInstance(instanceId: string) {
     baseUrl = `${baseUrl}/v1`;
   }
 
+  // 🔍 LOG DE DIAGNÓSTICO
+  console.log(
+    `[DEBUG WEBHOOK] Enviando whatsappNumberId: "${instanceId}" com a API Key que começa em: "${apiKey?.slice(0, 8)}..."`,
+  );
+
   if (!apiKey || !instanceId) {
     console.error(
       "[Pilot Status] API Key ou instanceId ausentes para registrar o Webhook.",
@@ -99,7 +104,7 @@ export async function setWebhookForInstance(instanceId: string) {
         url: webhookUrl,
         name: `Barbearia IA - ${instanceId}`,
         events: ["message.received", "number.connected"],
-        whatsappNumberId: instanceId, // 👈 OBRIGATÓRIO PELA API
+        whatsappNumberId: instanceId,
       }),
     });
 
