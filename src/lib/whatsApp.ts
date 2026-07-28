@@ -1,5 +1,3 @@
-// @/lib/whatsapp.ts
-
 export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
@@ -40,6 +38,7 @@ export async function sendWhatsAppMessage(
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey as string,
+        "x-whatsapp-number-id": instanceName,
       },
       body: JSON.stringify({
         number: finalNumber,
@@ -91,15 +90,15 @@ export async function setWebhookForInstance(numberId: string) {
 
   try {
     console.log(
-      `[Pilot Status] Tentando criar Webhook para ${numberId} com a chave TENANT...`,
+      `[Pilot Status] Tentando criar Webhook para o número ${numberId}...`,
     );
 
-    // Tentativa 1: Passando o whatsappNumberId no corpo
-    let response = await fetch(`${baseUrl}/webhooks`, {
+    const response = await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": tenantKey,
+        "x-whatsapp-number-id": numberId,
       },
       body: JSON.stringify({
         url: webhookUrl,
@@ -109,29 +108,7 @@ export async function setWebhookForInstance(numberId: string) {
       }),
     });
 
-    let data = await response.json();
-
-    // Se der 404 (número não encontrado por esse ID específico), tenta sem filtrar por whatsappNumberId (Webhook global da Tenant)
-    if (response.status === 404) {
-      console.warn(
-        `[Pilot Status Warn] ID ${numberId} não encontrado no filtro de webhooks. Tentando registro global de Webhook...`,
-      );
-
-      response = await fetch(`${baseUrl}/webhooks`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": tenantKey,
-        },
-        body: JSON.stringify({
-          url: webhookUrl,
-          name: `Barbearia IA Global`,
-          events: ["message.received", "number.connected"],
-        }),
-      });
-
-      data = await response.json();
-    }
+    const data = await response.json();
 
     console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
     console.log("[DEBUG PILOT STATUS RESPONSE]:", data);
