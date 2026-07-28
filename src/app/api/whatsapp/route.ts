@@ -126,32 +126,66 @@ async function processBackgroundAi({
     .join("\n");
 
   console.log(`[Agrupador] Enviando bloco para o Gemini.`);
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${host}`;
 
-  const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: combinedMessageText,
-      shopId,
-      clientPhone,
-      currentMessageIds: idsToUpdate,
-    }),
-  });
+  try {
+    // Trata o protocolo de acordo com o ambiente (http em dev, https em prod)
+    let protocol = "https://";
+    if (host.includes("localhost") || host.includes("127.0.0.1")) {
+      protocol = "http://";
+    }
 
-  const dataIA = await aiResponse.json();
-  const content = dataIA.ai_response || dataIA.message;
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `${protocol}${host}`;
+    console.log(`[Agrupador] Chamando rota da IA: ${baseUrl}/api/schedule`);
 
-  if (content) {
+    const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: combinedMessageText,
+        shopId,
+        clientPhone,
+        currentMessageIds: idsToUpdate,
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error(
+        `[Agrupador Erro] Rota /api/schedule retornou HTTP ${aiResponse.status}:`,
+        errText,
+      );
+      return;
+    }
+
+    const dataIA = await aiResponse.json();
+    console.log("[Agrupador] Retorno da IA:", JSON.stringify(dataIA));
+
+    const content = dataIA.ai_response || dataIA.message || dataIA.response;
+
+    if (!content) {
+      console.warn(
+        "[Agrupador Alerta] Resposta da IA veio vazia ou em formato desconhecido.",
+      );
+      return;
+    }
+
     const parts = Array.isArray(content) ? content : [content];
+
     for (const textPart of parts) {
-      await fetch(
+      if (!textPart || !textPart.trim()) continue;
+
+      console.log(
+        `[Agrupador] Despachando mensagem para o WhatsApp (Cliente: 55${clientPhone})...`,
+      );
+
+      const sendRes = await fetch(
         `${PILOT_STATUS_NATIVE_URL}/message/sendText/${instanceName}`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-api-key": EVOLUTION_TENANT_KEY as string,
+            apikey: EVOLUTION_TENANT_KEY as string,
           },
           body: JSON.stringify({
             number: `55${clientPhone}`,
@@ -160,7 +194,23 @@ async function processBackgroundAi({
           }),
         },
       );
+
+      if (!sendRes.ok) {
+        const sendErrText = await sendRes.text();
+        console.error(
+          `[Pilot Status Erro] Falha ao enviar mensagem via WhatsApp (HTTP ${sendRes.status}):`,
+          sendErrText,
+        );
+      } else {
+        const sendResult = await sendRes.json();
+        console.log(
+          "[Agrupador Sucesso] Mensagem enviada para o WhatsApp:",
+          sendResult,
+        );
+      }
     }
+  } catch (err) {
+    console.error("[Agrupador Exceção Crítica]:", err);
   }
 }
 
