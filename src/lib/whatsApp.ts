@@ -83,10 +83,9 @@ export async function setWebhookForInstance(numberId: string) {
       return;
     }
 
-    // URL do seu webhook no Next.js
     const targetWebhookUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://seu-dominio.com.br"}/api/webhook/whatsapp`;
 
-    // 1. Consultar se já existe webhook cadastrado na conta
+    // 1. Consultar webhooks existentes
     const listRes = await fetch(`${baseUrl}/webhooks`, {
       method: "GET",
       headers: {
@@ -102,13 +101,11 @@ export async function setWebhookForInstance(numberId: string) {
         ? webhooks
         : webhooks.data || webhooks.webhooks || [];
 
-      // Procura se já existe um webhook com a mesma URL do nosso site
       const existingWebhook = items.find(
         (wh: any) => wh.url === targetWebhookUrl && wh.active !== false,
       );
 
       if (existingWebhook) {
-        // Extrai a lista de IDs de número vinculados a este webhook
         const currentNumberIds: string[] = Array.isArray(
           existingWebhook.whatsappNumberIds,
         )
@@ -119,25 +116,18 @@ export async function setWebhookForInstance(numberId: string) {
               ? [existingWebhook.whatsappNumberId]
               : [];
 
-        // Verifica se o numberId atual JÁ ESTÁ na lista deste webhook
-        const isAlreadyLinked = currentNumberIds.includes(numberId);
-
-        if (isAlreadyLinked) {
+        if (currentNumberIds.includes(numberId)) {
           console.log(
-            `[Webhook] O número ${numberId} já está vinculado ao webhook existente (${existingWebhook.id}).`,
+            `[Webhook] O número ${numberId} já está vinculado ao webhook existente.`,
           );
           return;
         }
-
-        // Se o webhook existe mas o número NÃO está vinculado, atualiza o webhook adicionando o número
-        console.log(
-          `[Webhook] Webhook existe (${existingWebhook.id}), mas o número ${numberId} ainda não está vinculado. Atualizando...`,
-        );
 
         const updatedNumberIds = Array.from(
           new Set([...currentNumberIds, numberId]),
         );
 
+        // PUT atualizando webhook existente
         const updateRes = await fetch(
           `${baseUrl}/webhooks/${existingWebhook.id}`,
           {
@@ -145,6 +135,7 @@ export async function setWebhookForInstance(numberId: string) {
             headers: {
               "Content-Type": "application/json",
               "x-api-key": apiKey,
+              "x-whatsapp-number-id": numberId, // <-- Adicionado header obrigatório
             },
             body: JSON.stringify({
               name: existingWebhook.name || `Webhook Barbearia`,
@@ -153,6 +144,7 @@ export async function setWebhookForInstance(numberId: string) {
                 "message.received",
                 "messages.upsert",
               ],
+              whatsappNumberId: numberId, // <-- Adicionado campo no singular
               whatsappNumberIds: updatedNumberIds,
               active: true,
             }),
@@ -164,16 +156,11 @@ export async function setWebhookForInstance(numberId: string) {
             `[Webhook Sucesso] Número ${numberId} vinculado ao webhook existente com sucesso!`,
           );
           return;
-        } else {
-          const errText = await updateRes.text();
-          console.warn(
-            `[Webhook Aviso] Não foi possível atualizar webhook via PUT (${updateRes.status}): ${errText}. Tentando criar novo via POST...`,
-          );
         }
       }
     }
 
-    // 2. Se não encontrou ou não conseguiu vincular no existente, cria um novo webhook (POST)
+    // 2. Se não encontrou ou falhou no PUT, cria um novo (POST)
     console.log(
       `[Webhook] Cadastrando novo webhook para o número ${numberId}...`,
     );
@@ -183,11 +170,13 @@ export async function setWebhookForInstance(numberId: string) {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
+        "x-whatsapp-number-id": numberId, // <-- Adicionado header obrigatório
       },
       body: JSON.stringify({
         name: `Webhook Barbearia - ${numberId}`,
         url: targetWebhookUrl,
         events: ["message.received", "messages.upsert"],
+        whatsappNumberId: numberId, // <-- Adicionado campo no singular obrigatório pela API
         whatsappNumberIds: [numberId],
         active: true,
       }),
@@ -206,7 +195,7 @@ export async function setWebhookForInstance(numberId: string) {
   }
 }
 
-export async function setInstanceSettings(instanceName: string) {
+export async function setInstanceSettings(instanceId: string) {
   try {
     const apiKey =
       process.env.EVOLUTION_TENANT_KEY ||
@@ -218,22 +207,26 @@ export async function setInstanceSettings(instanceName: string) {
       return;
     }
 
+    // Garante que o ID da instância esteja limpo para a URL
+    const safeInstanceId = encodeURIComponent(instanceId);
+
     const res = await fetch(
-      `https://pilotstatus.com.br/api/layer/evolution-v2/settings/set/${instanceName}`,
+      `https://pilotstatus.com.br/api/layer/evolution-v2/settings/set/${safeInstanceId}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           apikey: apiKey,
+          "x-whatsapp-number-id": instanceId,
         },
         body: JSON.stringify({
           rejectCall: true,
           msgCall: "Este número aceita apenas mensagens de texto/áudio.",
-          groupsIgnore: true, // Ignora mensagens de grupos
+          groupsIgnore: true,
           alwaysOnline: false,
           readMessages: false,
           readStatus: false,
-          syncFullHistory: false, // Impede a sincronização de mensagens antigas
+          syncFullHistory: false,
         }),
       },
     );
@@ -243,7 +236,7 @@ export async function setInstanceSettings(instanceName: string) {
       console.error("[Settings Erro] Falha ao aplicar configurações:", errText);
     } else {
       console.log(
-        `[Settings Sucesso] Configurações aplicadas com sucesso para: ${instanceName}`,
+        `[Settings Sucesso] Configurações aplicadas com sucesso para: ${instanceId}`,
       );
     }
   } catch (error) {
