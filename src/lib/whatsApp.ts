@@ -83,27 +83,50 @@ export async function setWebhookForInstance(numberId: string) {
       return;
     }
 
-    const targetWebhookUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://seu-dominio.com.br"}/api/whatsapp`;
+    // Pega o domínio garantindo compatibilidade com Vercel e remove trailing slashes
+    const siteDomain =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "https://seu-dominio.com.br");
 
-    // 1. Consultar webhooks existentes
+    const targetWebhookUrl = `${siteDomain.replace(/\/$/, "")}/api/webhook/whatsapp`;
+
+    // 1. Busca TODOS os webhooks da conta tenant (SEM o header x-whatsapp-number-id no GET)
     const listRes = await fetch(`${baseUrl}/webhooks`, {
       method: "GET",
       headers: {
         "x-api-key": apiKey,
-        "x-whatsapp-number-id": numberId,
       },
       cache: "no-store",
     });
 
     if (listRes.ok) {
       const webhooks = await listRes.json();
-      const items = Array.isArray(webhooks)
+      const items: any[] = Array.isArray(webhooks)
         ? webhooks
         : webhooks.data || webhooks.webhooks || [];
 
-      const existingWebhook = items.find(
-        (wh: any) => wh.url === targetWebhookUrl && wh.active !== false,
-      );
+      // Encontra qualquer webhook existente que aponte para a nossa URL ou tenha o nosso ID/Nome
+      const existingWebhook = items.find((wh: any) => {
+        const whUrlNormalized = (wh.url || "").replace(/\/$/, "");
+        const targetUrlNormalized = targetWebhookUrl.replace(/\/$/, "");
+
+        const isSameUrl = whUrlNormalized === targetUrlNormalized;
+        const isSameName = wh.name === `Webhook Barbearia - ${numberId}`;
+
+        const whNumberIds: string[] = Array.isArray(wh.whatsappNumberIds)
+          ? wh.whatsappNumberIds
+          : Array.isArray(wh.whatsappNumbers)
+            ? wh.whatsappNumbers.map((n: any) => n.id || n)
+            : wh.whatsappNumberId
+              ? [wh.whatsappNumberId]
+              : [];
+
+        const hasNumber = whNumberIds.includes(numberId);
+
+        return (isSameUrl || isSameName || hasNumber) && wh.active !== false;
+      });
 
       if (existingWebhook) {
         const currentNumberIds: string[] = Array.isArray(
@@ -116,18 +139,23 @@ export async function setWebhookForInstance(numberId: string) {
               ? [existingWebhook.whatsappNumberId]
               : [];
 
+        // Se o número já está vinculado ao webhook existente, cancela a criação/atualização
         if (currentNumberIds.includes(numberId)) {
           console.log(
-            `[Webhook] O número ${numberId} já está vinculado ao webhook existente.`,
+            `[Webhook] O número ${numberId} já está vinculado ao webhook ${existingWebhook.id}. Nenhuma ação necessária.`,
           );
           return;
         }
 
+        // Se o webhook existe mas não tinha esse numberId, atualiza via PUT
         const updatedNumberIds = Array.from(
           new Set([...currentNumberIds, numberId]),
         );
 
-        // PUT atualizando webhook existente
+        console.log(
+          `[Webhook] Vinculando número ${numberId} ao webhook existente ${existingWebhook.id}...`,
+        );
+
         const updateRes = await fetch(
           `${baseUrl}/webhooks/${existingWebhook.id}`,
           {
@@ -135,7 +163,7 @@ export async function setWebhookForInstance(numberId: string) {
             headers: {
               "Content-Type": "application/json",
               "x-api-key": apiKey,
-              "x-whatsapp-number-id": numberId, // <-- Adicionado header obrigatório
+              "x-whatsapp-number-id": numberId,
             },
             body: JSON.stringify({
               name: existingWebhook.name || `Webhook Barbearia`,
@@ -144,7 +172,7 @@ export async function setWebhookForInstance(numberId: string) {
                 "message.received",
                 "messages.upsert",
               ],
-              whatsappNumberId: numberId, // <-- Adicionado campo no singular
+              whatsappNumberId: numberId,
               whatsappNumberIds: updatedNumberIds,
               active: true,
             }),
@@ -153,16 +181,16 @@ export async function setWebhookForInstance(numberId: string) {
 
         if (updateRes.ok) {
           console.log(
-            `[Webhook Sucesso] Número ${numberId} vinculado ao webhook existente com sucesso!`,
+            `[Webhook Sucesso] Número ${numberId} adicionado ao webhook existente com sucesso!`,
           );
           return;
         }
       }
     }
 
-    // 2. Se não encontrou ou falhou no PUT, cria um novo (POST)
+    // 2. Se e somente se nenhum webhook foi encontrado, cria um novo (POST)
     console.log(
-      `[Webhook] Cadastrando novo webhook para o número ${numberId}...`,
+      `[Webhook] Criando webhook inicial para o número ${numberId}...`,
     );
 
     const createRes = await fetch(`${baseUrl}/webhooks`, {
@@ -170,13 +198,13 @@ export async function setWebhookForInstance(numberId: string) {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
-        "x-whatsapp-number-id": numberId, // <-- Adicionado header obrigatório
+        "x-whatsapp-number-id": numberId,
       },
       body: JSON.stringify({
         name: `Webhook Barbearia - ${numberId}`,
         url: targetWebhookUrl,
         events: ["message.received", "messages.upsert"],
-        whatsappNumberId: numberId, // <-- Adicionado campo no singular obrigatório pela API
+        whatsappNumberId: numberId,
         whatsappNumberIds: [numberId],
         active: true,
       }),
