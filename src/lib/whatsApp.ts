@@ -90,7 +90,7 @@ export async function setWebhookForInstance(numberId: string) {
         ? `https://${process.env.VERCEL_URL}`
         : "https://seu-dominio.com.br");
 
-    const targetWebhookUrl = `${siteDomain.replace(/\/$/, "")}/api/webhook/whatsapp`;
+    const targetWebhookUrl = `${siteDomain.replace(/\/$/, "")}/api/whatsapp`;
 
     // 1. Busca TODOS os webhooks da conta tenant (SEM o header x-whatsapp-number-id no GET)
     const listRes = await fetch(`${baseUrl}/webhooks`, {
