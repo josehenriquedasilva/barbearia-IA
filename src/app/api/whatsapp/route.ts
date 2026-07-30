@@ -2,8 +2,83 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
 
-const PILOT_STATUS_NATIVE_URL = process.env.PILOT_STATUS_NATIVE_URL;
-const EVOLUTION_TENANT_KEY = process.env.EVOLUTION_TENANT_KEY;
+const PILOT_STATUS_NATIVE_URL =
+  process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+const EVOLUTION_TENANT_KEY =
+  process.env.EVOLUTION_TENANT_KEY ||
+  process.env.PILOT_STATUS_API_KEY ||
+  process.env.WHATSAPP_API_KEY;
+
+/**
+ * Função responsável pelo envio seguro de mensagens via Pilot Status
+ */
+export async function sendWhatsAppMessage(
+  instanceName: string,
+  number: string,
+  text: string,
+) {
+  if (!PILOT_STATUS_NATIVE_URL || !EVOLUTION_TENANT_KEY || !instanceName) {
+    console.error(
+      "[WhatsApp Error] Parâmetros ou Variáveis de ambiente ausentes.",
+      {
+        rawBaseUrl: !!PILOT_STATUS_NATIVE_URL,
+        apiKey: !!EVOLUTION_TENANT_KEY,
+        instanceName,
+      },
+    );
+    return null;
+  }
+
+  let baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
+  if (!baseUrl.endsWith("/v1")) {
+    baseUrl = `${baseUrl}/v1`;
+  }
+
+  const url = `${baseUrl}/messages/send`;
+
+  // Garante o formato E.164 (+55...)
+  const cleanDigits = number.replace(/\D/g, "");
+  const numberWithDDI = cleanDigits.startsWith("55")
+    ? cleanDigits
+    : `55${cleanDigits}`;
+  const finalNumber = `+${numberWithDDI}`;
+
+  try {
+    console.log(
+      `[WhatsApp Send] Enviando mensagem para ${finalNumber} via numberId: ${instanceName}...`,
+    );
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": EVOLUTION_TENANT_KEY,
+        "x-whatsapp-number-id": instanceName,
+      },
+      body: JSON.stringify({
+        number: finalNumber,
+        text: text,
+        whatsappNumberId: instanceName,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `[WhatsApp Send Error - Status ${response.status}]:`,
+        errorText,
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    console.log("[WhatsApp Send Sucesso]:", data);
+    return data;
+  } catch (error) {
+    console.error("[WhatsApp Send Exception]:", error);
+    return null;
+  }
+}
 
 async function transcreverAudioComGroq(
   messageId: string,
@@ -12,13 +87,19 @@ async function transcreverAudioComGroq(
   try {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
+    let baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
+    if (!baseUrl.endsWith("/v1")) {
+      baseUrl = `${baseUrl}/v1`;
+    }
+
     const responseMedia = await fetch(
-      `${PILOT_STATUS_NATIVE_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
+      `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": EVOLUTION_TENANT_KEY as string,
+          "x-whatsapp-number-id": instanceName,
         },
         body: JSON.stringify({
           message: {
@@ -128,7 +209,6 @@ async function processBackgroundAi({
   console.log(`[Agrupador] Enviando bloco para o Gemini.`);
 
   try {
-    // Trata o protocolo de acordo com o ambiente (http em dev, https em prod)
     let protocol = "https://";
     if (host.includes("localhost") || host.includes("127.0.0.1")) {
       protocol = "http://";
@@ -175,39 +255,11 @@ async function processBackgroundAi({
       if (!textPart || !textPart.trim()) continue;
 
       console.log(
-        `[Agrupador] Despachando mensagem para o WhatsApp (Cliente: 55${clientPhone})...`,
+        `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`,
       );
 
-      const sendRes = await fetch(
-        `${PILOT_STATUS_NATIVE_URL}/message/sendText/${instanceName}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": EVOLUTION_TENANT_KEY as string,
-            apikey: EVOLUTION_TENANT_KEY as string,
-          },
-          body: JSON.stringify({
-            number: `55${clientPhone}`,
-            text: textPart.trim(),
-            delay: 1200,
-          }),
-        },
-      );
-
-      if (!sendRes.ok) {
-        const sendErrText = await sendRes.text();
-        console.error(
-          `[Pilot Status Erro] Falha ao enviar mensagem via WhatsApp (HTTP ${sendRes.status}):`,
-          sendErrText,
-        );
-      } else {
-        const sendResult = await sendRes.json();
-        console.log(
-          "[Agrupador Sucesso] Mensagem enviada para o WhatsApp:",
-          sendResult,
-        );
-      }
+      // Chamada corrigida usando a função sendWhatsAppMessage
+      await sendWhatsAppMessage(instanceName, clientPhone, textPart.trim());
     }
   } catch (err) {
     console.error("[Agrupador Exceção Crítica]:", err);
@@ -232,7 +284,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 2. Extrair o ID do número / Instância (Pilot Status envia body.data.numberId)
+    // 2. Extrair o ID real do número / Instância (Pilot Status envia body.data.numberId)
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -274,11 +326,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
-    // 4. Extrair o telefone do cliente (Pilot Status envia em body.data.from Ex: "+558185966115")
+    // 4. Extrair o telefone do cliente
     const rawClientPhone = body.data?.from || body.data?.key?.remoteJid || "";
     const clientPhone = rawClientPhone.replace(/\D/g, "").replace(/^55/, "");
 
-    // 5. Extrair o texto da mensagem (Pilot Status envia em body.data.content Ex: "Oi")
+    // 5. Extrair o texto da mensagem
     let messageText =
       body.data?.content ||
       body.data?.message?.conversation ||
@@ -291,8 +343,8 @@ export async function POST(request: Request) {
       body.data?.messageType === "audioMessage" ||
       body.data?.message?.audioMessage;
 
-    const effectiveInstance =
-      shop.whatsappInstance || shop.slug || instanceName;
+    // IMPORTANTE: Para chamadas à API do Pilot Status, SEMPRE utilize o numberId real
+    const effectiveInstance = instanceName || shop.whatsappInstance;
 
     // Transcrição de áudio via Groq caso seja áudio
     if (isAudio && messageId) {
