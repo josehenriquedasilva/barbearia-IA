@@ -13,9 +13,10 @@ export async function sendWhatsAppMessage(
     process.env.WHATSAPP_API_KEY ||
     process.env.EVOLUTION_API_KEY;
 
-  if (!rawBaseUrl || !apiKey) {
+  if (!rawBaseUrl || !apiKey || !instanceName) {
     console.error(
-      "[WhatsApp Error] Variáveis de ambiente (PILOT_STATUS_NATIVE_URL ou EVOLUTION_TENANT_KEY) não encontradas.",
+      "[WhatsApp Error] Parâmetros ou Variáveis de ambiente ausentes.",
+      { rawBaseUrl: !!rawBaseUrl, apiKey: !!apiKey, instanceName },
     );
     return null;
   }
@@ -27,12 +28,18 @@ export async function sendWhatsAppMessage(
 
   const url = `${baseUrl}/messages/send`;
 
-  const formattedNumber = number.replace(/\D/g, "");
-  const finalNumber = formattedNumber.startsWith("55")
-    ? formattedNumber
-    : `55${formattedNumber}`;
+  // Garante formato E.164 com o símbolo '+' (+55DDD9XXXXXXXX)
+  const cleanDigits = number.replace(/\D/g, "");
+  const numberWithDDI = cleanDigits.startsWith("55")
+    ? cleanDigits
+    : `55${cleanDigits}`;
+  const finalNumber = `+${numberWithDDI}`;
 
   try {
+    console.log(
+      `[WhatsApp Send] Enviando mensagem para ${finalNumber} via numberId: ${instanceName}...`,
+    );
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -57,6 +64,7 @@ export async function sendWhatsAppMessage(
     }
 
     const data = await response.json();
+    console.log("[WhatsApp Send Sucesso]:", data);
     return data;
   } catch (error) {
     console.error("[WhatsApp Send Exception]:", error);
