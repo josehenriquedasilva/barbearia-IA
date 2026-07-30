@@ -1,7 +1,11 @@
 "use server";
 
 import prisma from "@/lib/db";
-import { sendWhatsAppMessage, setWebhookForInstance } from "@/lib/whatsApp";
+import {
+  sendWhatsAppMessage,
+  setWebhookForInstance,
+  setInstanceSettings,
+} from "@/lib/whatsApp";
 import { SettingsPayload } from "@/types/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
@@ -464,6 +468,10 @@ export async function getPairingCodeAction(
 
     // 5. Registra o Webhook usando o ID correto do Número
     await setWebhookForInstance(finalNumberId);
+
+    // 6. Aplica as configurações (desativa histórico antigo e ignora grupos)
+    const instanceDisplayName = shop.name || shop.slug || finalNumberId;
+    await setInstanceSettings(instanceDisplayName);
 
     return {
       success: true,

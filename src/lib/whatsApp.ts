@@ -145,3 +145,48 @@ export async function setWebhookForInstance(numberId: string) {
     console.error("[Webhook Exceção]:", error);
   }
 }
+
+export async function setInstanceSettings(instanceName: string) {
+  try {
+    const apiKey =
+      process.env.EVOLUTION_TENANT_KEY ||
+      process.env.PILOT_STATUS_API_KEY ||
+      process.env.WHATSAPP_API_KEY;
+
+    if (!apiKey) {
+      console.error("[Settings Erro] API Key não encontrada.");
+      return;
+    }
+
+    const res = await fetch(
+      `https://pilotstatus.com.br/api/layer/evolution-v2/settings/set/${instanceName}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: apiKey,
+        },
+        body: JSON.stringify({
+          rejectCall: true,
+          msgCall: "Este número aceita apenas mensagens de texto/áudio.",
+          groupsIgnore: true, // Ignora mensagens de grupos
+          alwaysOnline: false,
+          readMessages: false,
+          readStatus: false,
+          syncFullHistory: false, // Impede a sincronização de mensagens antigas
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[Settings Erro] Falha ao aplicar configurações:", errText);
+    } else {
+      console.log(
+        `[Settings Sucesso] Configurações aplicadas com sucesso para: ${instanceName}`,
+      );
+    }
+  } catch (error) {
+    console.error("[Settings Exceção]:", error);
+  }
+}
