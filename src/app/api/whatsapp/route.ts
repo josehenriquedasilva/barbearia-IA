@@ -56,7 +56,7 @@ export async function sendWhatsAppMessage(
         "x-whatsapp-number-id": instanceName,
       },
       body: JSON.stringify({
-        number: finalNumber,
+        destinationNumber: finalNumber, // <--- CORRIGIDO AQUI (de 'number' para 'destinationNumber')
         text: text,
         whatsappNumberId: instanceName,
       }),
