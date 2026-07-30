@@ -470,7 +470,8 @@ export async function getPairingCodeAction(
     await setWebhookForInstance(finalNumberId);
 
     // 6. Aplica as configurações (desativa histórico antigo e ignora grupos)
-    await setInstanceSettings(targetInstanceId || finalNumberId);
+    const instanceDisplayName = shop.name || shop.slug || finalNumberId;
+    await setInstanceSettings(instanceDisplayName);
 
     return {
       success: true,
