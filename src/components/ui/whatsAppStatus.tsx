@@ -38,12 +38,12 @@ export function WhatsAppStatus({
 
   useEffect(() => {
     async function checkStatus() {
-      const res = await checkWhatsAppStatusAction(slug);
+      const res = await checkWhatsAppStatusAction(shopId);
       setIsConnected(res.connected);
     }
     checkStatus();
     const interval = setInterval(async () => {
-      const res = await checkWhatsAppStatusAction(slug);
+      const res = await checkWhatsAppStatusAction(shopId);
       if (res.connected !== isConnected) {
         setIsConnected(res.connected);
         if (res.connected) {
@@ -53,7 +53,7 @@ export function WhatsAppStatus({
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [slug, isConnected]);
+  }, [shopId, isConnected]);
 
   async function handleGenerateCode() {
     setLoading(true);

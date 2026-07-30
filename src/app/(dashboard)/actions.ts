@@ -538,19 +538,41 @@ export async function disconnectWhatsAppAction(
 }
 
 // Verificar status da conexão com IA
-export async function checkWhatsAppStatusAction(instanceId: string) {
-  if (!instanceId) {
+export async function checkWhatsAppStatusAction(shopId: number) {
+  if (!shopId) {
     return { connected: false, state: "CLOSE" };
   }
 
   try {
-    const baseUrl = getPilotStatusBaseUrl();
-    const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
+    // Busca no banco o ID da instância registrado no Pilot Status para esta barbearia
+    const shop = await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { whatsappInstance: true, whatsappToken: true },
+    });
 
-    const response = await fetch(`${baseUrl}/numbers/${instanceId}/status`, {
+    if (!shop || (!shop.whatsappInstance && !shop.whatsappToken)) {
+      return { connected: false, state: "CLOSE" };
+    }
+
+    // Prioriza o whatsappInstance salvo no banco
+    const targetId = shop.whatsappInstance || shop.whatsappToken;
+
+    let rawBaseUrl =
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+    let baseUrl = rawBaseUrl.replace(/\/$/, "");
+    if (!baseUrl.endsWith("/v1")) {
+      baseUrl = `${baseUrl}/v1`;
+    }
+
+    const apiKey =
+      process.env.EVOLUTION_TENANT_KEY ||
+      process.env.PILOT_STATUS_API_KEY ||
+      process.env.WHATSAPP_API_KEY;
+
+    const response = await fetch(`${baseUrl}/numbers/${targetId}/status`, {
       method: "GET",
       headers: {
-        "x-api-key": apiKey,
+        "x-api-key": apiKey as string,
       },
       cache: "no-store",
     });
@@ -561,14 +583,16 @@ export async function checkWhatsAppStatusAction(instanceId: string) {
 
     const data = await response.json();
 
+    // Trata letras maiúsculas e minúsculas (OPEN, open, CONNECTED, connected, etc.)
+    const stateUpper = String(data.state || data.status || "").toUpperCase();
     const isConnected =
-      data.state === "OPEN" ||
-      data.status === "CONNECTED" ||
+      stateUpper === "OPEN" ||
+      stateUpper === "CONNECTED" ||
       data.connected === true;
 
     return {
       connected: isConnected,
-      state: isConnected ? "OPEN" : data.state || "CLOSE",
+      state: isConnected ? "OPEN" : stateUpper || "CLOSE",
     };
   } catch (error) {
     console.error("Erro ao verificar status na Pilot Status:", error);
