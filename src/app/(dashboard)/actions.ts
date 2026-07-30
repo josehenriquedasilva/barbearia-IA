@@ -8,9 +8,6 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-const PILOT_STATUS_NATIVE_URL = process.env.PILOT_STATUS_NATIVE_URL;
-const EVOLUTION_TENANT_KEY = process.env.EVOLUTION_TENANT_KEY;
-
 // Helper para garantir a URL base correta com /v1
 function getPilotStatusBaseUrl() {
   let rawBaseUrl =

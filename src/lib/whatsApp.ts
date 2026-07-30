@@ -65,66 +65,83 @@ export async function sendWhatsAppMessage(
 }
 
 export async function setWebhookForInstance(numberId: string) {
-  const tenantKey =
-    process.env.EVOLUTION_TENANT_KEY ||
-    process.env.PILOT_STATUS_API_KEY ||
-    process.env.WHATSAPP_API_KEY;
-
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://barbearia-ia.vercel.app";
-  const webhookUrl = `${siteUrl.replace(/\/$/, "")}/api/whatsapp`;
-
-  let rawBaseUrl =
-    process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-  let baseUrl = rawBaseUrl.replace(/\/$/, "");
-  if (!baseUrl.endsWith("/v1")) {
-    baseUrl = `${baseUrl}/v1`;
-  }
-
-  if (!tenantKey || !numberId) {
-    console.error(
-      "[Pilot Status Error] Chave Tenant ou numberId ausentes para registrar o Webhook.",
-    );
-    return false;
-  }
-
   try {
+    let rawBaseUrl =
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+    let baseUrl = rawBaseUrl.replace(/\/$/, "");
+    if (!baseUrl.endsWith("/v1")) {
+      baseUrl = `${baseUrl}/v1`;
+    }
+
+    const apiKey =
+      process.env.EVOLUTION_TENANT_KEY ||
+      process.env.PILOT_STATUS_API_KEY ||
+      process.env.WHATSAPP_API_KEY;
+
+    if (!apiKey) {
+      console.error("[Webhook Erro] API Key não configurada.");
+      return;
+    }
+
+    // URL do seu webhook no Next.js
+    const targetWebhookUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://seu-dominio.com.br"}/api/webhook/whatsapp`;
+
+    // 1. Consultar se já existe webhook cadastrado para este número
+    const listRes = await fetch(`${baseUrl}/webhooks`, {
+      method: "GET",
+      headers: {
+        "x-api-key": apiKey,
+        "x-whatsapp-number-id": numberId, // Filtra estritamente os webhooks do número
+      },
+      cache: "no-store",
+    });
+
+    if (listRes.ok) {
+      const webhooks = await listRes.json();
+      const items = Array.isArray(webhooks) ? webhooks : webhooks.data || [];
+
+      // Verifica se a sua URL já está cadastrada para este número
+      const existingWebhook = items.find(
+        (wh: any) => wh.url === targetWebhookUrl && wh.active === true,
+      );
+
+      if (existingWebhook) {
+        console.log(
+          `[Webhook] Webhook já configurado e ativo para o número ${numberId}. Ignorando criação duplicada.`,
+        );
+        return; // Interrompe para não duplicar!
+      }
+    }
+
+    // 2. Se não encontrou um webhook existente, faz o cadastramento (POST)
     console.log(
-      `[Pilot Status] Tentando criar Webhook para o número ${numberId}...`,
+      `[Webhook] Cadastrando novo webhook para o número ${numberId}...`,
     );
 
-    const response = await fetch(`${baseUrl}/webhooks`, {
+    const createRes = await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": tenantKey,
-        "x-whatsapp-number-id": numberId,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({
-        url: webhookUrl,
-        name: `Barbearia IA - ${numberId}`,
-        events: ["message.received", "number.connected"],
-        whatsappNumberId: numberId,
+        name: `Webhook Barbearia - ${numberId}`,
+        url: targetWebhookUrl,
+        events: ["message.received", "messages.upsert"],
+        whatsappNumberIds: [numberId],
+        active: true,
       }),
     });
 
-    const data = await response.json();
-
-    console.log("[DEBUG PILOT STATUS STATUS]:", response.status);
-    console.log("[DEBUG PILOT STATUS RESPONSE]:", data);
-
-    if (response.ok) {
-      console.log(`✅ [Pilot Status] Webhook registrado com SUCESSO!`);
-      return true;
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      console.error("[Webhook Erro] Falha ao registrar webhook:", errText);
+    } else {
+      console.log(
+        `[Webhook Sucesso] Webhook vinculado com sucesso ao número ${numberId}!`,
+      );
     }
-
-    console.error("❌ [Pilot Status Error] Falha ao registrar webhook:", data);
-    return false;
   } catch (error) {
-    console.error(
-      "❌ [Pilot Status Exception] Erro ao registrar webhook:",
-      error,
-    );
-    return false;
+    console.error("[Webhook Exceção]:", error);
   }
 }
