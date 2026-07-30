@@ -86,34 +86,94 @@ export async function setWebhookForInstance(numberId: string) {
     // URL do seu webhook no Next.js
     const targetWebhookUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://seu-dominio.com.br"}/api/webhook/whatsapp`;
 
-    // 1. Consultar se já existe webhook cadastrado para este número
+    // 1. Consultar se já existe webhook cadastrado na conta
     const listRes = await fetch(`${baseUrl}/webhooks`, {
       method: "GET",
       headers: {
         "x-api-key": apiKey,
-        "x-whatsapp-number-id": numberId, // Filtra estritamente os webhooks do número
+        "x-whatsapp-number-id": numberId,
       },
       cache: "no-store",
     });
 
     if (listRes.ok) {
       const webhooks = await listRes.json();
-      const items = Array.isArray(webhooks) ? webhooks : webhooks.data || [];
+      const items = Array.isArray(webhooks)
+        ? webhooks
+        : webhooks.data || webhooks.webhooks || [];
 
-      // Verifica se a sua URL já está cadastrada para este número
+      // Procura se já existe um webhook com a mesma URL do nosso site
       const existingWebhook = items.find(
-        (wh: any) => wh.url === targetWebhookUrl && wh.active === true,
+        (wh: any) => wh.url === targetWebhookUrl && wh.active !== false,
       );
 
       if (existingWebhook) {
+        // Extrai a lista de IDs de número vinculados a este webhook
+        const currentNumberIds: string[] = Array.isArray(
+          existingWebhook.whatsappNumberIds,
+        )
+          ? existingWebhook.whatsappNumberIds
+          : Array.isArray(existingWebhook.whatsappNumbers)
+            ? existingWebhook.whatsappNumbers.map((n: any) => n.id || n)
+            : existingWebhook.whatsappNumberId
+              ? [existingWebhook.whatsappNumberId]
+              : [];
+
+        // Verifica se o numberId atual JÁ ESTÁ na lista deste webhook
+        const isAlreadyLinked = currentNumberIds.includes(numberId);
+
+        if (isAlreadyLinked) {
+          console.log(
+            `[Webhook] O número ${numberId} já está vinculado ao webhook existente (${existingWebhook.id}).`,
+          );
+          return;
+        }
+
+        // Se o webhook existe mas o número NÃO está vinculado, atualiza o webhook adicionando o número
         console.log(
-          `[Webhook] Webhook já configurado e ativo para o número ${numberId}. Ignorando criação duplicada.`,
+          `[Webhook] Webhook existe (${existingWebhook.id}), mas o número ${numberId} ainda não está vinculado. Atualizando...`,
         );
-        return; // Interrompe para não duplicar!
+
+        const updatedNumberIds = Array.from(
+          new Set([...currentNumberIds, numberId]),
+        );
+
+        const updateRes = await fetch(
+          `${baseUrl}/webhooks/${existingWebhook.id}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": apiKey,
+            },
+            body: JSON.stringify({
+              name: existingWebhook.name || `Webhook Barbearia`,
+              url: targetWebhookUrl,
+              events: existingWebhook.events || [
+                "message.received",
+                "messages.upsert",
+              ],
+              whatsappNumberIds: updatedNumberIds,
+              active: true,
+            }),
+          },
+        );
+
+        if (updateRes.ok) {
+          console.log(
+            `[Webhook Sucesso] Número ${numberId} vinculado ao webhook existente com sucesso!`,
+          );
+          return;
+        } else {
+          const errText = await updateRes.text();
+          console.warn(
+            `[Webhook Aviso] Não foi possível atualizar webhook via PUT (${updateRes.status}): ${errText}. Tentando criar novo via POST...`,
+          );
+        }
       }
     }
 
-    // 2. Se não encontrou um webhook existente, faz o cadastramento (POST)
+    // 2. Se não encontrou ou não conseguiu vincular no existente, cria um novo webhook (POST)
     console.log(
       `[Webhook] Cadastrando novo webhook para o número ${numberId}...`,
     );
@@ -138,7 +198,7 @@ export async function setWebhookForInstance(numberId: string) {
       console.error("[Webhook Erro] Falha ao registrar webhook:", errText);
     } else {
       console.log(
-        `[Webhook Sucesso] Webhook vinculado com sucesso ao número ${numberId}!`,
+        `[Webhook Sucesso] Webhook criado com sucesso para o número ${numberId}!`,
       );
     }
   } catch (error) {
