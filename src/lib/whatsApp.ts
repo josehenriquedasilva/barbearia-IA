@@ -83,7 +83,7 @@ export async function setWebhookForInstance(numberId: string) {
       return;
     }
 
-    const targetWebhookUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://seu-dominio.com.br"}/api/webhook/whatsapp`;
+    const targetWebhookUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://seu-dominio.com.br"}/api/whatsapp`;
 
     // 1. Consultar webhooks existentes
     const listRes = await fetch(`${baseUrl}/webhooks`, {
