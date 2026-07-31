@@ -499,31 +499,59 @@ export async function disconnectWhatsAppAction(
   instanceName: string,
 ) {
   try {
-    const baseUrl = getPilotStatusBaseUrl();
+    const rawBaseUrl = getPilotStatusBaseUrl() || "https://pilotstatus.com.br";
+
+    // Garante que a URL base termine com /v1
+    let baseUrl = rawBaseUrl.replace(/\/$/, "");
+    if (!baseUrl.endsWith("/v1")) {
+      baseUrl = `${baseUrl}/v1`;
+    }
+
     const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
 
-    const response = await fetch(
-      `${baseUrl}/numbers/${instanceName}/disconnect`,
-      {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-      },
+    // 1. Garante que estamos usando o ID real do número no Pilot Status e não o slug
+    let numberId = instanceName;
+    if (shopId) {
+      const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { whatsappInstance: true },
+      });
+      if (shop?.whatsappInstance) {
+        numberId = shop.whatsappInstance;
+      }
+    }
+
+    // 2. Endpoint oficial de logout: POST /v1/numbers/{id}/logout
+    const url = `${baseUrl}/numbers/${numberId}/logout`;
+
+    console.log(
+      `[WhatsApp Logout] Desconectando instância ${numberId} via ${url}...`,
     );
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+    });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("Erro no desligamento do Pilot Status:", errorData);
+      console.error("Erro no logout do Pilot Status:", errorData);
       return {
         success: false,
         error:
           errorData.message ||
-          "A API do Pilot Status recusou o comando de desconexão.",
+          errorData.error ||
+          `A API do Pilot Status recusou o comando de desconexão (Status ${response.status}).`,
       };
     }
 
+    const data = await response.json().catch(() => ({}));
+    console.log("[WhatsApp Logout Sucesso]:", data);
+
+    // Aguarda um pequeno tempo para sincronização
     await new Promise((res) => setTimeout(res, 2000));
 
     revalidatePath("/dashboard");
