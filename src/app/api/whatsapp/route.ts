@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
+import { sendWhatsAppMessage } from "@/lib/whatsApp";
 
 const PILOT_STATUS_NATIVE_URL =
   process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
@@ -12,73 +13,6 @@ const EVOLUTION_TENANT_KEY =
 /**
  * Função responsável pelo envio seguro de mensagens via Pilot Status
  */
-export async function sendWhatsAppMessage(
-  instanceName: string,
-  number: string,
-  text: string,
-) {
-  if (!PILOT_STATUS_NATIVE_URL || !EVOLUTION_TENANT_KEY || !instanceName) {
-    console.error(
-      "[WhatsApp Error] Parâmetros ou Variáveis de ambiente ausentes.",
-      {
-        rawBaseUrl: !!PILOT_STATUS_NATIVE_URL,
-        apiKey: !!EVOLUTION_TENANT_KEY,
-        instanceName,
-      },
-    );
-    return null;
-  }
-
-  let baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
-  if (!baseUrl.endsWith("/v1")) {
-    baseUrl = `${baseUrl}/v1`;
-  }
-
-  const url = `${baseUrl}/messages/send`;
-
-  // Garante o formato E.164 (+55...)
-  const cleanDigits = number.replace(/\D/g, "");
-  const numberWithDDI = cleanDigits.startsWith("55")
-    ? cleanDigits
-    : `55${cleanDigits}`;
-  const finalNumber = `+${numberWithDDI}`;
-
-  try {
-    console.log(
-      `[WhatsApp Send] Enviando mensagem para ${finalNumber} via numberId: ${instanceName}...`,
-    );
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": EVOLUTION_TENANT_KEY,
-        "x-whatsapp-number-id": instanceName,
-      },
-      body: JSON.stringify({
-        destinationNumber: finalNumber, // <--- CORRIGIDO AQUI (de 'number' para 'destinationNumber')
-        text: text,
-        whatsappNumberId: instanceName,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `[WhatsApp Send Error - Status ${response.status}]:`,
-        errorText,
-      );
-      return null;
-    }
-
-    const data = await response.json();
-    console.log("[WhatsApp Send Sucesso]:", data);
-    return data;
-  } catch (error) {
-    console.error("[WhatsApp Send Exception]:", error);
-    return null;
-  }
-}
 
 async function transcreverAudioComGroq(
   messageId: string,
