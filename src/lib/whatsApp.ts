@@ -1,34 +1,35 @@
+const PILOT_STATUS_NATIVE_URL =
+  process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+const EVOLUTION_TENANT_KEY =
+  process.env.EVOLUTION_TENANT_KEY ||
+  process.env.PILOT_STATUS_API_KEY ||
+  process.env.WHATSAPP_API_KEY;
+
 export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
   text: string,
 ) {
-  const rawBaseUrl =
-    process.env.PILOT_STATUS_NATIVE_URL ||
-    process.env.WHATSAPP_API_URL ||
-    "https://pilotstatus.com.br";
-
-  const apiKey =
-    process.env.EVOLUTION_TENANT_KEY ||
-    process.env.WHATSAPP_API_KEY ||
-    process.env.EVOLUTION_API_KEY;
-
-  if (!rawBaseUrl || !apiKey || !instanceName) {
+  if (!PILOT_STATUS_NATIVE_URL || !EVOLUTION_TENANT_KEY || !instanceName) {
     console.error(
       "[WhatsApp Error] Parâmetros ou Variáveis de ambiente ausentes.",
-      { rawBaseUrl: !!rawBaseUrl, apiKey: !!apiKey, instanceName },
+      {
+        rawBaseUrl: !!PILOT_STATUS_NATIVE_URL,
+        apiKey: !!EVOLUTION_TENANT_KEY,
+        instanceName,
+      },
     );
     return null;
   }
 
-  let baseUrl = rawBaseUrl.replace(/\/$/, "");
+  let baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
   if (!baseUrl.endsWith("/v1")) {
     baseUrl = `${baseUrl}/v1`;
   }
 
   const url = `${baseUrl}/messages/send`;
 
-  // Garante formato E.164 com o símbolo '+' (+55DDD9XXXXXXXX)
+  // Garante o formato E.164 (+55...)
   const cleanDigits = number.replace(/\D/g, "");
   const numberWithDDI = cleanDigits.startsWith("55")
     ? cleanDigits
@@ -44,11 +45,11 @@ export async function sendWhatsAppMessage(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey as string,
+        "x-api-key": EVOLUTION_TENANT_KEY,
         "x-whatsapp-number-id": instanceName,
       },
       body: JSON.stringify({
-        number: finalNumber,
+        destinationNumber: finalNumber, // <--- CORRIGIDO AQUI (de 'number' para 'destinationNumber')
         text: text,
         whatsappNumberId: instanceName,
       }),
