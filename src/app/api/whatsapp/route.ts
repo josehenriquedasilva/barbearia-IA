@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
 import { sendWhatsAppMessage } from "@/lib/whatsApp";
-import Groq from "groq-sdk";
+import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -17,21 +17,28 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       audioSource.startsWith("https://")
     ) {
       const res = await fetch(audioSource);
-      if (!res.ok) throw new Error("Falha ao baixar o arquivo de áudio da URL");
+      if (!res.ok) {
+        throw new Error(
+          `Falha ao baixar o arquivo de áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+        );
+      }
       const arrayBuffer = await res.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
     } else {
-      let cleanBase64 = audioSource;
-      if (cleanBase64.includes(",")) {
-        cleanBase64 = cleanBase64.split(",")[1];
-      }
+      // Limpa prefixos de Data URI se existirem (ex: "data:audio/ogg;base64,...")
+      const cleanBase64 = audioSource.includes(",")
+        ? audioSource.split(",")[1]
+        : audioSource;
       audioBuffer = Buffer.from(cleanBase64, "base64");
     }
 
-    // Converte o Buffer para um formato legível pelo SDK da Groq
-    const file = await Groq.toFile(audioBuffer, "audio.ogg", {
-      type: "audio/ogg",
-    });
+    if (!audioBuffer || audioBuffer.length === 0) {
+      console.warn("[Groq] Buffer de áudio está vazio.");
+      return "";
+    }
+
+    // Encapsula o buffer em um arquivo fake "audio.ogg" compatível com o Groq
+    const file = await toFile(audioBuffer, "audio.ogg");
 
     const transcription = await groq.audio.transcriptions.create({
       file,
@@ -39,9 +46,13 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       language: "pt",
     });
 
+    console.log(
+      "[Groq] Transcrição realizada com sucesso:",
+      transcription.text,
+    );
     return transcription.text || "";
   } catch (err) {
-    console.error("Erro ao processar transcrição no Groq:", err);
+    console.error("[Groq] Erro ao processar transcrição no Groq:", err);
     return "";
   }
 }
@@ -220,15 +231,19 @@ export async function POST(request: Request) {
     const isAudio =
       body.data?.type === "audio" ||
       body.data?.messageType === "audioMessage" ||
+      body.data?.messageType === "audio" ||
       !!body.data?.message?.audioMessage;
 
     let messageText = "";
 
     if (isAudio) {
+      // Prioriza base64 para evitar bloqueio HTTP 403 das URLs do CDN do WhatsApp
       const audioSource =
+        body.data?.base64 ||
+        body.data?.message?.base64 ||
+        body.data?.message?.audioMessage?.base64 ||
         body.data?.mediaUrl ||
         body.data?.url ||
-        body.data?.base64 ||
         body.data?.message?.audioMessage?.url ||
         (typeof body.data?.content === "string" &&
         body.data?.content.length > 50
@@ -242,7 +257,7 @@ export async function POST(request: Request) {
         messageText = await transcreverAudioComGroq(audioSource);
       } else {
         console.warn(
-          "[Webhook] A mensagem é de áudio, mas nenhuma mídia/URL foi encontrada no payload.",
+          "[Webhook] A mensagem é de áudio, mas nenhuma mídia/base64 foi encontrada no payload.",
         );
       }
     } else {
