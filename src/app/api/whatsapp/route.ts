@@ -19,7 +19,7 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       const res = await fetch(audioSource);
       if (!res.ok) {
         throw new Error(
-          `Falha ao baixar o arquivo de áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+          `Falha ao baixar o arquivo de áudio da URL (HTTP ${res.status}: ${res.statusText})`
         );
       }
       const arrayBuffer = await res.arrayBuffer();
@@ -46,10 +46,7 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       language: "pt",
     });
 
-    console.log(
-      "[Groq] Transcrição realizada com sucesso:",
-      transcription.text,
-    );
+    console.log("[Groq] Transcrição realizada com sucesso:", transcription.text);
     return transcription.text || "";
   } catch (err) {
     console.error("[Groq] Erro ao processar transcrição no Groq:", err);
@@ -124,7 +121,7 @@ async function processBackgroundAi({
       const errText = await aiResponse.text();
       console.error(
         `[Agrupador Erro] Rota /api/schedule retornou HTTP ${aiResponse.status}:`,
-        errText,
+        errText
       );
       return;
     }
@@ -136,7 +133,7 @@ async function processBackgroundAi({
 
     if (!content) {
       console.warn(
-        "[Agrupador Alerta] Resposta da IA veio vazia ou em formato desconhecido.",
+        "[Agrupador Alerta] Resposta da IA veio vazia ou em formato desconhecido."
       );
       return;
     }
@@ -147,7 +144,7 @@ async function processBackgroundAi({
       if (!textPart || !textPart.trim()) continue;
 
       console.log(
-        `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`,
+        `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`
       );
 
       await sendWhatsAppMessage(instanceName, clientPhone, textPart.trim());
@@ -193,7 +190,7 @@ export async function POST(request: Request) {
     if (!instanceName) {
       return NextResponse.json(
         { error: "Instance ID / Number ID missing" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -219,7 +216,7 @@ export async function POST(request: Request) {
 
     if (!shop) {
       console.warn(
-        `[Webhook] Barbearia não encontrada para a instância/número: ${instanceName}`,
+        `[Webhook] Barbearia não encontrada para a instância/número: ${instanceName}`
       );
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
@@ -245,19 +242,18 @@ export async function POST(request: Request) {
         body.data?.mediaUrl ||
         body.data?.url ||
         body.data?.message?.audioMessage?.url ||
-        (typeof body.data?.content === "string" &&
-        body.data?.content.length > 50
+        (typeof body.data?.content === "string" && body.data?.content.length > 50
           ? body.data?.content
           : null);
 
       if (audioSource) {
         console.log(
-          `[Webhook] Áudio detectado de ${clientPhone}. Transcrevendo via Groq...`,
+          `[Webhook] Áudio detectado de ${clientPhone}. Transcrevendo via Groq...`
         );
         messageText = await transcreverAudioComGroq(audioSource);
       } else {
         console.warn(
-          "[Webhook] A mensagem é de áudio, mas nenhuma mídia/base64 foi encontrada no payload.",
+          "[Webhook] A mensagem é de áudio, mas nenhuma mídia/base64 foi encontrada no payload."
         );
       }
     } else {
@@ -293,7 +289,7 @@ export async function POST(request: Request) {
         clientPhone,
         instanceName: effectiveInstance,
         host: request.headers.get("host") || "",
-      }).catch((err) => console.error("Erro background:", err)),
+      }).catch((err) => console.error("Erro background:", err))
     );
 
     return NextResponse.json({ status: "processing" });
