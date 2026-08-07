@@ -29,7 +29,6 @@ export async function sendWhatsAppMessage(
 
   const url = `${baseUrl}/messages/send`;
 
-  // Garante o formato E.164 (+55...)
   const cleanDigits = number.replace(/\D/g, "");
   const numberWithDDI = cleanDigits.startsWith("55")
     ? cleanDigits
@@ -49,7 +48,7 @@ export async function sendWhatsAppMessage(
         "x-whatsapp-number-id": instanceName,
       },
       body: JSON.stringify({
-        destinationNumber: finalNumber, // <--- CORRIGIDO AQUI (de 'number' para 'destinationNumber')
+        destinationNumber: finalNumber,
         text: text,
         whatsappNumberId: instanceName,
       }),
@@ -92,7 +91,6 @@ export async function setWebhookForInstance(numberId: string) {
       return;
     }
 
-    // Pega o domínio garantindo compatibilidade com Vercel e remove trailing slashes
     const siteDomain =
       process.env.NEXT_PUBLIC_SITE_URL ||
       (process.env.VERCEL_URL
@@ -101,7 +99,6 @@ export async function setWebhookForInstance(numberId: string) {
 
     const targetWebhookUrl = `${siteDomain.replace(/\/$/, "")}/api/whatsapp`;
 
-    // 1. Busca TODOS os webhooks da conta tenant (SEM o header x-whatsapp-number-id no GET)
     const listRes = await fetch(`${baseUrl}/webhooks`, {
       method: "GET",
       headers: {
@@ -116,7 +113,6 @@ export async function setWebhookForInstance(numberId: string) {
         ? webhooks
         : webhooks.data || webhooks.webhooks || [];
 
-      // Encontra qualquer webhook existente que aponte para a nossa URL ou tenha o nosso ID/Nome
       const existingWebhook = items.find((wh: any) => {
         const whUrlNormalized = (wh.url || "").replace(/\/$/, "");
         const targetUrlNormalized = targetWebhookUrl.replace(/\/$/, "");
@@ -148,7 +144,6 @@ export async function setWebhookForInstance(numberId: string) {
               ? [existingWebhook.whatsappNumberId]
               : [];
 
-        // Se o número já está vinculado ao webhook existente, cancela a criação/atualização
         if (currentNumberIds.includes(numberId)) {
           console.log(
             `[Webhook] O número ${numberId} já está vinculado ao webhook ${existingWebhook.id}. Nenhuma ação necessária.`,
@@ -156,13 +151,8 @@ export async function setWebhookForInstance(numberId: string) {
           return;
         }
 
-        // Se o webhook existe mas não tinha esse numberId, atualiza via PUT
         const updatedNumberIds = Array.from(
           new Set([...currentNumberIds, numberId]),
-        );
-
-        console.log(
-          `[Webhook] Vinculando número ${numberId} ao webhook existente ${existingWebhook.id}...`,
         );
 
         const updateRes = await fetch(
@@ -197,11 +187,6 @@ export async function setWebhookForInstance(numberId: string) {
       }
     }
 
-    // 2. Se e somente se nenhum webhook foi encontrado, cria um novo (POST)
-    console.log(
-      `[Webhook] Criando webhook inicial para o número ${numberId}...`,
-    );
-
     const createRes = await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
       headers: {
@@ -232,51 +217,45 @@ export async function setWebhookForInstance(numberId: string) {
   }
 }
 
-export async function setInstanceSettings(instanceId: string) {
-  try {
-    const apiKey =
-      process.env.EVOLUTION_TENANT_KEY ||
-      process.env.PILOT_STATUS_API_KEY ||
-      process.env.WHATSAPP_API_KEY;
+export async function setInstanceSettings(numberId: string) {
+  let rawBaseUrl =
+    process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+  let baseUrl = rawBaseUrl.replace(/\/$/, "");
+  if (!baseUrl.endsWith("/v1")) {
+    baseUrl = `${baseUrl}/v1`;
+  }
 
-    if (!apiKey) {
-      console.error("[Settings Erro] API Key não encontrada.");
-      return;
-    }
+  const apiKey =
+    process.env.EVOLUTION_TENANT_KEY ||
+    process.env.PILOT_STATUS_API_KEY ||
+    process.env.WHATSAPP_API_KEY;
 
-    // Garante que o ID da instância esteja limpo para a URL
-    const safeInstanceId = encodeURIComponent(instanceId);
-
-    const res = await fetch(
-      `https://pilotstatus.com.br/api/layer/evolution-v2/settings/set/${safeInstanceId}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: apiKey,
-          "x-whatsapp-number-id": instanceId,
-        },
-        body: JSON.stringify({
-          rejectCall: true,
-          msgCall: "Este número aceita apenas mensagens de texto/áudio.",
-          groupsIgnore: true,
-          alwaysOnline: false,
-          readMessages: false,
-          readStatus: false,
-          syncFullHistory: false,
-        }),
+  // Endpoint correto: PATCH /v1/numbers/{id}
+  const response = await fetch(`${baseUrl}/numbers/${numberId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey as string,
+    },
+    body: JSON.stringify({
+      settings: {
+        rejectCall: true,
+        msgRejectCall: "Não atendo por aqui",
+        ignoreGroups: true, // Nome correto segundo o suporte
+        // webhookHistoricalMessages: false (padrão já é false)
       },
-    );
+    }),
+  });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("[Settings Erro] Falha ao aplicar configurações:", errText);
-    } else {
-      console.log(
-        `[Settings Sucesso] Configurações aplicadas com sucesso para: ${instanceId}`,
-      );
-    }
-  } catch (error) {
-    console.error("[Settings Exceção]:", error);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    console.error(
+      `[Pilot Status] Erro ao atualizar configurações do número ${numberId}:`,
+      err,
+    );
+  } else {
+    console.log(
+      `[Pilot Status] Configurações aplicadas com sucesso para o número ${numberId}`,
+    );
   }
 }

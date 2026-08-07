@@ -469,9 +469,7 @@ export async function getPairingCodeAction(
     // 5. Registra o Webhook usando o ID correto do Número
     await setWebhookForInstance(finalNumberId);
 
-    // 6. Aplica as configurações (desativa histórico antigo e ignora grupos)
-    const instanceDisplayName = shop.name || shop.slug || finalNumberId;
-    await setInstanceSettings(instanceDisplayName);
+    await setInstanceSettings(finalNumberId);
 
     return {
       success: true,

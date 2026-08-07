@@ -10,9 +10,6 @@ const EVOLUTION_TENANT_KEY =
   process.env.PILOT_STATUS_API_KEY ||
   process.env.WHATSAPP_API_KEY;
 
-/**
- * Função responsável pelo envio seguro de mensagens via Pilot Status
- */
 
 async function transcreverAudioComGroq(
   messageId: string,
@@ -192,7 +189,6 @@ async function processBackgroundAi({
         `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`,
       );
 
-      // Chamada corrigida usando a função sendWhatsAppMessage
       await sendWhatsAppMessage(instanceName, clientPhone, textPart.trim());
     }
   } catch (err) {
@@ -204,7 +200,6 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 1. Suporte aos eventos do Pilot Status e Evolution
     const rawEvent = (body.event || body.data?.event || "").toLowerCase();
     const fromMe = body.data?.fromMe ?? body.data?.key?.fromMe ?? false;
 
@@ -218,7 +213,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 2. Extrair o ID real do número / Instância (Pilot Status envia body.data.numberId)
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -232,11 +226,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Extrai o número destinatário (se existir) para auxiliar na busca
     const recipientPhone = (body.data?.to || "").replace(/\D/g, "");
     const cleanRecipient = recipientPhone.replace(/^55/, "");
 
-    // 3. Buscar a barbearia correspondente no banco
     const shop = await prisma.shop.findFirst({
       where: {
         OR: [
@@ -260,11 +252,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
-    // 4. Extrair o telefone do cliente
     const rawClientPhone = body.data?.from || body.data?.key?.remoteJid || "";
     const clientPhone = rawClientPhone.replace(/\D/g, "").replace(/^55/, "");
 
-    // 5. Extrair o texto da mensagem
     let messageText =
       body.data?.content ||
       body.data?.message?.conversation ||
@@ -277,10 +267,8 @@ export async function POST(request: Request) {
       body.data?.messageType === "audioMessage" ||
       body.data?.message?.audioMessage;
 
-    // IMPORTANTE: Para chamadas à API do Pilot Status, SEMPRE utilize o numberId real
     const effectiveInstance = instanceName || shop.whatsappInstance;
 
-    // Transcrição de áudio via Groq caso seja áudio
     if (isAudio && messageId) {
       messageText = await transcreverAudioComGroq(messageId, effectiveInstance);
     }
@@ -289,7 +277,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
-    // 6. Registra a mensagem no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -300,7 +287,6 @@ export async function POST(request: Request) {
       },
     });
 
-    // 7. Processamento assíncrono em background
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
