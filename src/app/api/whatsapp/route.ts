@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
 import { sendWhatsAppMessage } from "@/lib/whatsApp";
+import Groq from "groq-sdk";
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 async function transcreverAudioComGroq(audioSource: string): Promise<string> {
   try {
@@ -25,34 +28,18 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       audioBuffer = Buffer.from(cleanBase64, "base64");
     }
 
-    // Conversão segura do Buffer para Uint8Array -> Blob
-    const uint8Array = new Uint8Array(audioBuffer);
-    const audioBlob = new Blob([uint8Array], { type: "audio/ogg" });
+    // Converte o Buffer para um formato legível pelo SDK da Groq
+    const file = await Groq.toFile(audioBuffer, "audio.ogg", {
+      type: "audio/ogg",
+    });
 
-    const formData = new FormData();
-    formData.append("file", audioBlob, "audio.ogg");
-    formData.append("model", "whisper-large-v3-turbo");
-    formData.append("language", "pt");
+    const transcription = await groq.audio.transcriptions.create({
+      file,
+      model: "whisper-large-v3-turbo",
+      language: "pt",
+    });
 
-    const groqResponse = await fetch(
-      "https://api.groq.com/openai/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        },
-        body: formData,
-      },
-    );
-
-    if (!groqResponse.ok) {
-      const errorText = await groqResponse.text();
-      console.error("[Groq Whisper Error]", errorText);
-      return "";
-    }
-
-    const groqData = await groqResponse.json();
-    return groqData.text || "";
+    return transcription.text || "";
   } catch (err) {
     console.error("Erro ao processar transcrição no Groq:", err);
     return "";
@@ -238,7 +225,6 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      // Extrai o link de áudio ou a string base64 que o Pilot Status envia no webhook
       const audioSource =
         body.data?.mediaUrl ||
         body.data?.url ||
@@ -256,11 +242,10 @@ export async function POST(request: Request) {
         messageText = await transcreverAudioComGroq(audioSource);
       } else {
         console.warn(
-          "[Webhook] A mensagem é de áudio, mas nenhuma mídias/URL foi encontrada no payload.",
+          "[Webhook] A mensagem é de áudio, mas nenhuma mídia/URL foi encontrada no payload.",
         );
       }
     } else {
-      // Mensagem de texto normal
       messageText =
         body.data?.content ||
         body.data?.message?.conversation ||
@@ -270,7 +255,6 @@ export async function POST(request: Request) {
 
     const effectiveInstance = instanceName || shop.whatsappInstance;
 
-    // Se o texto continuar vazio (ex: áudio inaudível ou falha), interrompe a execução
     if (!messageText) {
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
