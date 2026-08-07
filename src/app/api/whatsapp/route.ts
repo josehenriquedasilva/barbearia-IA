@@ -3,68 +3,31 @@ import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
 import { sendWhatsAppMessage } from "@/lib/whatsApp";
 
-const PILOT_STATUS_NATIVE_URL =
-  process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-const EVOLUTION_TENANT_KEY =
-  process.env.EVOLUTION_TENANT_KEY ||
-  process.env.PILOT_STATUS_API_KEY ||
-  process.env.WHATSAPP_API_KEY;
-
-
-async function transcreverAudioComGroq(
-  messageId: string,
-  instanceName: string,
-): Promise<string> {
+async function transcreverAudioComGroq(audioSource: string): Promise<string> {
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!audioSource) return "";
 
-    let baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
-    if (!baseUrl.endsWith("/v1")) {
-      baseUrl = `${baseUrl}/v1`;
+    let audioBuffer: Buffer;
+
+    if (
+      audioSource.startsWith("http://") ||
+      audioSource.startsWith("https://")
+    ) {
+      const res = await fetch(audioSource);
+      if (!res.ok) throw new Error("Falha ao baixar o arquivo de áudio da URL");
+      const arrayBuffer = await res.arrayBuffer();
+      audioBuffer = Buffer.from(arrayBuffer);
+    } else {
+      let cleanBase64 = audioSource;
+      if (cleanBase64.includes(",")) {
+        cleanBase64 = cleanBase64.split(",")[1];
+      }
+      audioBuffer = Buffer.from(cleanBase64, "base64");
     }
 
-    const responseMedia = await fetch(
-      `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": EVOLUTION_TENANT_KEY as string,
-          "x-whatsapp-number-id": instanceName,
-        },
-        body: JSON.stringify({
-          message: {
-            key: {
-              id: messageId,
-            },
-          },
-          convertToMp4: false,
-        }),
-      },
-    );
-
-    if (!responseMedia.ok) {
-      const errText = await responseMedia.text();
-      console.error("[Pilot Status Media Error]", errText);
-      throw new Error("Não foi possível obter a mídia do Pilot Status");
-    }
-
-    const mediaData = await responseMedia.json();
-    let base64String = mediaData.base64 || mediaData.response?.base64;
-
-    if (!base64String) {
-      console.error(
-        "[Pilot Status Media Error] Base64 não encontrado na resposta.",
-      );
-      throw new Error("Base64 vazio");
-    }
-
-    if (base64String.includes(",")) {
-      base64String = base64String.split(",")[1];
-    }
-
-    const audioBuffer = Buffer.from(base64String, "base64");
-    const audioBlob = new Blob([audioBuffer], { type: "audio/ogg" });
+    // Conversão segura do Buffer para Uint8Array -> Blob
+    const uint8Array = new Uint8Array(audioBuffer);
+    const audioBlob = new Blob([uint8Array], { type: "audio/ogg" });
 
     const formData = new FormData();
     formData.append("file", audioBlob, "audio.ogg");
@@ -84,8 +47,8 @@ async function transcreverAudioComGroq(
 
     if (!groqResponse.ok) {
       const errorText = await groqResponse.text();
-      console.error("[Groq Error]", errorText);
-      throw new Error("Falha na transcrição do Groq");
+      console.error("[Groq Whisper Error]", errorText);
+      return "";
     }
 
     const groqData = await groqResponse.json();
@@ -200,6 +163,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
+    // 1. Trava para ignorar mensagens de grupos (@g.us)
+    const remoteJid = body.data?.key?.remoteJid || body.data?.from || "";
+    const isGroup = body.data?.isGroup || remoteJid.includes("@g.us");
+
+    if (isGroup) {
+      return NextResponse.json({ ok: true, status: "group_ignored" });
+    }
+
+    // 2. Filtro de eventos válidos e ignorar mensagens enviadas por mim
     const rawEvent = (body.event || body.data?.event || "").toLowerCase();
     const fromMe = body.data?.fromMe ?? body.data?.key?.fromMe ?? false;
 
@@ -213,6 +185,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
+    // 3. Obtenção da Instância / Número ID
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -229,6 +202,7 @@ export async function POST(request: Request) {
     const recipientPhone = (body.data?.to || "").replace(/\D/g, "");
     const cleanRecipient = recipientPhone.replace(/^55/, "");
 
+    // 4. Localização da Barbearia (Shop)
     const shop = await prisma.shop.findFirst({
       where: {
         OR: [
@@ -255,28 +229,53 @@ export async function POST(request: Request) {
     const rawClientPhone = body.data?.from || body.data?.key?.remoteJid || "";
     const clientPhone = rawClientPhone.replace(/\D/g, "").replace(/^55/, "");
 
-    let messageText =
-      body.data?.content ||
-      body.data?.message?.conversation ||
-      body.data?.message?.extendedTextMessage?.text ||
-      "";
-
-    const messageId = body.data?.messageId || body.data?.key?.id;
+    // 5. Identificação e Processamento de Áudio vs Texto
     const isAudio =
       body.data?.type === "audio" ||
       body.data?.messageType === "audioMessage" ||
-      body.data?.message?.audioMessage;
+      !!body.data?.message?.audioMessage;
+
+    let messageText = "";
+
+    if (isAudio) {
+      // Extrai o link de áudio ou a string base64 que o Pilot Status envia no webhook
+      const audioSource =
+        body.data?.mediaUrl ||
+        body.data?.url ||
+        body.data?.base64 ||
+        body.data?.message?.audioMessage?.url ||
+        (typeof body.data?.content === "string" &&
+        body.data?.content.length > 50
+          ? body.data?.content
+          : null);
+
+      if (audioSource) {
+        console.log(
+          `[Webhook] Áudio detectado de ${clientPhone}. Transcrevendo via Groq...`,
+        );
+        messageText = await transcreverAudioComGroq(audioSource);
+      } else {
+        console.warn(
+          "[Webhook] A mensagem é de áudio, mas nenhuma mídias/URL foi encontrada no payload.",
+        );
+      }
+    } else {
+      // Mensagem de texto normal
+      messageText =
+        body.data?.content ||
+        body.data?.message?.conversation ||
+        body.data?.message?.extendedTextMessage?.text ||
+        "";
+    }
 
     const effectiveInstance = instanceName || shop.whatsappInstance;
 
-    if (isAudio && messageId) {
-      messageText = await transcreverAudioComGroq(messageId, effectiveInstance);
-    }
-
+    // Se o texto continuar vazio (ex: áudio inaudível ou falha), interrompe a execução
     if (!messageText) {
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
+    // 6. Salvar mensagem no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -287,6 +286,7 @@ export async function POST(request: Request) {
       },
     });
 
+    // 7. Disparar processamento da IA em segundo plano
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
