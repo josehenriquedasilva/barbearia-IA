@@ -6,79 +6,6 @@ import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Função para buscar o áudio/base64 via API caso o webhook venha sem o mediaLink
-async function buscarAudioPorMessageId(
-  instanceName: string,
-  messageId: string,
-): Promise<string | null> {
-  try {
-    const apiBaseUrl =
-      process.env.PILOT_STATUS_URL || "https://api.pilotstatus.com.br";
-    const apiKey =
-      process.env.PILOT_STATUS_API_KEY || process.env.EVOLUTION_API_KEY || "";
-
-    if (!apiKey) {
-      console.warn(
-        "[Pilot Status API] PILOT_STATUS_API_KEY não definida no .env",
-      );
-      return null;
-    }
-
-    console.log(
-      `[Pilot Status API] Buscando áudio para messageId: ${messageId}...`,
-    );
-
-    // Tentativa 1: Endpoint de busca de base64 da mídia por ID
-    const resBase64 = await fetch(
-      `${apiBaseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          apikey: apiKey,
-        },
-        body: JSON.stringify({
-          message: { key: { id: messageId } },
-        }),
-      },
-    );
-
-    if (resBase64.ok) {
-      const dataBase64 = await resBase64.json();
-      const base64Result =
-        dataBase64?.base64 || dataBase64?.media || dataBase64?.data;
-      if (base64Result) return base64Result;
-    }
-
-    // Tentativa 2: Endpoint GET de mensagem por ID
-    const resMsg = await fetch(`${apiBaseUrl}/v1/messages/${messageId}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        apikey: apiKey,
-      },
-    });
-
-    if (resMsg.ok) {
-      const dataMsg = await resMsg.json();
-      return (
-        dataMsg?.mediaLink ||
-        dataMsg?.data?.mediaLink ||
-        dataMsg?.media?.url ||
-        null
-      );
-    }
-
-    return null;
-  } catch (err) {
-    console.error(
-      "[Pilot Status API Exceção] Erro ao buscar áudio por ID:",
-      err,
-    );
-    return null;
-  }
-}
-
 async function transcreverAudioComGroq(
   audioSource: string,
   filename: string = "audio.ogg",
@@ -90,6 +17,7 @@ async function transcreverAudioComGroq(
 
     let audioBuffer: Buffer;
 
+    // Se for uma URL (ex: o mediaLink do Pilot Status)
     if (
       audioSource.startsWith("http://") ||
       audioSource.startsWith("https://")
@@ -102,6 +30,7 @@ async function transcreverAudioComGroq(
         return "";
       }
 
+      // Valida o tipo de conteúdo retornado pelo servidor
       const contentType = res.headers.get("content-type") || "";
       if (
         !contentType.includes("audio") &&
@@ -116,6 +45,7 @@ async function transcreverAudioComGroq(
       const arrayBuffer = await res.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
     } else {
+      // Limpa prefixos de Data URI caso seja base64
       const cleanBase64 = audioSource.includes(",")
         ? audioSource.split(",")[1]
         : audioSource;
@@ -127,6 +57,7 @@ async function transcreverAudioComGroq(
       return "";
     }
 
+    // Encapsula o buffer no arquivo virtual exigido pela SDK do Groq
     const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
@@ -250,7 +181,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 1. Ignorar mensagens de grupos (@g.us)
+    // 1. Trava para ignorar mensagens de grupos (@g.us)
     const remoteJid = body.data?.key?.remoteJid || body.data?.from || "";
     const isGroup = body.data?.isGroup || remoteJid.includes("@g.us");
 
@@ -258,7 +189,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "group_ignored" });
     }
 
-    // 2. Filtro de eventos válidos
+    // 2. Filtro de eventos válidos e ignorar mensagens enviadas por você mesmo
     const rawEvent = (body.event || body.data?.event || "").toLowerCase();
     const fromMe = body.data?.fromMe ?? body.data?.key?.fromMe ?? false;
 
@@ -272,7 +203,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 3. Obtenção da Instância / ID do Número
+    // 3. Obtenção da Instância / Número ID (Pilot Status usa data.numberId)
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -327,8 +258,8 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      // Tenta obter o áudio direto do payload
-      let audioSource =
+      // MÁXIMA PRIORIDADE: mediaLink do Pilot Status (Webhook ao vivo)
+      const audioSource =
         body.data?.mediaLink ||
         body.data?.message?.audioMessage?.url ||
         body.data?.media?.url ||
@@ -337,27 +268,20 @@ export async function POST(request: Request) {
         body.data?.message?.audioMessage?.base64 ||
         body.data?.base64;
 
-      const messageId =
-        body.data?.messageId || body.data?.id || body.data?.key?.id;
-
-      // Se o webhook não trouxe o link/base64, busca via API no Pilot Status usando o messageId
-      if (!audioSource && messageId) {
-        console.warn(
-          `[Webhook Warning] Mídia ausente no payload. Tentando buscar via API pelo messageId: ${messageId}`,
-        );
-        audioSource = await buscarAudioPorMessageId(instanceName, messageId);
-      }
-
       const mediaFilename = body.data?.mediaFilename || "voice.ogg";
 
       if (audioSource) {
         console.log(
-          `[Webhook] Fonte de áudio obtida para ${clientPhone}. Transcrevendo na Groq...`,
+          `[Webhook] Áudio recebido em tempo real de ${clientPhone} via Pilot Status. Transcrevendo na Groq...`,
         );
         messageText = await transcreverAudioComGroq(audioSource, mediaFilename);
       } else {
         console.warn(
-          "[Webhook Warning] Não foi possível obter o áudio nem pelo webhook nem via API do Pilot Status.",
+          "[Webhook Warning] Mensagem identificada como áudio, porém nenhum `mediaLink` ou `base64` foi encontrado no payload.",
+        );
+        console.log(
+          "[Webhook Payload Recebido]:",
+          JSON.stringify(body, null, 2),
         );
       }
     } else {
@@ -377,7 +301,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
-    // 6. Salvar mensagem no banco de dados
+    // 6. Salvar mensagem transcrita/texto no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -392,7 +316,7 @@ export async function POST(request: Request) {
       `[Webhook] Mensagem id #${currentMsg.id} criada com o texto: "${messageText}"`,
     );
 
-    // 7. Disparar processamento em segundo plano (Agrupador da IA)
+    // 7. Disparar processamento da IA em segundo plano (Agrupador)
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
