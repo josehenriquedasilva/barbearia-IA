@@ -23,13 +23,13 @@ async function transcreverAudioComGroq(
       const res = await fetch(audioSource);
       if (!res.ok) {
         throw new Error(
-          `Falha ao baixar o arquivo de áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+          `Falha ao baixar áudio da URL (HTTP ${res.status}: ${res.statusText})`,
         );
       }
       const arrayBuffer = await res.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
     } else {
-      // Limpa prefixos de Data URI se for string em base64
+      // Limpa prefixos de Data URI caso seja base64
       const cleanBase64 = audioSource.includes(",")
         ? audioSource.split(",")[1]
         : audioSource;
@@ -41,7 +41,7 @@ async function transcreverAudioComGroq(
       return "";
     }
 
-    // Encapsula o buffer em um arquivo fake compatível com a Groq
+    // Encapsula o buffer em um arquivo virtual em memória exigido pela Groq SDK
     const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
@@ -102,7 +102,7 @@ async function processBackgroundAi({
     .map((m) => m.content.trim())
     .join("\n");
 
-  console.log(`[Agrupador] Enviando bloco para o Gemini.`);
+  console.log(`[Agrupador] Enviando bloco para a IA: "${combinedMessageText}"`);
 
   try {
     let protocol = "https://";
@@ -187,7 +187,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 3. Obtenção da Instância / Número ID (Pilot Status usa `data.numberId`)
+    // 3. Obtenção da Instância / Número ID (Pilot Status usa data.numberId)
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -242,29 +242,28 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      // Prioridade total para o mediaLink do Pilot Status (URL pública e descriptografada)
+      // Prioridade MÁXIMA para o `mediaLink` do Pilot Status (Webhook ao vivo)
       const audioSource =
         body.data?.mediaLink ||
+        body.data?.media?.url ||
         body.data?.mediaUrl ||
         body.data?.url ||
-        body.data?.base64 ||
-        body.data?.message?.base64 ||
-        body.data?.message?.audioMessage?.base64 ||
-        (typeof body.data?.content === "string" &&
-        body.data?.content.length > 50
-          ? body.data?.content
-          : null);
+        body.data?.base64;
 
       const mediaFilename = body.data?.mediaFilename || "voice.ogg";
 
       if (audioSource) {
         console.log(
-          `[Webhook] Áudio detectado de ${clientPhone} via Pilot Status/MediaLink. Transcrevendo na Groq...`,
+          `[Webhook] Áudio recebido em tempo real de ${clientPhone} via Pilot Status (${audioSource}). Transcrevendo na Groq...`,
         );
         messageText = await transcreverAudioComGroq(audioSource, mediaFilename);
       } else {
         console.warn(
-          "[Webhook] A mensagem é de áudio, mas nenhuma URL/mediaLink foi encontrada no payload.",
+          "[Webhook Warning] Mensagem identificada como áudio, porém `mediaLink` veio nulo no payload do webhook.",
+        );
+        console.log(
+          "[Webhook Payload Received]:",
+          JSON.stringify(body, null, 2),
         );
       }
     } else {
@@ -277,20 +276,27 @@ export async function POST(request: Request) {
 
     const effectiveInstance = instanceName || shop.whatsappInstance;
 
-    if (!messageText) {
+    if (!messageText || !messageText.trim()) {
+      console.warn(
+        "[Webhook] `content`/transcrição ficou vazia. Ignorando disparo da IA.",
+      );
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
-    // 6. Salvar mensagem no banco de dados
+    // 6. Salvar mensagem transcrita no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
-        content: messageText,
+        content: messageText.trim(),
         shopId: shop.id,
         clientPhone,
         processed: false,
       },
     });
+
+    console.log(
+      `[Webhook] Mensagem id #${currentMsg.id} criada com o texto: "${messageText}"`,
+    );
 
     // 7. Disparar processamento da IA em segundo plano
     waitUntil(
