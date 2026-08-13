@@ -6,12 +6,16 @@ import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-async function transcreverAudioComGroq(audioSource: string): Promise<string> {
+async function transcreverAudioComGroq(
+  audioSource: string,
+  filename: string = "audio.ogg",
+): Promise<string> {
   try {
     if (!audioSource) return "";
 
     let audioBuffer: Buffer;
 
+    // Se for uma URL (ex: o mediaLink do Pilot Status)
     if (
       audioSource.startsWith("http://") ||
       audioSource.startsWith("https://")
@@ -19,13 +23,13 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       const res = await fetch(audioSource);
       if (!res.ok) {
         throw new Error(
-          `Falha ao baixar o arquivo de áudio da URL (HTTP ${res.status}: ${res.statusText})`
+          `Falha ao baixar o arquivo de áudio da URL (HTTP ${res.status}: ${res.statusText})`,
         );
       }
       const arrayBuffer = await res.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
     } else {
-      // Limpa prefixos de Data URI se existirem (ex: "data:audio/ogg;base64,...")
+      // Limpa prefixos de Data URI se for string em base64
       const cleanBase64 = audioSource.includes(",")
         ? audioSource.split(",")[1]
         : audioSource;
@@ -37,8 +41,8 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       return "";
     }
 
-    // Encapsula o buffer em um arquivo fake "audio.ogg" compatível com o Groq
-    const file = await toFile(audioBuffer, "audio.ogg");
+    // Encapsula o buffer em um arquivo fake compatível com a Groq
+    const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
       file,
@@ -46,7 +50,10 @@ async function transcreverAudioComGroq(audioSource: string): Promise<string> {
       language: "pt",
     });
 
-    console.log("[Groq] Transcrição realizada com sucesso:", transcription.text);
+    console.log(
+      "[Groq] Transcrição realizada com sucesso:",
+      transcription.text,
+    );
     return transcription.text || "";
   } catch (err) {
     console.error("[Groq] Erro ao processar transcrição no Groq:", err);
@@ -121,7 +128,7 @@ async function processBackgroundAi({
       const errText = await aiResponse.text();
       console.error(
         `[Agrupador Erro] Rota /api/schedule retornou HTTP ${aiResponse.status}:`,
-        errText
+        errText,
       );
       return;
     }
@@ -133,7 +140,7 @@ async function processBackgroundAi({
 
     if (!content) {
       console.warn(
-        "[Agrupador Alerta] Resposta da IA veio vazia ou em formato desconhecido."
+        "[Agrupador Alerta] Resposta da IA veio vazia ou em formato desconhecido.",
       );
       return;
     }
@@ -144,7 +151,7 @@ async function processBackgroundAi({
       if (!textPart || !textPart.trim()) continue;
 
       console.log(
-        `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`
+        `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`,
       );
 
       await sendWhatsAppMessage(instanceName, clientPhone, textPart.trim());
@@ -180,7 +187,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 3. Obtenção da Instância / Número ID
+    // 3. Obtenção da Instância / Número ID (Pilot Status usa `data.numberId`)
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -190,7 +197,7 @@ export async function POST(request: Request) {
     if (!instanceName) {
       return NextResponse.json(
         { error: "Instance ID / Number ID missing" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -216,7 +223,7 @@ export async function POST(request: Request) {
 
     if (!shop) {
       console.warn(
-        `[Webhook] Barbearia não encontrada para a instância/número: ${instanceName}`
+        `[Webhook] Barbearia não encontrada para a instância/número: ${instanceName}`,
       );
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
@@ -227,6 +234,7 @@ export async function POST(request: Request) {
     // 5. Identificação e Processamento de Áudio vs Texto
     const isAudio =
       body.data?.type === "audio" ||
+      body.data?.mediaType === "audio" ||
       body.data?.messageType === "audioMessage" ||
       body.data?.messageType === "audio" ||
       !!body.data?.message?.audioMessage;
@@ -234,26 +242,29 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      // Prioriza base64 para evitar bloqueio HTTP 403 das URLs do CDN do WhatsApp
+      // Prioridade total para o mediaLink do Pilot Status (URL pública e descriptografada)
       const audioSource =
+        body.data?.mediaLink ||
+        body.data?.mediaUrl ||
+        body.data?.url ||
         body.data?.base64 ||
         body.data?.message?.base64 ||
         body.data?.message?.audioMessage?.base64 ||
-        body.data?.mediaUrl ||
-        body.data?.url ||
-        body.data?.message?.audioMessage?.url ||
-        (typeof body.data?.content === "string" && body.data?.content.length > 50
+        (typeof body.data?.content === "string" &&
+        body.data?.content.length > 50
           ? body.data?.content
           : null);
 
+      const mediaFilename = body.data?.mediaFilename || "voice.ogg";
+
       if (audioSource) {
         console.log(
-          `[Webhook] Áudio detectado de ${clientPhone}. Transcrevendo via Groq...`
+          `[Webhook] Áudio detectado de ${clientPhone} via Pilot Status/MediaLink. Transcrevendo na Groq...`,
         );
-        messageText = await transcreverAudioComGroq(audioSource);
+        messageText = await transcreverAudioComGroq(audioSource, mediaFilename);
       } else {
         console.warn(
-          "[Webhook] A mensagem é de áudio, mas nenhuma mídia/base64 foi encontrada no payload."
+          "[Webhook] A mensagem é de áudio, mas nenhuma URL/mediaLink foi encontrada no payload.",
         );
       }
     } else {
@@ -289,7 +300,7 @@ export async function POST(request: Request) {
         clientPhone,
         instanceName: effectiveInstance,
         host: request.headers.get("host") || "",
-      }).catch((err) => console.error("Erro background:", err))
+      }).catch((err) => console.error("Erro background:", err)),
     );
 
     return NextResponse.json({ status: "processing" });

@@ -42,7 +42,7 @@ export default function Login() {
         setIsLoading(false);
       }
     } catch (error) {
-      setError(`Erro ao fazer login: ${error}`);
+      setError(`Erro ao fazer login. Atualize a página e tente novamente. ${error}`);
       setIsLoading(false);
     } finally {
       setIsLoading(false);
