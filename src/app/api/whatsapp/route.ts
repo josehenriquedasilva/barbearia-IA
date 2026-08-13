@@ -13,6 +13,8 @@ async function transcreverAudioComGroq(
   try {
     if (!audioSource) return "";
 
+    console.log(`[Groq] Recebido audioSource: ${audioSource.slice(0, 80)}...`);
+
     let audioBuffer: Buffer;
 
     // Se for uma URL (ex: o mediaLink do Pilot Status)
@@ -22,10 +24,24 @@ async function transcreverAudioComGroq(
     ) {
       const res = await fetch(audioSource);
       if (!res.ok) {
-        throw new Error(
-          `Falha ao baixar áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+        console.error(
+          `[Groq Erro] Falha ao baixar áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+        );
+        return "";
+      }
+
+      // Valida o tipo de conteúdo retornado pelo servidor
+      const contentType = res.headers.get("content-type") || "";
+      if (
+        !contentType.includes("audio") &&
+        !contentType.includes("octet-stream") &&
+        !contentType.includes("application/")
+      ) {
+        console.warn(
+          `[Groq Alerta] Content-Type inesperado ao baixar áudio: "${contentType}"`,
         );
       }
+
       const arrayBuffer = await res.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
     } else {
@@ -37,11 +53,11 @@ async function transcreverAudioComGroq(
     }
 
     if (!audioBuffer || audioBuffer.length === 0) {
-      console.warn("[Groq] Buffer de áudio está vazio.");
+      console.warn("[Groq Alerta] Buffer de áudio está vazio.");
       return "";
     }
 
-    // Encapsula o buffer em um arquivo virtual em memória exigido pela Groq SDK
+    // Encapsula o buffer no arquivo virtual exigido pela SDK do Groq
     const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
@@ -54,9 +70,9 @@ async function transcreverAudioComGroq(
       "[Groq] Transcrição realizada com sucesso:",
       transcription.text,
     );
-    return transcription.text || "";
+    return transcription.text?.trim() || "";
   } catch (err) {
-    console.error("[Groq] Erro ao processar transcrição no Groq:", err);
+    console.error("[Groq Exceção] Erro ao processar transcrição no Groq:", err);
     return "";
   }
 }
@@ -173,7 +189,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "group_ignored" });
     }
 
-    // 2. Filtro de eventos válidos e ignorar mensagens enviadas por mim
+    // 2. Filtro de eventos válidos e ignorar mensagens enviadas por você mesmo
     const rawEvent = (body.event || body.data?.event || "").toLowerCase();
     const fromMe = body.data?.fromMe ?? body.data?.key?.fromMe ?? false;
 
@@ -242,27 +258,29 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      // Prioridade MÁXIMA para o `mediaLink` do Pilot Status (Webhook ao vivo)
+      // MÁXIMA PRIORIDADE: mediaLink do Pilot Status (Webhook ao vivo)
       const audioSource =
         body.data?.mediaLink ||
+        body.data?.message?.audioMessage?.url ||
         body.data?.media?.url ||
         body.data?.mediaUrl ||
         body.data?.url ||
+        body.data?.message?.audioMessage?.base64 ||
         body.data?.base64;
 
       const mediaFilename = body.data?.mediaFilename || "voice.ogg";
 
       if (audioSource) {
         console.log(
-          `[Webhook] Áudio recebido em tempo real de ${clientPhone} via Pilot Status (${audioSource}). Transcrevendo na Groq...`,
+          `[Webhook] Áudio recebido em tempo real de ${clientPhone} via Pilot Status. Transcrevendo na Groq...`,
         );
         messageText = await transcreverAudioComGroq(audioSource, mediaFilename);
       } else {
         console.warn(
-          "[Webhook Warning] Mensagem identificada como áudio, porém `mediaLink` veio nulo no payload do webhook.",
+          "[Webhook Warning] Mensagem identificada como áudio, porém nenhum `mediaLink` ou `base64` foi encontrado no payload.",
         );
         console.log(
-          "[Webhook Payload Received]:",
+          "[Webhook Payload Recebido]:",
           JSON.stringify(body, null, 2),
         );
       }
@@ -278,12 +296,12 @@ export async function POST(request: Request) {
 
     if (!messageText || !messageText.trim()) {
       console.warn(
-        "[Webhook] `content`/transcrição ficou vazia. Ignorando disparo da IA.",
+        "[Webhook] Conteúdo ou transcrição do áudio ficou vazia. Ignorando disparo da IA.",
       );
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
-    // 6. Salvar mensagem transcrita no banco de dados
+    // 6. Salvar mensagem transcrita/texto no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -298,7 +316,7 @@ export async function POST(request: Request) {
       `[Webhook] Mensagem id #${currentMsg.id} criada com o texto: "${messageText}"`,
     );
 
-    // 7. Disparar processamento da IA em segundo plano
+    // 7. Disparar processamento da IA em segundo plano (Agrupador)
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
