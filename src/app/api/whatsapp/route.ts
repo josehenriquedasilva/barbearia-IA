@@ -16,8 +16,10 @@ async function buscarBase64Fallback(
 ): Promise<string | null> {
   try {
     const rawUrl =
-      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-    const baseUrl = rawUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br/v1";
+
+    // Remove apenas a barra final (se houver) para evitar barras duplas "//"
+    const baseUrl = rawUrl.replace(/\/$/, "");
     const apiKey =
       process.env.EVOLUTION_TENANT_KEY || process.env.PILOT_STATUS_API_KEY;
 
@@ -28,6 +30,7 @@ async function buscarBase64Fallback(
       return null;
     }
 
+    // Monta a URL mantendo a versão da API configurada no .env
     const url = `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
     console.log(`[Fallback Base64] Solicitando Base64 via API: ${url}`);
 
