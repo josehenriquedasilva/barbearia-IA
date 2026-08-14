@@ -7,64 +7,92 @@ import Groq, { toFile } from "groq-sdk";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Função para buscar o áudio/base64 via API caso o webhook venha sem o mediaLink
+// Função para buscar o áudio/base64 via API caso o webhook venha sem o mediaLink
 async function buscarAudioPorMessageId(
   instanceName: string,
   messageId: string,
 ): Promise<string | null> {
   try {
-    const apiBaseUrl =
-      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br/v1";
+    const rawUrl =
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+    // Remove barras no final e sufixos /v1 para evitar duplicidade nas URLs
+    const baseUrl = rawUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "");
     const apiKey = process.env.EVOLUTION_TENANT_KEY;
 
     if (!apiKey) {
       console.warn(
-        "[Pilot Status API] PILOT_STATUS_API_KEY não definida no .env",
+        "[Pilot Status API] EVOLUTION_TENANT_KEY não definida no .env",
       );
       return null;
     }
 
     console.log(
-      `[Pilot Status API] Buscando áudio para messageId: ${messageId}...`,
+      `[Pilot Status API] Buscando áudio para instance: ${instanceName}, messageId: ${messageId}...`,
     );
 
-    // Tentativa 1: Endpoint de busca de base64 da mídia por ID
-    const resBase64 = await fetch(
-      `${apiBaseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          apikey: apiKey,
-        },
-        body: JSON.stringify({
-          message: { key: { id: messageId } },
-        }),
-      },
-    );
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      apikey: apiKey,
+    };
+
+    // --- Tentativa 1: Endpoint de busca de base64 da mídia por ID ---
+    const urlBase64 = `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
+    console.log(`[Pilot Status API] Tentativa 1 (POST): ${urlBase64}`);
+
+    const resBase64 = await fetch(urlBase64, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        message: { key: { id: messageId } },
+        convertToMp3: false,
+      }),
+    });
 
     if (resBase64.ok) {
       const dataBase64 = await resBase64.json();
+      console.log(
+        "[Pilot Status API] Resposta Tentativa 1:",
+        JSON.stringify(dataBase64).slice(0, 150),
+      );
       const base64Result =
-        dataBase64?.base64 || dataBase64?.media || dataBase64?.data;
+        dataBase64?.base64 ||
+        dataBase64?.media ||
+        dataBase64?.data ||
+        dataBase64?.data?.base64;
       if (base64Result) return base64Result;
+    } else {
+      const errText = await resBase64.text();
+      console.warn(
+        `[Pilot Status API] Tentativa 1 Falhou (HTTP ${resBase64.status}):`,
+        errText.slice(0, 200),
+      );
     }
 
-    // Tentativa 2: Endpoint GET de mensagem por ID
-    const resMsg = await fetch(`${apiBaseUrl}/v1/messages/${messageId}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        apikey: apiKey,
-      },
-    });
+    // --- Tentativa 2: Endpoint GET de mensagens / mídia ---
+    const urlMsg = `${baseUrl}/v1/messages/${messageId}`;
+    console.log(`[Pilot Status API] Tentativa 2 (GET): ${urlMsg}`);
+
+    const resMsg = await fetch(urlMsg, { headers });
 
     if (resMsg.ok) {
       const dataMsg = await resMsg.json();
+      console.log(
+        "[Pilot Status API] Resposta Tentativa 2:",
+        JSON.stringify(dataMsg).slice(0, 150),
+      );
       return (
         dataMsg?.mediaLink ||
         dataMsg?.data?.mediaLink ||
         dataMsg?.media?.url ||
+        dataMsg?.url ||
         null
+      );
+    } else {
+      const errText = await resMsg.text();
+      console.warn(
+        `[Pilot Status API] Tentativa 2 Falhou (HTTP ${resMsg.status}):`,
+        errText.slice(0, 200),
       );
     }
 
