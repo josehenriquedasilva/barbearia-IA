@@ -382,7 +382,6 @@ export async function getPairingCodeAction(
       };
     }
 
-    // 1. Busca se o número já existe no Pilot Status
     let numberDetails = await findPilotStatusNumber(
       baseUrl,
       apiKey,
@@ -395,7 +394,6 @@ export async function getPairingCodeAction(
     let initialQrCode: string | null = null;
     let initialPairingCode: string | null = null;
 
-    // 2. Se o número não existe, cria um novo
     if (!targetNumberId || !targetInstanceId) {
       const createRes = await fetch(`${baseUrl}/numbers`, {
         method: "POST",
@@ -427,7 +425,6 @@ export async function getPairingCodeAction(
       initialQrCode = createData.qrcodeBase64 || null;
       initialPairingCode = createData.pairingCode || null;
 
-      // Consulta novamente o GET /v1/numbers para capturar o WhatsAppNumber.id recém-criado
       numberDetails = await findPilotStatusNumber(baseUrl, apiKey, cleanNumber);
 
       const instanceObj = createData.instance || {};
@@ -445,7 +442,6 @@ export async function getPairingCodeAction(
       };
     }
 
-    // 3. Conecta para obter o Código de Pareamento / QR Code
     const connectRes = await fetch(
       `${baseUrl}/numbers/${targetInstanceId}/connect?number=${cleanNumber}`,
       {
@@ -457,7 +453,6 @@ export async function getPairingCodeAction(
 
     const finalNumberId = targetNumberId || targetInstanceId;
 
-    // 4. Salva o ID do número no banco de dados para ser usado nos envios e webhooks
     await prisma.shop.update({
       where: { id: shopId },
       data: {
@@ -466,7 +461,6 @@ export async function getPairingCodeAction(
       },
     });
 
-    // 5. Registra o Webhook usando o ID correto do Número
     await setWebhookForInstance(finalNumberId);
 
     await setInstanceSettings(finalNumberId);
@@ -499,7 +493,6 @@ export async function disconnectWhatsAppAction(
   try {
     const rawBaseUrl = getPilotStatusBaseUrl() || "https://pilotstatus.com.br";
 
-    // Garante que a URL base termine com /v1
     let baseUrl = rawBaseUrl.replace(/\/$/, "");
     if (!baseUrl.endsWith("/v1")) {
       baseUrl = `${baseUrl}/v1`;
@@ -507,7 +500,6 @@ export async function disconnectWhatsAppAction(
 
     const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
 
-    // 1. Garante que estamos usando o ID real do número no Pilot Status e não o slug
     let numberId = instanceName;
     if (shopId) {
       const shop = await prisma.shop.findUnique({
@@ -519,7 +511,6 @@ export async function disconnectWhatsAppAction(
       }
     }
 
-    // 2. Endpoint oficial de logout: POST /v1/numbers/{id}/logout
     const url = `${baseUrl}/numbers/${numberId}/logout`;
 
     console.log(
@@ -549,7 +540,6 @@ export async function disconnectWhatsAppAction(
     const data = await response.json().catch(() => ({}));
     console.log("[WhatsApp Logout Sucesso]:", data);
 
-    // Aguarda um pequeno tempo para sincronização
     await new Promise((res) => setTimeout(res, 2000));
 
     revalidatePath("/dashboard");
@@ -570,7 +560,6 @@ export async function checkWhatsAppStatusAction(shopId: number) {
   }
 
   try {
-    // Busca no banco o ID da instância registrado no Pilot Status para esta barbearia
     const shop = await prisma.shop.findUnique({
       where: { id: shopId },
       select: { whatsappInstance: true, whatsappToken: true },
@@ -580,7 +569,6 @@ export async function checkWhatsAppStatusAction(shopId: number) {
       return { connected: false, state: "CLOSE" };
     }
 
-    // Prioriza o whatsappInstance salvo no banco
     const targetId = shop.whatsappInstance || shop.whatsappToken;
 
     let rawBaseUrl =
@@ -609,7 +597,6 @@ export async function checkWhatsAppStatusAction(shopId: number) {
 
     const data = await response.json();
 
-    // Trata letras maiúsculas e minúsculas (OPEN, open, CONNECTED, connected, etc.)
     const stateUpper = String(data.state || data.status || "").toUpperCase();
     const isConnected =
       stateUpper === "OPEN" ||

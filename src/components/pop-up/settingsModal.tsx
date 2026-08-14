@@ -559,7 +559,7 @@ export default function SettingsModal({
                       </span>{" "}
                       Clientes podem agendar serviços que invadam até{" "}
                       <span className="text-amber-500 font-medium">10 min</span>{" "}
-                      do seu almoço.
+                      do seu intervalo almoço.
                     </li>
                     <li>
                       <span className="font-semibold text-neutral-200">
@@ -567,7 +567,7 @@ export default function SettingsModal({
                       </span>{" "}
                       O último corte do dia pode se estender até{" "}
                       <span className="text-amber-500 font-medium">20 min</span>{" "}
-                      após o fechamento da loja.
+                      após o horário de fechamento da loja.
                     </li>
                   </ul>
                 </div>
