@@ -6,29 +6,24 @@ import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Função para buscar o áudio/base64 via API caso o webhook venha sem o mediaLink
-// Função para buscar o áudio/base64 via API caso o webhook venha sem o mediaLink
-async function buscarAudioPorMessageId(
+/**
+ * Busca o áudio convertido em Base64 na API do Pilot Status caso o webhook não traga URL direta.
+ * O endpoint 'getBase64FromMediaMessage' precisa do objeto de mensagem COMPLETO (com chaves de descriptografia).
+ */
+async function buscarBase64DaMidia(
   instanceName: string,
-  messageId: string,
+  messagePayload: any,
 ): Promise<string | null> {
   try {
     const rawUrl =
       process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-    // Remove barras no final e sufixos /v1 para evitar duplicidade nas URLs
     const baseUrl = rawUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "");
     const apiKey = process.env.EVOLUTION_TENANT_KEY;
 
     if (!apiKey) {
-      console.warn(
-        "[Pilot Status API] EVOLUTION_TENANT_KEY não definida no .env",
-      );
+      console.warn("[Pilot Status API] EVOLUTION_TENANT_KEY não definida.");
       return null;
     }
-
-    console.log(
-      `[Pilot Status API] Buscando áudio para instance: ${instanceName}, messageId: ${messageId}...`,
-    );
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -36,62 +31,38 @@ async function buscarAudioPorMessageId(
       apikey: apiKey,
     };
 
-    // --- Tentativa 1: Endpoint de busca de base64 da mídia por ID ---
     const urlBase64 = `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
-    console.log(`[Pilot Status API] Tentativa 1 (POST): ${urlBase64}`);
+    console.log(
+      `[Pilot Status API] Requisitando Base64 via POST: ${urlBase64}`,
+    );
+
+    // Garante que enviamos o objeto da mensagem no formato exigido pela Evolution
+    const bodyPayload = {
+      message: messagePayload?.message
+        ? messagePayload.message
+        : messagePayload,
+      convertToMp3: false,
+    };
 
     const resBase64 = await fetch(urlBase64, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        message: { key: { id: messageId } },
-        convertToMp3: false,
-      }),
+      body: JSON.stringify(bodyPayload),
     });
 
     if (resBase64.ok) {
       const dataBase64 = await resBase64.json();
-      console.log(
-        "[Pilot Status API] Resposta Tentativa 1:",
-        JSON.stringify(dataBase64).slice(0, 150),
-      );
       const base64Result =
         dataBase64?.base64 ||
         dataBase64?.media ||
         dataBase64?.data ||
         dataBase64?.data?.base64;
+
       if (base64Result) return base64Result;
     } else {
       const errText = await resBase64.text();
       console.warn(
-        `[Pilot Status API] Tentativa 1 Falhou (HTTP ${resBase64.status}):`,
-        errText.slice(0, 200),
-      );
-    }
-
-    // --- Tentativa 2: Endpoint GET de mensagens / mídia ---
-    const urlMsg = `${baseUrl}/v1/messages/${messageId}`;
-    console.log(`[Pilot Status API] Tentativa 2 (GET): ${urlMsg}`);
-
-    const resMsg = await fetch(urlMsg, { headers });
-
-    if (resMsg.ok) {
-      const dataMsg = await resMsg.json();
-      console.log(
-        "[Pilot Status API] Resposta Tentativa 2:",
-        JSON.stringify(dataMsg).slice(0, 150),
-      );
-      return (
-        dataMsg?.mediaLink ||
-        dataMsg?.data?.mediaLink ||
-        dataMsg?.media?.url ||
-        dataMsg?.url ||
-        null
-      );
-    } else {
-      const errText = await resMsg.text();
-      console.warn(
-        `[Pilot Status API] Tentativa 2 Falhou (HTTP ${resMsg.status}):`,
+        `[Pilot Status API] Falha ao obter Base64 (HTTP ${resBase64.status}):`,
         errText.slice(0, 200),
       );
     }
@@ -99,7 +70,7 @@ async function buscarAudioPorMessageId(
     return null;
   } catch (err) {
     console.error(
-      "[Pilot Status API Exceção] Erro ao buscar áudio por ID:",
+      "[Pilot Status API Exceção] Erro ao buscar áudio por payload:",
       err,
     );
     return null;
@@ -113,7 +84,7 @@ async function transcreverAudioComGroq(
   try {
     if (!audioSource) return "";
 
-    console.log(`[Groq] Recebido audioSource: ${audioSource.slice(0, 80)}...`);
+    console.log(`[Groq] Processando áudio (${audioSource.slice(0, 40)}...)...`);
 
     let audioBuffer: Buffer;
 
@@ -124,25 +95,14 @@ async function transcreverAudioComGroq(
       const res = await fetch(audioSource);
       if (!res.ok) {
         console.error(
-          `[Groq Erro] Falha ao baixar áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+          `[Groq Erro] Falha ao baixar áudio da URL (HTTP ${res.status})`,
         );
         return "";
       }
-
-      const contentType = res.headers.get("content-type") || "";
-      if (
-        !contentType.includes("audio") &&
-        !contentType.includes("octet-stream") &&
-        !contentType.includes("application/")
-      ) {
-        console.warn(
-          `[Groq Alerta] Content-Type inesperado ao baixar áudio: "${contentType}"`,
-        );
-      }
-
       const arrayBuffer = await res.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
     } else {
+      // Limpa cabeçalhos data:audio/... se existirem
       const cleanBase64 = audioSource.includes(",")
         ? audioSource.split(",")[1]
         : audioSource;
@@ -162,13 +122,10 @@ async function transcreverAudioComGroq(
       language: "pt",
     });
 
-    console.log(
-      "[Groq] Transcrição realizada com sucesso:",
-      transcription.text,
-    );
+    console.log("[Groq] Transcrição concluída:", transcription.text);
     return transcription.text?.trim() || "";
   } catch (err) {
-    console.error("[Groq Exceção] Erro ao processar transcrição no Groq:", err);
+    console.error("[Groq Exceção] Erro ao transcrever no Groq:", err);
     return "";
   }
 }
@@ -214,7 +171,7 @@ async function processBackgroundAi({
     .map((m) => m.content.trim())
     .join("\n");
 
-  console.log(`[Agrupador] Enviando bloco para a IA: "${combinedMessageText}"`);
+  console.log(`[Agrupador] Enviando para IA: "${combinedMessageText}"`);
 
   try {
     let protocol = "https://";
@@ -223,7 +180,6 @@ async function processBackgroundAi({
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `${protocol}${host}`;
-    console.log(`[Agrupador] Chamando rota da IA: ${baseUrl}/api/schedule`);
 
     const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
       method: "POST",
@@ -237,35 +193,19 @@ async function processBackgroundAi({
     });
 
     if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error(
-        `[Agrupador Erro] Rota /api/schedule retornou HTTP ${aiResponse.status}:`,
-        errText,
-      );
+      console.error(`[Agrupador Erro] Status ${aiResponse.status}`);
       return;
     }
 
     const dataIA = await aiResponse.json();
-    console.log("[Agrupador] Retorno da IA:", JSON.stringify(dataIA));
-
     const content = dataIA.ai_response || dataIA.message || dataIA.response;
 
-    if (!content) {
-      console.warn(
-        "[Agrupador Alerta] Resposta da IA veio vazia ou em formato desconhecido.",
-      );
-      return;
-    }
+    if (!content) return;
 
     const parts = Array.isArray(content) ? content : [content];
 
     for (const textPart of parts) {
       if (!textPart || !textPart.trim()) continue;
-
-      console.log(
-        `[Agrupador] Despachando mensagem para o WhatsApp (${clientPhone})...`,
-      );
-
       await sendWhatsAppMessage(instanceName, clientPhone, textPart.trim());
     }
   } catch (err) {
@@ -277,7 +217,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 1. Ignorar mensagens de grupos (@g.us)
+    // 1. Ignorar grupos
     const remoteJid = body.data?.key?.remoteJid || body.data?.from || "";
     const isGroup = body.data?.isGroup || remoteJid.includes("@g.us");
 
@@ -285,7 +225,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "group_ignored" });
     }
 
-    // 2. Filtro de eventos válidos
+    // 2. Eventos válidos
     const rawEvent = (body.event || body.data?.event || "").toLowerCase();
     const fromMe = body.data?.fromMe ?? body.data?.key?.fromMe ?? false;
 
@@ -299,7 +239,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 3. Obtenção da Instância / ID do Número
+    // 3. Instância
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -316,7 +256,7 @@ export async function POST(request: Request) {
     const recipientPhone = (body.data?.to || "").replace(/\D/g, "");
     const cleanRecipient = recipientPhone.replace(/^55/, "");
 
-    // 4. Localização da Barbearia (Shop)
+    // 4. Shop
     const shop = await prisma.shop.findFirst({
       where: {
         OR: [
@@ -334,16 +274,13 @@ export async function POST(request: Request) {
     });
 
     if (!shop) {
-      console.warn(
-        `[Webhook] Barbearia não encontrada para a instância/número: ${instanceName}`,
-      );
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
     const rawClientPhone = body.data?.from || body.data?.key?.remoteJid || "";
     const clientPhone = rawClientPhone.replace(/\D/g, "").replace(/^55/, "");
 
-    // 5. Identificação e Processamento de Áudio vs Texto
+    // 5. Identificação e Processamento de Áudio
     const isAudio =
       body.data?.type === "audio" ||
       body.data?.mediaType === "audio" ||
@@ -354,37 +291,41 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      // Tenta obter o áudio direto do payload
+      // Procura por links duráveis ou base64 direto no payload do webhook
       let audioSource =
         body.data?.mediaLink ||
-        body.data?.message?.audioMessage?.url ||
-        body.data?.media?.url ||
         body.data?.mediaUrl ||
-        body.data?.url ||
         body.data?.message?.audioMessage?.base64 ||
-        body.data?.base64;
+        body.data?.base64 ||
+        (body.data?.url?.startsWith("http") ? body.data.url : null) ||
+        (body.data?.media?.url?.startsWith("http")
+          ? body.data.media.url
+          : null);
 
-      const messageId =
-        body.data?.messageId || body.data?.id || body.data?.key?.id;
-
-      // Se o webhook não trouxe o link/base64, busca via API no Pilot Status usando o messageId
-      if (!audioSource && messageId) {
+      // Se não veio no webhook ou veio um link criptografado do WhatsApp (mmg.whatsapp.net), busca via API passando a mensagem completa
+      if (!audioSource) {
         console.warn(
-          `[Webhook Warning] Mídia ausente no payload. Tentando buscar via API pelo messageId: ${messageId}`,
+          "[Webhook Warning] Áudio sem URL/Base64 no payload. Requisitando à API do Pilot Status...",
         );
-        audioSource = await buscarAudioPorMessageId(instanceName, messageId);
+        const fullMessagePayload = body.data?.message
+          ? body.data.message
+          : body.data;
+        audioSource = await buscarBase64DaMidia(
+          instanceName,
+          fullMessagePayload,
+        );
       }
 
       const mediaFilename = body.data?.mediaFilename || "voice.ogg";
 
       if (audioSource) {
         console.log(
-          `[Webhook] Fonte de áudio obtida para ${clientPhone}. Transcrevendo na Groq...`,
+          `[Webhook] Fonte do áudio encontrada. Transcrevendo na Groq...`,
         );
         messageText = await transcreverAudioComGroq(audioSource, mediaFilename);
       } else {
         console.warn(
-          "[Webhook Warning] Não foi possível obter o áudio nem pelo webhook nem via API do Pilot Status.",
+          "[Webhook Warning] Não foi possível resgatar o áudio por nenhuma via.",
         );
       }
     } else {
@@ -398,13 +339,10 @@ export async function POST(request: Request) {
     const effectiveInstance = instanceName || shop.whatsappInstance;
 
     if (!messageText || !messageText.trim()) {
-      console.warn(
-        "[Webhook] Conteúdo ou transcrição do áudio ficou vazia. Ignorando disparo da IA.",
-      );
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
-    // 6. Salvar mensagem no banco de dados
+    // 6. Salvar mensagem
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -415,11 +353,7 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(
-      `[Webhook] Mensagem id #${currentMsg.id} criada com o texto: "${messageText}"`,
-    );
-
-    // 7. Disparar processamento em segundo plano (Agrupador da IA)
+    // 7. Processar IA em segundo plano
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
