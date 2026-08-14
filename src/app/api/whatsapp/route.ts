@@ -7,139 +7,49 @@ import Groq, { toFile } from "groq-sdk";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 /**
- * Fallback: Busca a mídia em Base64 na API do Pilot Status
- * caso o download direto do CDN falhe.
- */
-async function buscarBase64Fallback(
-  instanceName: string,
-  messagePayload: any,
-): Promise<string | null> {
-  try {
-    const rawUrl =
-      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br/v1";
-
-    // Remove apenas a barra final (se houver) para evitar barras duplas "//"
-    const baseUrl = rawUrl.replace(/\/$/, "");
-    const apiKey =
-      process.env.EVOLUTION_TENANT_KEY || process.env.PILOT_STATUS_API_KEY;
-
-    if (!apiKey) {
-      console.warn(
-        "[Fallback Base64] Nenhuma API Key configurada para o fallback.",
-      );
-      return null;
-    }
-
-    // Monta a URL mantendo a versão da API configurada no .env
-    const url = `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
-    console.log(`[Fallback Base64] Solicitando Base64 via API: ${url}`);
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        apikey: apiKey,
-      },
-      body: JSON.stringify({
-        message: messagePayload?.message
-          ? messagePayload.message
-          : messagePayload,
-        convertToMp3: false,
-      }),
-    });
-
-    const contentType = res.headers.get("content-type") || "";
-
-    // Validação para evitar o crash de 'Unexpected token <' caso o servidor retorne HTML
-    if (!res.ok || !contentType.includes("application/json")) {
-      const errorText = await res.text();
-      console.warn(
-        `[Fallback Base64 Erro] Resposta inválida da API (HTTP ${res.status}, Type: ${contentType}):`,
-        errorText.slice(0, 200),
-      );
-      return null;
-    }
-
-    const data = await res.json();
-    return (
-      data?.base64 || data?.media || data?.data?.base64 || data?.data || null
-    );
-  } catch (err) {
-    console.error("[Fallback Base64 Exceção]:", err);
-    return null;
-  }
-}
-
-/**
- * Transcreve áudio via Groq SDK aceitando URL (CDN) ou Base64.
+ * Baixa o áudio diretamente do mediaLink pública (S3/CDN)
+ * e realiza a transcrição via Groq SDK.
  */
 async function transcreverAudioComGroq(
-  audioSource: string,
+  mediaLink: string,
   filename: string = "audio.ogg",
-  instanceName?: string,
-  fullMessagePayload?: any,
 ): Promise<string> {
   try {
-    if (!audioSource) return "";
+    if (!mediaLink) return "";
 
-    console.log(
-      `[Groq] Processando audioSource: ${audioSource.slice(0, 80)}...`,
-    );
+    console.log(`[Groq] Baixando áudio diretamente do mediaLink...`);
 
-    let audioBuffer: Buffer | null = null;
+    // GET direto sem headers de autenticação
+    const response = await fetch(mediaLink, {
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
 
-    // 1. Se for uma URL (ex: mediaLink do Pilot Status)
-    if (
-      audioSource.startsWith("http://") ||
-      audioSource.startsWith("https://")
-    ) {
-      // Baixa LIMPO sem headers de autenticação para o CDN do S3 não retornar 403 Forbidden
-      let res = await fetch(audioSource, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-      });
-
-      // Se falhou (HTTP status != 200) e temos os dados necessários, aciona o fallback via API
-      if (!res.ok && instanceName && fullMessagePayload) {
-        console.warn(
-          `[Groq] Download do CDN falhou (HTTP ${res.status}). Tentando fallback via API Base64...`,
+    if (!response.ok) {
+      if (response.status === 403) {
+        console.error(
+          `[Groq Erro] HTTP 403 Forbidden: O mediaLink do S3 provavelmente expirou ou a URL veio truncada no webhook.`,
         );
-        const base64Fallback = await buscarBase64Fallback(
-          instanceName,
-          fullMessagePayload,
-        );
-
-        if (base64Fallback) {
-          const cleanB64 = base64Fallback.includes(",")
-            ? base64Fallback.split(",")[1]
-            : base64Fallback;
-          audioBuffer = Buffer.from(cleanB64, "base64");
-        }
-      } else if (res.ok) {
-        const arrayBuffer = await res.arrayBuffer();
-        audioBuffer = Buffer.from(arrayBuffer);
       } else {
         console.error(
-          `[Groq Erro] Falha ao baixar áudio da URL (HTTP ${res.status}: ${res.statusText})`,
+          `[Groq Erro] Falha ao baixar áudio (HTTP ${response.status}: ${response.statusText})`,
         );
       }
-    } else {
-      // 2. Se já for uma string Base64 direta
-      const cleanBase64 = audioSource.includes(",")
-        ? audioSource.split(",")[1]
-        : audioSource;
-      audioBuffer = Buffer.from(cleanBase64, "base64");
-    }
-
-    if (!audioBuffer || audioBuffer.length === 0) {
-      console.warn("[Groq Alerta] Buffer de áudio está vazio.");
       return "";
     }
 
-    // Cria o arquivo virtual para envio à SDK da Groq
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuffer);
+
+    if (!audioBuffer || audioBuffer.length === 0) {
+      console.warn("[Groq Alerta] O buffer do áudio baixado veio vazio.");
+      return "";
+    }
+
+    // Cria o arquivo virtual para enviar à API da Groq
     const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
@@ -154,7 +64,10 @@ async function transcreverAudioComGroq(
     );
     return transcription.text?.trim() || "";
   } catch (err) {
-    console.error("[Groq Exceção] Erro ao processar transcrição no Groq:", err);
+    console.error(
+      "[Groq Exceção] Erro durante o download ou transcrição:",
+      err,
+    );
     return "";
   }
 }
@@ -324,33 +237,26 @@ export async function POST(request: Request) {
     let messageText = "";
 
     if (isAudio) {
-      const audioSource =
+      const mediaLink =
         body.data?.mediaLink ||
-        body.data?.message?.audioMessage?.url ||
-        body.data?.media?.url ||
         body.data?.mediaUrl ||
-        body.data?.url ||
-        body.data?.message?.audioMessage?.base64 ||
-        body.data?.base64;
+        body.data?.media?.url ||
+        body.data?.message?.audioMessage?.url ||
+        body.data?.url;
 
-      const mediaFilename = body.data?.mediaFilename || "voice.ogg";
-      const fullMessagePayload = body.data?.message
-        ? body.data.message
-        : body.data;
+      const mediaFilename =
+        body.data?.mediaFilename ||
+        body.data?.message?.audioMessage?.fileName ||
+        "voice.ogg";
 
-      if (audioSource) {
+      if (mediaLink) {
         console.log(
-          `[Webhook] Áudio recebido de ${clientPhone}. Transcrevendo na Groq...`,
+          `[Webhook] Áudio recebido de ${clientPhone}. Baixando imediatamente via mediaLink...`,
         );
-        messageText = await transcreverAudioComGroq(
-          audioSource,
-          mediaFilename,
-          instanceName,
-          fullMessagePayload,
-        );
+        messageText = await transcreverAudioComGroq(mediaLink, mediaFilename);
       } else {
         console.warn(
-          "[Webhook Warning] Mensagem de áudio sem `mediaLink` ou `base64` no payload.",
+          "[Webhook Warning] Mensagem de áudio identificada, mas nenhum mediaLink foi encontrado no payload.",
         );
       }
     } else {
