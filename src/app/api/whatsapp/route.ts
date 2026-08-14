@@ -8,7 +8,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 /**
  * Fallback: Busca a mídia em Base64 na API do Pilot Status
- * caso o download direto via URL falhe (ex: erro HTTP 403/404).
+ * caso o download direto do CDN falhe.
  */
 async function buscarBase64Fallback(
   instanceName: string,
@@ -21,9 +21,16 @@ async function buscarBase64Fallback(
     const apiKey =
       process.env.EVOLUTION_TENANT_KEY || process.env.PILOT_STATUS_API_KEY;
 
-    if (!apiKey) return null;
+    if (!apiKey) {
+      console.warn(
+        "[Fallback Base64] Nenhuma API Key configurada para o fallback.",
+      );
+      return null;
+    }
 
     const url = `${baseUrl}/chat/getBase64FromMediaMessage/${instanceName}`;
+    console.log(`[Fallback Base64] Solicitando Base64 via API: ${url}`);
+
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -39,20 +46,30 @@ async function buscarBase64Fallback(
       }),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return (
-        data?.base64 || data?.media || data?.data?.base64 || data?.data || null
+    const contentType = res.headers.get("content-type") || "";
+
+    // Validação para evitar o crash de 'Unexpected token <' caso o servidor retorne HTML
+    if (!res.ok || !contentType.includes("application/json")) {
+      const errorText = await res.text();
+      console.warn(
+        `[Fallback Base64 Erro] Resposta inválida da API (HTTP ${res.status}, Type: ${contentType}):`,
+        errorText.slice(0, 200),
       );
+      return null;
     }
+
+    const data = await res.json();
+    return (
+      data?.base64 || data?.media || data?.data?.base64 || data?.data || null
+    );
   } catch (err) {
     console.error("[Fallback Base64 Exceção]:", err);
+    return null;
   }
-  return null;
 }
 
 /**
- * Transcreve áudio via Groq SDK aceitando URL ou Base64.
+ * Transcreve áudio via Groq SDK aceitando URL (CDN) ou Base64.
  */
 async function transcreverAudioComGroq(
   audioSource: string,
@@ -69,31 +86,23 @@ async function transcreverAudioComGroq(
 
     let audioBuffer: Buffer | null = null;
 
-    // Se for URL (ex: mediaLink do Pilot Status)
+    // 1. Se for uma URL (ex: mediaLink do Pilot Status)
     if (
       audioSource.startsWith("http://") ||
       audioSource.startsWith("https://")
     ) {
-      const apiKey =
-        process.env.EVOLUTION_TENANT_KEY || process.env.PILOT_STATUS_API_KEY;
+      // Baixa LIMPO sem headers de autenticação para o CDN do S3 não retornar 403 Forbidden
+      let res = await fetch(audioSource, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+      });
 
-      // Monta headers autenticados para evitar erro 403 (Forbidden)
-      const fetchHeaders: Record<string, string> = {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      };
-
-      if (apiKey) {
-        fetchHeaders["apikey"] = apiKey;
-        fetchHeaders["Authorization"] = `Bearer ${apiKey}`;
-      }
-
-      let res = await fetch(audioSource, { headers: fetchHeaders });
-
-      // Se falhou (403, 404, etc) e temos dados para fallback, tenta via API do Pilot Status
+      // Se falhou (HTTP status != 200) e temos os dados necessários, aciona o fallback via API
       if (!res.ok && instanceName && fullMessagePayload) {
         console.warn(
-          `[Groq Erro] HTTP ${res.status} ao baixar URL. Tentando fallback via API Base64...`,
+          `[Groq] Download do CDN falhou (HTTP ${res.status}). Tentando fallback via API Base64...`,
         );
         const base64Fallback = await buscarBase64Fallback(
           instanceName,
@@ -115,7 +124,7 @@ async function transcreverAudioComGroq(
         );
       }
     } else {
-      // Se já for Base64
+      // 2. Se já for uma string Base64 direta
       const cleanBase64 = audioSource.includes(",")
         ? audioSource.split(",")[1]
         : audioSource;
@@ -127,7 +136,7 @@ async function transcreverAudioComGroq(
       return "";
     }
 
-    // Cria o arquivo virtual para a SDK da Groq
+    // Cria o arquivo virtual para envio à SDK da Groq
     const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
@@ -136,7 +145,10 @@ async function transcreverAudioComGroq(
       language: "pt",
     });
 
-    console.log("[Groq] Transcrição concluída:", transcription.text);
+    console.log(
+      "[Groq] Transcrição concluída com sucesso:",
+      transcription.text,
+    );
     return transcription.text?.trim() || "";
   } catch (err) {
     console.error("[Groq Exceção] Erro ao processar transcrição no Groq:", err);
@@ -235,7 +247,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 1. Ignorar mensagens de grupos
+    // 1. Ignorar mensagens de grupos (@g.us)
     const remoteJid = body.data?.key?.remoteJid || body.data?.from || "";
     const isGroup = body.data?.isGroup || remoteJid.includes("@g.us");
 
@@ -274,7 +286,7 @@ export async function POST(request: Request) {
     const recipientPhone = (body.data?.to || "").replace(/\D/g, "");
     const cleanRecipient = recipientPhone.replace(/^55/, "");
 
-    // 4. Localização do Shop
+    // 4. Localização do Shop no banco
     const shop = await prisma.shop.findFirst({
       where: {
         OR: [
