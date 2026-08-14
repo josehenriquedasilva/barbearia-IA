@@ -13,9 +13,8 @@ async function buscarAudioPorMessageId(
 ): Promise<string | null> {
   try {
     const apiBaseUrl =
-      process.env.PILOT_STATUS_URL || "https://api.pilotstatus.com.br";
-    const apiKey =
-      process.env.PILOT_STATUS_API_KEY || process.env.EVOLUTION_API_KEY || "";
+      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br/v1";
+    const apiKey = process.env.EVOLUTION_TENANT_KEY;
 
     if (!apiKey) {
       console.warn(
