@@ -6,10 +6,6 @@ import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-/**
- * Baixa o áudio diretamente do mediaLink pública (S3/CDN)
- * e realiza a transcrição via Groq SDK.
- */
 async function transcreverAudioComGroq(
   mediaLink: string,
   filename: string = "audio.ogg",
@@ -19,7 +15,6 @@ async function transcreverAudioComGroq(
 
     console.log(`[Groq] Baixando áudio diretamente do mediaLink...`);
 
-    // GET direto sem headers de autenticação
     const response = await fetch(mediaLink, {
       method: "GET",
       headers: {
@@ -49,7 +44,6 @@ async function transcreverAudioComGroq(
       return "";
     }
 
-    // Cria o arquivo virtual para enviar à API da Groq
     const file = await toFile(audioBuffer, filename);
 
     const transcription = await groq.audio.transcriptions.create({
@@ -163,7 +157,6 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 1. Ignorar mensagens de grupos (@g.us)
     const remoteJid = body.data?.key?.remoteJid || body.data?.from || "";
     const isGroup = body.data?.isGroup || remoteJid.includes("@g.us");
 
@@ -171,7 +164,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "group_ignored" });
     }
 
-    // 2. Filtro de eventos e ignorar mensagens 'fromMe'
     const rawEvent = (body.event || body.data?.event || "").toLowerCase();
     const fromMe = body.data?.fromMe ?? body.data?.key?.fromMe ?? false;
 
@@ -185,7 +177,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored" });
     }
 
-    // 3. Obtenção da Instância / Number ID
     const instanceName =
       body.data?.numberId ||
       body.instance ||
@@ -202,7 +193,6 @@ export async function POST(request: Request) {
     const recipientPhone = (body.data?.to || "").replace(/\D/g, "");
     const cleanRecipient = recipientPhone.replace(/^55/, "");
 
-    // 4. Localização do Shop no banco
     const shop = await prisma.shop.findFirst({
       where: {
         OR: [
@@ -226,7 +216,6 @@ export async function POST(request: Request) {
     const rawClientPhone = body.data?.from || body.data?.key?.remoteJid || "";
     const clientPhone = rawClientPhone.replace(/\D/g, "").replace(/^55/, "");
 
-    // 5. Identificação e Processamento de Áudio vs Texto
     const isAudio =
       body.data?.type === "audio" ||
       body.data?.mediaType === "audio" ||
@@ -276,7 +265,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "empty-text" });
     }
 
-    // 6. Salvar mensagem no banco de dados
     const currentMsg = await prisma.chatMessage.create({
       data: {
         role: "user",
@@ -289,7 +277,6 @@ export async function POST(request: Request) {
 
     console.log(`[Webhook] Mensagem #${currentMsg.id} salva: "${messageText}"`);
 
-    // 7. Disparar processamento da IA
     waitUntil(
       processBackgroundAi({
         currentMsgId: currentMsg.id,
