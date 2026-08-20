@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import DashboardView from "./dashboardView";
 import prisma from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
 export default async function Page(props: {
   params: Promise<{ barberId: string }>;
@@ -9,12 +9,12 @@ export default async function Page(props: {
   const params = await props.params;
   const idFromUrl = params.barberId;
 
-  const cookieStore = await cookies();
-  const cookie = cookieStore.get("auth_token");
-  const userIdFromCookie = cookie?.value?.trim();
+  // Obtém o usuário autenticado a partir do token JWT no cookie
+  const sessionUser = await getSessionUser();
 
-  if (!userIdFromCookie || userIdFromCookie !== idFromUrl) {
-    console.log("🚫 Acesso negado: Cookie e ID não batem");
+  // Valida se há usuário logado e se o ID bate com a URL
+  if (!sessionUser || String(sessionUser.id) !== idFromUrl) {
+    console.log("🚫 Acesso negado: Sessão inválida ou ID não bate");
     redirect("/login");
   }
 

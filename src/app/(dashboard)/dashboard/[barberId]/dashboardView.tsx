@@ -7,6 +7,7 @@ import CancelModal from "@/components/pop-up/cancelModal";
 import ClosedDaysModal from "@/components/pop-up/closedDaysModal";
 import ManageBarbersModal from "@/components/pop-up/manageBarbersModal";
 import SettingsModal from "@/components/pop-up/settingsModal";
+import UpgradePlanModal from "@/components/pop-up/upgradePlanModal";
 
 import Info from "@/components/ui/info";
 import User from "@/components/ui/user";
@@ -32,11 +33,13 @@ import {
   updateClosedDays,
   updateServicesAction,
 } from "../../actions";
-import UpgradePlanModal from "@/components/pop-up/upgradePlanModal";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
+  // Identificador da barbearia (mantido para exibição no componente <Info />)
+  const shopId = user.shopId || user.shop?.id;
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewBarberId, setViewBarberId] = useState(user.id);
   const [viewBarberName, setViewBarberName] = useState(user.name);
@@ -48,8 +51,11 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
   const [isClosedDaysOpen, setIsClosedDaysOpen] = useState(false);
   const [closedDays, setClosedDays] = useState<
     { date: string; reason: string }[]
-  >(user.shop.closedDays || []);
-  const [services, setServices] = useState<Service[]>(user.shop.services || []);
+  >(user.shop?.closedDays || []);
+  const [services, setServices] = useState<Service[]>(
+    user.shop?.services || [],
+  );
+
   const dateString = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}`;
 
   const currentViewUser = {
@@ -77,11 +83,13 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
   useEffect(() => {
     async function loadBarbers() {
-      const data = await getBarbersAction(user.shopId);
-      setBarbers(data);
+      const data = await getBarbersAction();
+      if (Array.isArray(data)) {
+        setBarbers(data);
+      }
     }
     loadBarbers();
-  }, [user.shopId]);
+  }, []);
 
   useEffect(() => {
     async function syncStatus() {
@@ -92,7 +100,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       );
 
       if (hasPendingStatus) {
-        await updateAppointmentsStatusAction(user.shopId);
+        await updateAppointmentsStatusAction();
         mutate();
       }
     }
@@ -100,16 +108,19 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     syncStatus();
     const interval = setInterval(syncStatus, 10000);
     return () => clearInterval(interval);
-  }, [appointments, user.shopId, mutate]);
+  }, [appointments, mutate]);
 
   const handleSaveSettings = async (payload: SettingsPayload) => {
     try {
-      const result = await updateServicesAction(user.shopId, payload);
+      const result = await updateServicesAction(payload);
 
-      if (result.success) {
-        setServices(payload.services);
+      if (result?.success) {
+        if (payload.services) {
+          setServices(payload.services);
+        }
+        setIsSettingsOpen(false);
       } else {
-        console.error(result.error);
+        console.error(result?.error || "Erro ao salvar serviços");
       }
     } catch (error) {
       console.error("Erro ao atualizar serviços:", error);
@@ -122,15 +133,19 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     password: string;
   }) => {
     try {
-      const result = await createBarberAction(user.shopId, data);
+      const result = await createBarberAction(data);
 
-      if (result.success) {
-        const updatedBarbers = await getBarbersAction(user.shopId);
-        setBarbers(updatedBarbers);
-
+      if (result?.success) {
+        const updatedBarbers = await getBarbersAction();
+        if (Array.isArray(updatedBarbers)) {
+          setBarbers(updatedBarbers);
+        }
         return { success: true };
       } else {
-        return { success: false, error: result.error };
+        return {
+          success: false,
+          error: result?.error || "Erro ao criar barbeiro.",
+        };
       }
     } catch (error) {
       console.error("Erro ao criar barbeiro:", error);
@@ -142,12 +157,13 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     days: { date: string; reason: string }[],
   ) => {
     try {
-      const result = await updateClosedDays(user.shopId, days);
+      const result = await updateClosedDays(days);
 
-      if (result.success) {
+      if (result?.success) {
         setClosedDays(days);
+        setIsClosedDaysOpen(false);
       } else {
-        alert(result.error);
+        alert(result?.error || "Erro ao salvar dias fechados");
       }
     } catch (error) {
       console.error(`Erro ao salvar dias fechados: ${error}`);
@@ -163,7 +179,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             className="size-8.5 text-neutral-50 mr-1.5 cursor-pointer p-1 rounded-md hover:bg-neutral-800 duration-150"
           />
           <RiScissorsFill className="bg-amber-600 p-1 size-7 rounded-md" />
-          <h1 className="text-neutral-50 font-semibold">{user.shop.name}</h1>
+          <h1 className="text-neutral-50 font-semibold">{user.shop?.name}</h1>
         </div>
         <div className="flex items-center mr-3">
           <button
@@ -186,7 +202,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         setMenu={setMenu}
         viewBarberId={viewBarberId}
         onOpenUpgradeModal={() => setIsUpgradeModalOpen(true)}
-        currentPlan={user.shop.plan}
+        currentPlan={user.shop?.plan}
       />
 
       <main className="px-3.5 py-5 max-w-[900px] mx-auto">
@@ -234,14 +250,12 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
               <div className="h-64 w-full bg-neutral-900 animate-pulse rounded-xl border border-neutral-800" />
             </div>
           ) : (
-            <>
-              <Info
-                appointments={appointments}
-                shopId={user.shopId}
-                slug={user.shop.slug}
-                shopPhone={user.shop.phone}
-              />
-            </>
+            <Info
+              appointments={appointments}
+              shopId={shopId}
+              slug={user.shop?.slug}
+              shopPhone={user.shop?.phone}
+            />
           )}
         </section>
         <section>
@@ -289,7 +303,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             barberModalClose={() => setIsBarberModal(false)}
             onAddBarber={handleCreateBarber}
             currentBarbersCount={barbers.length}
-            plan={user.shop.plan}
+            plan={user.shop?.plan}
           />
         </section>
       )}
@@ -304,9 +318,8 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
       {isUpgradeModalOpen && (
         <UpgradePlanModal
-          currentPlan={user.shop.plan}
+          currentPlan={user.shop?.plan}
           onClose={() => setIsUpgradeModalOpen(false)}
-          //Função do Asaas(getway) | onUpgrade={(plan) => handleStartCheckout(plan)}
         />
       )}
     </div>

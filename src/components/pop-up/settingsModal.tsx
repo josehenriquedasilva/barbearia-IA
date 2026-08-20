@@ -1,6 +1,12 @@
 import { Service, SettingsModalProps } from "@/types/types";
 import { useEffect, useState } from "react";
-import { BiCheckCircle, BiCoffeeTogo, BiInfoCircle, BiPlus, BiX } from "react-icons/bi";
+import {
+  BiCheckCircle,
+  BiCoffeeTogo,
+  BiInfoCircle,
+  BiPlus,
+  BiX,
+} from "react-icons/bi";
 import { BsClock, BsScissors, BsTrash2 } from "react-icons/bs";
 import { CiSettings } from "react-icons/ci";
 import { FaDollarSign } from "react-icons/fa";
@@ -61,25 +67,39 @@ export default function SettingsModal({
     duration: "",
   });
   const [errors, setErrors] = useState({ name: "", price: "", duration: "" });
+
+  // Sincroniza props com o estado local sempre que o modal abre
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+      setLocalServices(services || []);
+      setOpeningTime(shop?.openingTime || "09:00");
+      setClosingTime(shop?.closingTime || "19:00");
+      setIsClosedSunday(shop?.isClosedSunday ?? true);
+      setOpeningSunday(shop?.openingSunday || "09:00");
+      setClosingSunday(shop?.closingSunday || "13:00");
+      setHasDayOff(shop?.hasDayOff ?? false);
+      setDayOff(shop?.dayOff || "Segunda-feira");
+      setHasLunchBreak(shop?.hasLunchBreak ?? false);
+      setLunchStart(shop?.lunchStart || "12:00");
+      setLunchEnd(shop?.lunchEnd || "13:00");
+    } else {
+      document.body.style.overflow = "unset";
+    }
+
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   const resetForm = () => {
-    setFormData({
-      name: "",
-      price: "",
-      duration: "",
-    });
-    setErrors({
-      name: "",
-      price: "",
-      duration: "",
-    });
+    setFormData({ name: "", price: "", duration: "" });
+    setErrors({ name: "", price: "", duration: "" });
   };
 
   const validateForm = () => {
-    const newErrors = {
-      name: "",
-      price: "",
-      duration: "",
-    };
+    const newErrors = { name: "", price: "", duration: "" };
 
     if (!formData.name.trim()) {
       newErrors.name = "Nome do serviço é obrigatório";
@@ -97,21 +117,10 @@ export default function SettingsModal({
     return !newErrors.name && !newErrors.price && !newErrors.duration;
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen]);
-
   const handleAddOrEditService = () => {
     if (!validateForm()) return;
 
-    const serviceData = {
+    const serviceData: Service = {
       id: editingServiceId || Date.now(),
       name: formData.name.trim(),
       price: parseFloat(formData.price),
@@ -388,7 +397,7 @@ export default function SettingsModal({
                         {service.name}
                       </h5>
                       <p className="text-xs text-neutral-500">
-                        R$ {service.price} • {service.duration} min
+                        R$ {service.price.toFixed(2)} • {service.duration} min
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -549,7 +558,7 @@ export default function SettingsModal({
                       <span className="font-semibold text-neutral-200">
                         Intervalo de Limpeza:
                       </span>{" "}
-                      Pula obrigatória de{" "}
+                      Pausa obrigatória de{" "}
                       <span className="text-amber-500 font-medium">10 min</span>{" "}
                       entre cada atendimento.
                     </li>
@@ -578,14 +587,14 @@ export default function SettingsModal({
           <div className="p-3 md:p-6 border-t border-neutral-800 bg-neutral-900 flex gap-4">
             <button
               onClick={onClose}
-              className="flex-1 py-y md:py-3 px-4 bg-neutral-800 hover:bg-neutral-700 text-sm md:text-base text-neutral-300 rounded-lg font-medium transition-colors cursor-pointer"
+              className="flex-1 py-2 md:py-3 px-4 bg-neutral-800 hover:bg-neutral-700 text-sm md:text-base text-neutral-300 rounded-lg font-medium transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
               disabled={showSuccess}
-              className="flex-1 py-1 md:py-3 px-4 bg-amber-600 hover:bg-amber-700 text-sm md:text-base text-neutral-950 font-bold rounded-lg transition-colors shadow-lg shadow-amber-600/10 cursor-pointer"
+              className="flex-1 py-2 md:py-3 px-4 bg-amber-600 hover:bg-amber-700 text-sm md:text-base text-neutral-950 font-bold rounded-lg transition-colors shadow-lg shadow-amber-600/10 cursor-pointer disabled:opacity-50"
             >
               Salvar Configurações
             </button>

@@ -1,6 +1,7 @@
 "use server";
 
 import prisma from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 import {
   sendWhatsAppMessage,
   setWebhookForInstance,
@@ -12,32 +13,107 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-// Helper para garantir a URL base correta com /v1
-function getPilotStatusBaseUrl() {
-  let rawBaseUrl =
+// -----------------------------------------------------------------------------
+// TIPOS E HELPER DE INTEGRAÇÃO
+// -----------------------------------------------------------------------------
+
+interface PilotStatusItem {
+  id?: string | number;
+  whatsappNumberId?: string | number;
+  numberId?: string | number;
+  phone?: string | number;
+  number?: string | number | { number?: string | number };
+  instance?: {
+    id?: string | number;
+  };
+}
+
+// Helper padronizado para URL do Pilot Status
+function getPilotStatusBaseUrl(): string {
+  const rawBaseUrl =
     process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-  let baseUrl = rawBaseUrl.replace(/\/$/, "");
+  const baseUrl = rawBaseUrl.replace(/\/$/, "");
   return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 }
 
-// Buscar barbearia no banco de dados
-export async function getBarbersAction(shopId: number) {
+// Helper para buscar chave da API do WhatsApp
+function getWhatsAppApiKey(): string | undefined {
+  return (
+    process.env.EVOLUTION_TENANT_KEY ||
+    process.env.PILOT_STATUS_API_KEY ||
+    process.env.WHATSAPP_API_KEY
+  );
+}
+
+// Helper para buscar o ID do número cadastrado na conta do Pilot Status
+async function findPilotStatusNumber(
+  baseUrl: string,
+  apiKey: string,
+  cleanNumber: string,
+) {
+  try {
+    const listRes = await fetch(`${baseUrl}/numbers`, {
+      headers: { "x-api-key": apiKey },
+      cache: "no-store",
+    });
+
+    if (listRes.ok) {
+      const numbersList = await listRes.json();
+      const items: PilotStatusItem[] = Array.isArray(numbersList)
+        ? numbersList
+        : numbersList.data || numbersList.numbers || [];
+
+      const found = items.find((item) => {
+        const rawPhone =
+          typeof item.number === "object"
+            ? item.number?.number
+            : item.number || item.phone || "";
+
+        const itemPhone = String(rawPhone || "").replace(/\D/g, "");
+        return (
+          itemPhone.length > 0 &&
+          (itemPhone.includes(cleanNumber) || cleanNumber.includes(itemPhone))
+        );
+      });
+
+      if (found) {
+        return {
+          numberId: found.id || found.whatsappNumberId || found.numberId,
+          instanceId: found.instance?.id || found.id,
+        };
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao buscar números no Pilot Status:", e);
+  }
+  return null;
+}
+
+// -----------------------------------------------------------------------------
+// ACTIONS DE GERENCIAMENTO DA EQUIPE E CONTA
+// -----------------------------------------------------------------------------
+
+export async function getBarbersAction() {
+  const user = await getSessionUser();
+  if (!user) return [];
+
   return await prisma.barber.findMany({
-    where: { shopId },
+    where: { shopId: user.shopId },
     select: { id: true, name: true, email: true, role: true },
     orderBy: { name: "asc" },
   });
 }
 
-// Criar/registrar barbearia
-export async function createBarberAction(
-  shopId: number,
-  data: {
-    name: string;
-    email: string;
-    password: string;
-  },
-) {
+export async function createBarberAction(data: {
+  name: string;
+  email: string;
+  password: string;
+}) {
+  const user = await getSessionUser();
+  if (!user || user.role !== "ADMIN") {
+    return { success: false, error: "Acesso não autorizado." };
+  }
+
   if (data.name.length < 4) {
     return { success: false, error: "Nome de usuário muito curto." };
   } else if (!data.email.includes("@")) {
@@ -58,7 +134,7 @@ export async function createBarberAction(
         email: data.email,
         password: hashedPassword,
         role: "BARBER",
-        shopId: shopId,
+        shopId: user.shopId,
       },
     });
 
@@ -70,38 +146,50 @@ export async function createBarberAction(
   }
 }
 
-// Concluir agendamentos (auto)
-export async function updateAppointmentsStatusAction(shopId: number) {
+export async function logout() {
+  const cookieStore = await cookies();
+  cookieStore.delete("auth_token");
+  redirect("/login");
+}
+
+// -----------------------------------------------------------------------------
+// ACTIONS DE AGENDAMENTOS E CALENDÁRIO
+// -----------------------------------------------------------------------------
+
+export async function updateAppointmentsStatusAction() {
+  const user = await getSessionUser();
+  if (!user) return { success: false, error: "Não autenticado." };
+
   try {
     const now = new Date();
 
     await prisma.appointment.updateMany({
       where: {
-        shopId,
+        shopId: user.shopId,
         status: "CONFIRMED",
         endTime: { lt: now },
       },
-      data: {
-        status: "COMPLETED",
-      },
+      data: { status: "COMPLETED" },
     });
 
     revalidatePath("/dashboard");
     return { success: true };
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
-    return { success: false };
+    return { success: false, error: "Erro ao atualizar agendamentos." };
   }
 }
 
-// Cancelar agendamentos
 export async function cancelAppointmentAction(
   appointmentId: number,
   reason: string,
 ) {
+  const user = await getSessionUser();
+  if (!user) return { success: false, error: "Não autenticado." };
+
   try {
-    const app = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
+    const app = await prisma.appointment.findFirst({
+      where: { id: appointmentId, shopId: user.shopId },
       include: { service: true, barber: true, shop: true },
     });
 
@@ -114,8 +202,7 @@ export async function cancelAppointmentAction(
       data: { status: "CANCELED", cancelReason: reason },
     });
 
-    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${app.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.
-    Veja outro horário disponível enviando uma mensagem por aqui.`;
+    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${app.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.\nVeja outro horário disponível enviando uma mensagem por aqui.`;
 
     const instanceName = app.shop.whatsappInstance || app.shop.slug;
     await sendWhatsAppMessage(instanceName, app.clientPhone, message);
@@ -128,11 +215,16 @@ export async function cancelAppointmentAction(
   }
 }
 
-// Atualizar dias fechados
 export async function updateClosedDays(
-  shopId: number,
   days: { date: string; reason?: string }[],
 ) {
+  const user = await getSessionUser();
+  if (!user || user.role !== "ADMIN") {
+    return { success: false, error: "Acesso não autorizado." };
+  }
+
+  const shopId = user.shopId;
+
   try {
     await prisma.$transaction(async (tx) => {
       const shop = await tx.shop.findUnique({
@@ -167,11 +259,11 @@ export async function updateClosedDays(
             where: { id: app.id },
             data: {
               status: "CANCELED",
-              cancelReason: `Dia fechado: ${day.reason}`,
+              cancelReason: `Dia fechado: ${day.reason || "Não informado"}`,
             },
           });
 
-          const msg = `Olá *${app.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${day.date} (*Motivo: ${day.reason}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data enviando uma mensagem por aqui.`;
+          const msg = `Olá *${app.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${day.date} (*Motivo: ${day.reason || "Não informado"}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data enviando uma mensagem por aqui.`;
 
           await sendWhatsAppMessage(instanceName, app.clientPhone, msg);
         }
@@ -189,11 +281,18 @@ export async function updateClosedDays(
   }
 }
 
-// Atualizar serviços
-export async function updateServicesAction(
-  shopId: number,
-  payload: SettingsPayload,
-) {
+// -----------------------------------------------------------------------------
+// ACTIONS DE CONFIGURAÇÃO DA LOJA E SERVIÇOS
+// -----------------------------------------------------------------------------
+
+export async function updateServicesAction(payload: SettingsPayload) {
+  const user = await getSessionUser();
+  if (!user || user.role !== "ADMIN") {
+    return { success: false, error: "Acesso não autorizado." };
+  }
+
+  const shopId = user.shopId;
+
   try {
     await prisma.$transaction(async (tx) => {
       const shop = await tx.shop.findUnique({
@@ -223,7 +322,6 @@ export async function updateServicesAction(
       });
 
       const incomingIds = payload.services.map((s) => s.id);
-
       const toDeactivate = currentServices.filter(
         (s) => !incomingIds.includes(s.id),
       );
@@ -288,67 +386,60 @@ export async function updateServicesAction(
     revalidatePath("/dashboard");
     return { success: true };
   } catch (error) {
-    return { success: false, error };
+    console.error("Erro ao atualizar serviços:", error);
+    return { success: false, error: "Erro ao salvar configurações." };
   }
 }
 
-// Fazer logout/sair
-export async function logout() {
-  const cookieStore = await cookies();
-  (await cookieStore).delete("auth_token");
-  redirect("/login");
-}
+export async function updateShopPhoneAction(newPhone: string) {
+  const user = await getSessionUser();
+  if (!user || user.role !== "ADMIN") {
+    return { success: false, error: "Acesso não autorizado." };
+  }
 
-// Helper para buscar o ID do número cadastrado na conta do Pilot Status
-async function findPilotStatusNumber(
-  baseUrl: string,
-  apiKey: string,
-  cleanNumber: string,
-) {
   try {
-    const listRes = await fetch(`${baseUrl}/numbers`, {
-      headers: { "x-api-key": apiKey },
-      cache: "no-store",
+    let cleanNumber = newPhone.replace(/\D/g, "");
+
+    if (
+      cleanNumber.startsWith("55") &&
+      (cleanNumber.length === 12 || cleanNumber.length === 13)
+    ) {
+      cleanNumber = cleanNumber.substring(2);
+    }
+
+    if (cleanNumber.length < 10 || cleanNumber.length > 11) {
+      return {
+        success: false,
+        error:
+          "Por favor, insira um número de WhatsApp válido com DDD (ex: 11999999999).",
+      };
+    }
+
+    await prisma.shop.update({
+      where: { id: user.shopId },
+      data: { phone: cleanNumber },
     });
 
-    if (listRes.ok) {
-      const numbersList = await listRes.json();
-      const items = Array.isArray(numbersList)
-        ? numbersList
-        : numbersList.data || numbersList.numbers || [];
-
-      const found = items.find((item: any) => {
-        const itemPhone = (
-          item.number?.number ||
-          item.number ||
-          item.phone ||
-          ""
-        )
-          .toString()
-          .replace(/\D/g, "");
-        return (
-          itemPhone.includes(cleanNumber) || cleanNumber.includes(itemPhone)
-        );
-      });
-
-      if (found) {
-        return {
-          numberId: found.id || found.whatsappNumberId || found.numberId,
-          instanceId: found.instance?.id || found.id,
-        };
-      }
-    }
-  } catch (e) {
-    console.error("Erro ao buscar números no Pilot Status:", e);
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao atualizar telefone no banco:", error);
+    return { success: false, error: "Erro interno ao salvar o novo número." };
   }
-  return null;
 }
 
-// Gerar código de conexão com IA
-export async function getPairingCodeAction(
-  shopId: number,
-  phoneNumber: string,
-) {
+// -----------------------------------------------------------------------------
+// ACTIONS DE INTEGRAÇÃO COM WHATSAPP / PILOT STATUS
+// -----------------------------------------------------------------------------
+
+export async function getPairingCodeAction(phoneNumber: string) {
+  const user = await getSessionUser();
+  if (!user || user.role !== "ADMIN") {
+    return { success: false, error: "Acesso não autorizado." };
+  }
+
+  const shopId = user.shopId;
+
   try {
     const shop = await prisma.shop.findUnique({
       where: { id: shopId },
@@ -363,22 +454,13 @@ export async function getPairingCodeAction(
     if (!cleanNumber.startsWith("55")) cleanNumber = `55${cleanNumber}`;
     const formattedPhone = `+${cleanNumber}`;
 
-    let rawBaseUrl =
-      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-    let baseUrl = rawBaseUrl.replace(/\/$/, "");
-    if (!baseUrl.endsWith("/v1")) {
-      baseUrl = `${baseUrl}/v1`;
-    }
-
-    const apiKey =
-      process.env.EVOLUTION_TENANT_KEY ||
-      process.env.PILOT_STATUS_API_KEY ||
-      process.env.WHATSAPP_API_KEY;
+    const baseUrl = getPilotStatusBaseUrl();
+    const apiKey = getWhatsAppApiKey();
 
     if (!apiKey) {
       return {
         success: false,
-        error: "Chave API (EVOLUTION_TENANT_KEY) não configurada.",
+        error: "Chave API de integração não configurada.",
       };
     }
 
@@ -388,8 +470,10 @@ export async function getPairingCodeAction(
       cleanNumber,
     );
 
-    let targetNumberId = numberDetails?.numberId || null;
-    let targetInstanceId = numberDetails?.instanceId || null;
+    let targetNumberId: string | number | null =
+      numberDetails?.numberId ?? null;
+    let targetInstanceId: string | number | null =
+      numberDetails?.instanceId ?? null;
 
     let initialQrCode: string | null = null;
     let initialPairingCode: string | null = null;
@@ -417,11 +501,6 @@ export async function getPairingCodeAction(
         return { success: false, error: errMsg };
       }
 
-      console.log(
-        "[DEBUG CREATE DATA DETALHADO]:",
-        JSON.stringify(createData, null, 2),
-      );
-
       initialQrCode = createData.qrcodeBase64 || null;
       initialPairingCode = createData.pairingCode || null;
 
@@ -429,9 +508,12 @@ export async function getPairingCodeAction(
 
       const instanceObj = createData.instance || {};
       targetNumberId =
-        numberDetails?.numberId || createData.id || createData.whatsappNumberId;
+        numberDetails?.numberId ||
+        createData.id ||
+        createData.whatsappNumberId ||
+        null;
       targetInstanceId =
-        numberDetails?.instanceId || instanceObj.id || createData.id;
+        numberDetails?.instanceId || instanceObj.id || createData.id || null;
     }
 
     if (!targetInstanceId) {
@@ -451,7 +533,7 @@ export async function getPairingCodeAction(
     );
     const connectData = await connectRes.json();
 
-    const finalNumberId = targetNumberId || targetInstanceId;
+    const finalNumberId = String(targetNumberId || targetInstanceId);
 
     await prisma.shop.update({
       where: { id: shopId },
@@ -462,7 +544,6 @@ export async function getPairingCodeAction(
     });
 
     await setWebhookForInstance(finalNumberId);
-
     await setInstanceSettings(finalNumberId);
 
     return {
@@ -474,7 +555,7 @@ export async function getPairingCodeAction(
         null,
       qrcodeBase64:
         connectData.qrcodeBase64 || connectData.qrcode || initialQrCode || null,
-      instanceId: targetInstanceId,
+      instanceId: String(targetInstanceId),
     };
   } catch (error) {
     console.error("Erro na integração com Pilot Status:", error);
@@ -485,37 +566,31 @@ export async function getPairingCodeAction(
   }
 }
 
-// Desconexão da instancia "IA"
-export async function disconnectWhatsAppAction(
-  shopId: number,
-  instanceName: string,
-) {
-  try {
-    const rawBaseUrl = getPilotStatusBaseUrl() || "https://pilotstatus.com.br";
+export async function disconnectWhatsAppAction(instanceName: string) {
+  const user = await getSessionUser();
+  if (!user || user.role !== "ADMIN") {
+    return { success: false, error: "Acesso não autorizado." };
+  }
 
-    let baseUrl = rawBaseUrl.replace(/\/$/, "");
-    if (!baseUrl.endsWith("/v1")) {
-      baseUrl = `${baseUrl}/v1`;
+  try {
+    const baseUrl = getPilotStatusBaseUrl();
+    const apiKey = getWhatsAppApiKey();
+
+    if (!apiKey) {
+      return { success: false, error: "Chave API não configurada." };
     }
 
-    const apiKey = process.env.EVOLUTION_TENANT_KEY as string;
-
     let numberId = instanceName;
-    if (shopId) {
-      const shop = await prisma.shop.findUnique({
-        where: { id: shopId },
-        select: { whatsappInstance: true },
-      });
-      if (shop?.whatsappInstance) {
-        numberId = shop.whatsappInstance;
-      }
+    const shop = await prisma.shop.findUnique({
+      where: { id: user.shopId },
+      select: { whatsappInstance: true },
+    });
+
+    if (shop?.whatsappInstance) {
+      numberId = shop.whatsappInstance;
     }
 
     const url = `${baseUrl}/numbers/${numberId}/logout`;
-
-    console.log(
-      `[WhatsApp Logout] Desconectando instância ${numberId} via ${url}...`,
-    );
 
     const response = await fetch(url, {
       method: "POST",
@@ -527,18 +602,14 @@ export async function disconnectWhatsAppAction(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("Erro no logout do Pilot Status:", errorData);
       return {
         success: false,
         error:
           errorData.message ||
           errorData.error ||
-          `A API do Pilot Status recusou o comando de desconexão (Status ${response.status}).`,
+          `Falha ao desconectar no provedor (Status ${response.status}).`,
       };
     }
-
-    const data = await response.json().catch(() => ({}));
-    console.log("[WhatsApp Logout Sucesso]:", data);
 
     await new Promise((res) => setTimeout(res, 2000));
 
@@ -553,15 +624,15 @@ export async function disconnectWhatsAppAction(
   }
 }
 
-// Verificar status da conexão com IA
-export async function checkWhatsAppStatusAction(shopId: number) {
-  if (!shopId) {
+export async function checkWhatsAppStatusAction() {
+  const user = await getSessionUser();
+  if (!user) {
     return { connected: false, state: "CLOSE" };
   }
 
   try {
     const shop = await prisma.shop.findUnique({
-      where: { id: shopId },
+      where: { id: user.shopId },
       select: { whatsappInstance: true, whatsappToken: true },
     });
 
@@ -570,23 +641,17 @@ export async function checkWhatsAppStatusAction(shopId: number) {
     }
 
     const targetId = shop.whatsappInstance || shop.whatsappToken;
+    const baseUrl = getPilotStatusBaseUrl();
+    const apiKey = getWhatsAppApiKey();
 
-    let rawBaseUrl =
-      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-    let baseUrl = rawBaseUrl.replace(/\/$/, "");
-    if (!baseUrl.endsWith("/v1")) {
-      baseUrl = `${baseUrl}/v1`;
+    if (!apiKey) {
+      return { connected: false, state: "CLOSE" };
     }
-
-    const apiKey =
-      process.env.EVOLUTION_TENANT_KEY ||
-      process.env.PILOT_STATUS_API_KEY ||
-      process.env.WHATSAPP_API_KEY;
 
     const response = await fetch(`${baseUrl}/numbers/${targetId}/status`, {
       method: "GET",
       headers: {
-        "x-api-key": apiKey as string,
+        "x-api-key": apiKey,
       },
       cache: "no-store",
     });
@@ -596,7 +661,6 @@ export async function checkWhatsAppStatusAction(shopId: number) {
     }
 
     const data = await response.json();
-
     const stateUpper = String(data.state || data.status || "").toUpperCase();
     const isConnected =
       stateUpper === "OPEN" ||
@@ -610,38 +674,5 @@ export async function checkWhatsAppStatusAction(shopId: number) {
   } catch (error) {
     console.error("Erro ao verificar status na Pilot Status:", error);
     return { connected: false, state: "CLOSE" };
-  }
-}
-
-// Atualizar o número de telefone da barbearia
-export async function updateShopPhoneAction(shopId: number, newPhone: string) {
-  try {
-    let cleanNumber = newPhone.replace(/\D/g, "");
-
-    if (
-      cleanNumber.startsWith("55") &&
-      (cleanNumber.length === 12 || cleanNumber.length === 13)
-    ) {
-      cleanNumber = cleanNumber.substring(2);
-    }
-
-    if (cleanNumber.length < 10 || cleanNumber.length > 11) {
-      return {
-        success: false,
-        error:
-          "Por favor, insira um número de WhatsApp válido com DDD (ex: 11999999999).",
-      };
-    }
-
-    await prisma.shop.update({
-      where: { id: shopId },
-      data: { phone: cleanNumber },
-    });
-
-    revalidatePath("/dashboard");
-    return { success: true };
-  } catch (error) {
-    console.error("Erro ao atualizar telefone no banco:", error);
-    return { success: false, error: "Erro interno ao salvar o novo número." };
   }
 }

@@ -1,32 +1,45 @@
 const PILOT_STATUS_NATIVE_URL =
   process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-const EVOLUTION_TENANT_KEY =
-  process.env.EVOLUTION_TENANT_KEY ||
+
+const API_KEY =
   process.env.PILOT_STATUS_API_KEY ||
-  process.env.WHATSAPP_API_KEY;
+  process.env.WHATSAPP_API_KEY ||
+  process.env.EVOLUTION_TENANT_KEY ||
+  "";
+
+interface WebhookItem {
+  id?: string;
+  name?: string;
+  url?: string;
+  active?: boolean;
+  whatsappNumberId?: string;
+  whatsappNumberIds?: string[];
+  whatsappNumbers?: (string | { id?: string })[];
+}
+
+interface WebhookListResponse {
+  data?: WebhookItem[];
+  webhooks?: WebhookItem[];
+}
+
+function getBaseUrl(): string {
+  let url = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
+  if (!url.endsWith("/v1")) {
+    url = `${url}/v1`;
+  }
+  return url;
+}
 
 export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
   text: string,
 ) {
-  if (!PILOT_STATUS_NATIVE_URL || !EVOLUTION_TENANT_KEY || !instanceName) {
-    console.error(
-      "[WhatsApp Error] Parâmetros ou Variáveis de ambiente ausentes.",
-      {
-        rawBaseUrl: !!PILOT_STATUS_NATIVE_URL,
-        apiKey: !!EVOLUTION_TENANT_KEY,
-        instanceName,
-      },
-    );
+  if (!PILOT_STATUS_NATIVE_URL || !API_KEY || !instanceName) {
     return null;
   }
 
-  let baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
-  if (!baseUrl.endsWith("/v1")) {
-    baseUrl = `${baseUrl}/v1`;
-  }
-
+  const baseUrl = getBaseUrl();
   const url = `${baseUrl}/messages/send`;
 
   const cleanDigits = number.replace(/\D/g, "");
@@ -36,60 +49,32 @@ export async function sendWhatsAppMessage(
   const finalNumber = `+${numberWithDDI}`;
 
   try {
-    console.log(
-      `[WhatsApp Send] Enviando mensagem para ${finalNumber} via numberId: ${instanceName}...`,
-    );
-
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": EVOLUTION_TENANT_KEY,
+        "x-api-key": API_KEY,
         "x-whatsapp-number-id": instanceName,
       },
       body: JSON.stringify({
         destinationNumber: finalNumber,
         text: text,
-        whatsappNumberId: instanceName,
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `[WhatsApp Send Error - Status ${response.status}]:`,
-        errorText,
-      );
-      return null;
-    }
+    if (!response.ok) return null;
 
-    const data = await response.json();
-    console.log("[WhatsApp Send Sucesso]:", data);
-    return data;
-  } catch (error) {
-    console.error("[WhatsApp Send Exception]:", error);
+    return await response.json();
+  } catch {
     return null;
   }
 }
 
 export async function setWebhookForInstance(numberId: string) {
   try {
-    let rawBaseUrl =
-      process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-    let baseUrl = rawBaseUrl.replace(/\/$/, "");
-    if (!baseUrl.endsWith("/v1")) {
-      baseUrl = `${baseUrl}/v1`;
-    }
+    const baseUrl = getBaseUrl();
 
-    const apiKey =
-      process.env.EVOLUTION_TENANT_KEY ||
-      process.env.PILOT_STATUS_API_KEY ||
-      process.env.WHATSAPP_API_KEY;
-
-    if (!apiKey) {
-      console.error("[Webhook Erro] API Key não configurada.");
-      return;
-    }
+    if (!API_KEY) return;
 
     const siteDomain =
       process.env.NEXT_PUBLIC_SITE_URL ||
@@ -102,18 +87,19 @@ export async function setWebhookForInstance(numberId: string) {
     const listRes = await fetch(`${baseUrl}/webhooks`, {
       method: "GET",
       headers: {
-        "x-api-key": apiKey,
+        "x-api-key": API_KEY,
       },
       cache: "no-store",
     });
 
     if (listRes.ok) {
-      const webhooks = await listRes.json();
-      const items: any[] = Array.isArray(webhooks)
+      const webhooks: WebhookListResponse | WebhookItem[] =
+        await listRes.json();
+      const items: WebhookItem[] = Array.isArray(webhooks)
         ? webhooks
         : webhooks.data || webhooks.webhooks || [];
 
-      const existingWebhook = items.find((wh: any) => {
+      const existingWebhook = items.find((wh) => {
         const whUrlNormalized = (wh.url || "").replace(/\/$/, "");
         const targetUrlNormalized = targetWebhookUrl.replace(/\/$/, "");
 
@@ -123,7 +109,11 @@ export async function setWebhookForInstance(numberId: string) {
         const whNumberIds: string[] = Array.isArray(wh.whatsappNumberIds)
           ? wh.whatsappNumberIds
           : Array.isArray(wh.whatsappNumbers)
-            ? wh.whatsappNumbers.map((n: any) => n.id || n)
+            ? wh.whatsappNumbers.map((n) =>
+                typeof n === "object" && n !== null && "id" in n
+                  ? String(n.id)
+                  : String(n),
+              )
             : wh.whatsappNumberId
               ? [wh.whatsappNumberId]
               : [];
@@ -139,15 +129,16 @@ export async function setWebhookForInstance(numberId: string) {
         )
           ? existingWebhook.whatsappNumberIds
           : Array.isArray(existingWebhook.whatsappNumbers)
-            ? existingWebhook.whatsappNumbers.map((n: any) => n.id || n)
+            ? existingWebhook.whatsappNumbers.map((n) =>
+                typeof n === "object" && n !== null && "id" in n
+                  ? String(n.id)
+                  : String(n),
+              )
             : existingWebhook.whatsappNumberId
               ? [existingWebhook.whatsappNumberId]
               : [];
 
         if (currentNumberIds.includes(numberId)) {
-          console.log(
-            `[Webhook] O número ${numberId} já está vinculado ao webhook ${existingWebhook.id}. Nenhuma ação necessária.`,
-          );
           return;
         }
 
@@ -155,107 +146,63 @@ export async function setWebhookForInstance(numberId: string) {
           new Set([...currentNumberIds, numberId]),
         );
 
-        const updateRes = await fetch(
-          `${baseUrl}/webhooks/${existingWebhook.id}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": apiKey,
-              "x-whatsapp-number-id": numberId,
-            },
-            body: JSON.stringify({
-              name: existingWebhook.name || `Webhook Barbearia`,
-              url: targetWebhookUrl,
-              events: existingWebhook.events || [
-                "message.received",
-                "messages.upsert",
-              ],
-              whatsappNumberId: numberId,
-              whatsappNumberIds: updatedNumberIds,
-              active: true,
-            }),
+        await fetch(`${baseUrl}/webhooks/${existingWebhook.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": API_KEY,
+            "x-whatsapp-number-id": numberId,
           },
-        );
+          body: JSON.stringify({
+            name: existingWebhook.name || `Webhook Barbearia`,
+            url: targetWebhookUrl,
+            events: ["*"],
+            whatsappNumberIds: updatedNumberIds,
+            active: true,
+          }),
+        });
 
-        if (updateRes.ok) {
-          console.log(
-            `[Webhook Sucesso] Número ${numberId} adicionado ao webhook existente com sucesso!`,
-          );
-          return;
-        }
+        return;
       }
     }
 
-    const createRes = await fetch(`${baseUrl}/webhooks`, {
+    await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
+        "x-api-key": API_KEY,
         "x-whatsapp-number-id": numberId,
       },
       body: JSON.stringify({
         name: `Webhook Barbearia - ${numberId}`,
         url: targetWebhookUrl,
-        events: ["message.received", "messages.upsert"],
-        whatsappNumberId: numberId,
+        events: ["*"],
         whatsappNumberIds: [numberId],
         active: true,
       }),
     });
-
-    if (!createRes.ok) {
-      const errText = await createRes.text();
-      console.error("[Webhook Erro] Falha ao registrar webhook:", errText);
-    } else {
-      console.log(
-        `[Webhook Sucesso] Webhook criado com sucesso para o número ${numberId}!`,
-      );
-    }
-  } catch (error) {
-    console.error("[Webhook Exceção]:", error);
-  }
+  } catch {}
 }
 
 export async function setInstanceSettings(numberId: string) {
-  let rawBaseUrl =
-    process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-  let baseUrl = rawBaseUrl.replace(/\/$/, "");
-  if (!baseUrl.endsWith("/v1")) {
-    baseUrl = `${baseUrl}/v1`;
-  }
+  try {
+    const baseUrl = getBaseUrl();
 
-  const apiKey =
-    process.env.EVOLUTION_TENANT_KEY ||
-    process.env.PILOT_STATUS_API_KEY ||
-    process.env.WHATSAPP_API_KEY;
+    if (!API_KEY) return;
 
-  // Endpoint correto: PATCH /v1/numbers/{id}
-  const response = await fetch(`${baseUrl}/numbers/${numberId}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey as string,
-    },
-    body: JSON.stringify({
-      settings: {
-        rejectCall: true,
-        msgRejectCall: "Não atendo por aqui",
-        ignoreGroups: true, // Nome correto segundo o suporte
-        // webhookHistoricalMessages: false (padrão já é false)
+    await fetch(`${baseUrl}/numbers/${numberId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
       },
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    console.error(
-      `[Pilot Status] Erro ao atualizar configurações do número ${numberId}:`,
-      err,
-    );
-  } else {
-    console.log(
-      `[Pilot Status] Configurações aplicadas com sucesso para o número ${numberId}`,
-    );
-  }
+      body: JSON.stringify({
+        settings: {
+          rejectCall: true,
+          msgRejectCall: "Não atendo por aqui",
+          ignoreGroups: true,
+        },
+      }),
+    });
+  } catch {}
 }

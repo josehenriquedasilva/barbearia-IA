@@ -38,12 +38,12 @@ export function WhatsAppStatus({
 
   useEffect(() => {
     async function checkStatus() {
-      const res = await checkWhatsAppStatusAction(shopId);
+      const res = await checkWhatsAppStatusAction();
       setIsConnected(res.connected);
     }
     checkStatus();
     const interval = setInterval(async () => {
-      const res = await checkWhatsAppStatusAction(shopId);
+      const res = await checkWhatsAppStatusAction();
       if (res.connected !== isConnected) {
         setIsConnected(res.connected);
         if (res.connected) {
@@ -53,12 +53,13 @@ export function WhatsAppStatus({
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [shopId, isConnected]);
+  }, [isConnected]);
 
   async function handleGenerateCode() {
     setLoading(true);
     setError(null);
-    const res = await getPairingCodeAction(shopId, defaultPhoneNumber);
+    // Passa apenas o número de telefone (o shopId é obtido via sessão no servidor)
+    const res = await getPairingCodeAction(defaultPhoneNumber);
     if (res.success && res.pairingCode) {
       setPairingCode(res.pairingCode);
     } else {
@@ -72,7 +73,8 @@ export function WhatsAppStatus({
   async function handleDisconnect() {
     setLoading(true);
     setError(null);
-    const res = await disconnectWhatsAppAction(shopId, slug);
+    // Passa apenas o slug/instanceName
+    const res = await disconnectWhatsAppAction(slug);
     if (res.success) {
       setIsConnected(false);
       setPairingCode(null);
@@ -89,10 +91,10 @@ export function WhatsAppStatus({
     setError(null);
 
     if (isConnected) {
-      const disconnectRes = await disconnectWhatsAppAction(shopId, slug);
+      const disconnectRes = await disconnectWhatsAppAction(slug);
       if (!disconnectRes.success) {
         setError(
-          "Não foi possível desligar o número atual na Evolution API. Tente novamente.",
+          "Não foi possível desligar o número atual na API. Tente novamente.",
         );
         setLoading(false);
         setIsChangeModalOpen(false);
@@ -100,7 +102,8 @@ export function WhatsAppStatus({
       }
     }
 
-    const res = await updateShopPhoneAction(shopId, newPhone);
+    // Passa apenas o novo número para a action
+    const res = await updateShopPhoneAction(newPhone);
     if (res.success) {
       setIsConnected(false);
       setPairingCode(null);
