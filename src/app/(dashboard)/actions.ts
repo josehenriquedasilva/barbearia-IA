@@ -226,12 +226,21 @@ export async function updateClosedDays(
   const shopId = user.shopId;
 
   try {
+    const notificationsToSend: Array<{
+      clientName: string;
+      clientPhone: string;
+      date: string;
+      reason?: string;
+    }> = [];
+
+    let instanceName = "";
+
     await prisma.$transaction(async (tx) => {
       const shop = await tx.shop.findUnique({
         where: { id: shopId },
         select: { slug: true, whatsappInstance: true },
       });
-      const instanceName = shop?.whatsappInstance || shop?.slug || "";
+      instanceName = shop?.whatsappInstance || shop?.slug || "";
 
       await tx.closedDay.deleteMany({ where: { shopId } });
       await tx.closedDay.createMany({
@@ -263,12 +272,25 @@ export async function updateClosedDays(
             },
           });
 
-          const msg = `Olá *${app.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${day.date} (*Motivo: ${day.reason || "Não informado"}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data enviando uma mensagem por aqui.`;
-
-          await sendWhatsAppMessage(instanceName, app.clientPhone, msg);
+          notificationsToSend.push({
+            clientName: app.clientName,
+            clientPhone: app.clientPhone,
+            date: day.date,
+            reason: day.reason,
+          });
         }
       }
     });
+
+    // Disparo das mensagens fora da transação
+    for (const notify of notificationsToSend) {
+      const msg = `Olá *${notify.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${notify.date} (*Motivo: ${notify.reason || "Não informado"}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data enviando uma mensagem por aqui.`;
+      try {
+        await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
+      } catch (err) {
+        console.error("Erro ao enviar WhatsApp nos dias fechados:", err);
+      }
+    }
 
     revalidatePath("/dashboard");
     return { success: true };
@@ -294,12 +316,22 @@ export async function updateServicesAction(payload: SettingsPayload) {
   const shopId = user.shopId;
 
   try {
+    // Acumula notificações para disparar fora do banco
+    const notificationsToSend: Array<{
+      clientName: string;
+      clientPhone: string;
+      serviceName: string;
+      startTime: Date;
+    }> = [];
+
+    let instanceName = "";
+
     await prisma.$transaction(async (tx) => {
       const shop = await tx.shop.findUnique({
         where: { id: shopId },
         select: { slug: true, whatsappInstance: true },
       });
-      const instanceName = shop?.whatsappInstance || shop?.slug || "";
+      instanceName = shop?.whatsappInstance || shop?.slug || "";
 
       await tx.shop.update({
         where: { id: shopId },
@@ -349,9 +381,12 @@ export async function updateServicesAction(payload: SettingsPayload) {
             },
           });
 
-          const msg = `Olá *${app.clientName}*, informamos que o serviço *${service.name}* não está mais disponível em nossa unidade. Por este motivo, seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} foi cancelado. Por favor, verifique nossos outros serviços disponíveis enviando uma mensagem por aqui.`;
-
-          await sendWhatsAppMessage(instanceName, app.clientPhone, msg);
+          notificationsToSend.push({
+            clientName: app.clientName,
+            clientPhone: app.clientPhone,
+            serviceName: service.name,
+            startTime: app.startTime,
+          });
         }
       }
 
@@ -382,6 +417,16 @@ export async function updateServicesAction(payload: SettingsPayload) {
         }
       }
     });
+
+    // Envio do WhatsApp executado APÓS o commit da transação
+    for (const notify of notificationsToSend) {
+      const msg = `Olá *${notify.clientName}*, informamos que o serviço *${notify.serviceName}* não está mais disponível em nossa unidade. Por este motivo, seu agendamento para o dia ${notify.startTime.toLocaleDateString("pt-BR")} foi cancelado. Por favor, verifique nossos outros serviços disponíveis enviando uma mensagem por aqui.`;
+      try {
+        await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
+      } catch (err) {
+        console.error("Erro ao enviar notificação WhatsApp:", err);
+      }
+    }
 
     revalidatePath("/dashboard");
     return { success: true };

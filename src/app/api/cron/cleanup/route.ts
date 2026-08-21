@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   try {
     const seisMesesAtras = new Date();
-    seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 6);
+    seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 3);
 
     const vinteQuatroHorasAtras = new Date(Date.now() - 24 * 60 * 60 * 1000);
 

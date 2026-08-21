@@ -4,6 +4,7 @@ import {
   BiCheckCircle,
   BiCoffeeTogo,
   BiInfoCircle,
+  BiLoaderAlt,
   BiPlus,
   BiX,
 } from "react-icons/bi";
@@ -43,10 +44,12 @@ export default function SettingsModal({
   const [lunchStart, setLunchStart] = useState(shop?.lunchStart || "12:00");
   const [lunchEnd, setLunchEnd] = useState(shop?.lunchEnd || "13:00");
 
-  // Estados de controle de UI
+  // Controle de UI e Assincronismo
   const [isAddingService, setIsAddingService] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deletingServiceId, setDeletingServiceId] = useState<number | null>(
     null,
   );
@@ -68,7 +71,7 @@ export default function SettingsModal({
   });
   const [errors, setErrors] = useState({ name: "", price: "", duration: "" });
 
-  // Sincroniza props com o estado local sempre que o modal abre
+  // Sincroniza props e limpa formulários/erros ao abrir
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -83,6 +86,11 @@ export default function SettingsModal({
       setHasLunchBreak(shop?.hasLunchBreak ?? false);
       setLunchStart(shop?.lunchStart || "12:00");
       setLunchEnd(shop?.lunchEnd || "13:00");
+
+      setIsAddingService(false);
+      setEditingServiceId(null);
+      setErrorMessage(null);
+      resetForm();
     } else {
       document.body.style.overflow = "unset";
     }
@@ -90,8 +98,7 @@ export default function SettingsModal({
     return () => {
       document.body.style.overflow = "unset";
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, shop, services]);
 
   const resetForm = () => {
     setFormData({ name: "", price: "", duration: "" });
@@ -169,11 +176,14 @@ export default function SettingsModal({
     setDeletingServiceId(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (localServices.length === 0) {
-      alert("Cadastre pelo menos um serviço antes de continuar");
+      setErrorMessage("Cadastre pelo menos um serviço antes de continuar.");
       return;
     }
+
+    setIsLoading(true);
+    setErrorMessage(null);
 
     const payload = {
       services: localServices,
@@ -189,12 +199,22 @@ export default function SettingsModal({
       lunchEnd: hasLunchBreak ? lunchEnd : null,
     };
 
-    onSave(payload);
-    setShowSuccess(true);
-    setTimeout(() => {
-      onClose();
-      setShowSuccess(false);
-    }, 1500);
+    try {
+      await onSave(payload);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        onClose();
+      }, 1200);
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Ocorreu um erro ao salvar as configurações.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -215,7 +235,7 @@ export default function SettingsModal({
         onClick={onClose}
       >
         <div
-          className="bg-neutral-900 rounded-xl border border-neutral-800 w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-neutral-900 rounded-xl border border-neutral-800 w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col relative"
           onClick={(e) => e.stopPropagation()}
         >
           {showSuccess && (
@@ -244,13 +264,26 @@ export default function SettingsModal({
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+              disabled={isLoading}
+              className="p-2 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
               <BiX className="w-6 h-6 text-neutral-400" />
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+            {errorMessage && (
+              <div className="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-lg text-sm flex items-center justify-between">
+                <span>{errorMessage}</span>
+                <button
+                  onClick={() => setErrorMessage(null)}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  <BiX className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+
             {/* SEÇÃO 1: SERVIÇOS */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 text-amber-500 mb-4">
@@ -397,7 +430,8 @@ export default function SettingsModal({
                         {service.name}
                       </h5>
                       <p className="text-xs text-neutral-500">
-                        R$ {service.price.toFixed(2)} • {service.duration} min
+                        R$ {Number(service.price).toFixed(2)} •{" "}
+                        {service.duration} min
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -421,6 +455,7 @@ export default function SettingsModal({
 
             <hr className="border-neutral-800" />
 
+            {/* SEÇÃO 2: HORÁRIOS */}
             <section className="space-y-6">
               <div className="flex items-center gap-2 text-amber-500">
                 <BsClock className="w-5 h-5" />
@@ -587,16 +622,24 @@ export default function SettingsModal({
           <div className="p-3 md:p-6 border-t border-neutral-800 bg-neutral-900 flex gap-4">
             <button
               onClick={onClose}
-              className="flex-1 py-2 md:py-3 px-4 bg-neutral-800 hover:bg-neutral-700 text-sm md:text-base text-neutral-300 rounded-lg font-medium transition-colors cursor-pointer"
+              disabled={isLoading}
+              className="flex-1 py-2 md:py-3 px-4 bg-neutral-800 hover:bg-neutral-700 text-sm md:text-base text-neutral-300 rounded-lg font-medium transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
-              disabled={showSuccess}
-              className="flex-1 py-2 md:py-3 px-4 bg-amber-600 hover:bg-amber-700 text-sm md:text-base text-neutral-950 font-bold rounded-lg transition-colors shadow-lg shadow-amber-600/10 cursor-pointer disabled:opacity-50"
+              disabled={isLoading || showSuccess}
+              className="flex-1 py-2 md:py-3 px-4 bg-amber-600 hover:bg-amber-700 text-sm md:text-base text-neutral-950 font-bold rounded-lg transition-colors shadow-lg shadow-amber-600/10 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Salvar Configurações
+              {isLoading ? (
+                <>
+                  <BiLoaderAlt className="w-5 h-5 animate-spin text-neutral-950" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar Configurações"
+              )}
             </button>
           </div>
         </div>

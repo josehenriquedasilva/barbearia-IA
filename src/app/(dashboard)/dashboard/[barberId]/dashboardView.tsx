@@ -20,6 +20,7 @@ import {
   SettingsPayload,
 } from "@/types/types";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { IoMenu } from "react-icons/io5";
 import { RiScissorsFill } from "react-icons/ri";
@@ -37,7 +38,8 @@ import {
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
-  // Identificador da barbearia (mantido para exibição no componente <Info />)
+  const router = useRouter();
+
   const shopId = user.shopId || user.shop?.id;
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -94,10 +96,12 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
   useEffect(() => {
     async function syncStatus() {
       const now = new Date();
-      const hasPendingStatus = appointments?.some(
-        (a: AppointmentData) =>
-          a.status === "CONFIRMED" && new Date(a.endTime) < now,
-      );
+      const hasPendingStatus =
+        Array.isArray(appointments) &&
+        appointments.some(
+          (a: AppointmentData) =>
+            a.status === "CONFIRMED" && new Date(a.endTime) < now,
+        );
 
       if (hasPendingStatus) {
         await updateAppointmentsStatusAction();
@@ -119,11 +123,15 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           setServices(payload.services);
         }
         setIsSettingsOpen(false);
+        router.refresh();
       } else {
-        console.error(result?.error || "Erro ao salvar serviços");
+        alert(
+          result?.error || "Erro ao salvar configurações do estabelecimento",
+        );
       }
     } catch (error) {
-      console.error("Erro ao atualizar serviços:", error);
+      console.error("Erro ao atualizar configurações:", error);
+      alert("Erro ao salvar configurações do estabelecimento.");
     }
   };
 
@@ -140,6 +148,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         if (Array.isArray(updatedBarbers)) {
           setBarbers(updatedBarbers);
         }
+        router.refresh();
         return { success: true };
       } else {
         return {
@@ -162,11 +171,13 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       if (result?.success) {
         setClosedDays(days);
         setIsClosedDaysOpen(false);
+        router.refresh();
       } else {
         alert(result?.error || "Erro ao salvar dias fechados");
       }
     } catch (error) {
       console.error(`Erro ao salvar dias fechados: ${error}`);
+      alert("Ocorreu um erro ao salvar os dias fechados.");
     }
   };
 
@@ -251,13 +262,14 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             </div>
           ) : (
             <Info
-              appointments={appointments}
+              appointments={Array.isArray(appointments) ? appointments : []}
               shopId={shopId}
               slug={user.shop?.slug}
               shopPhone={user.shop?.phone}
             />
           )}
         </section>
+
         <section>
           <Calendar
             isAdmin={isAdmin}
@@ -267,9 +279,10 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             closedDays={closedDays.map((d) => d.date)}
           />
         </section>
+
         <section className="my-3.5">
           <Appointments
-            appointments={appointments}
+            appointments={Array.isArray(appointments) ? appointments : []}
             onOpenCancelModal={(appointment) =>
               setSelectedAppointment(appointment)
             }
@@ -298,14 +311,12 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       )}
 
       {isBarberModal && (
-        <section className="z-60 m-2.5 py-3 bg-neutral-900">
-          <ManageBarbersModal
-            barberModalClose={() => setIsBarberModal(false)}
-            onAddBarber={handleCreateBarber}
-            currentBarbersCount={barbers.length}
-            plan={user.shop?.plan}
-          />
-        </section>
+        <ManageBarbersModal
+          barberModalClose={() => setIsBarberModal(false)}
+          onAddBarber={handleCreateBarber}
+          currentBarbersCount={barbers.length}
+          plan={user.shop?.plan}
+        />
       )}
 
       {selectedAppointment && (
