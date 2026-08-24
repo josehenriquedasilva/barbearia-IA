@@ -42,7 +42,6 @@ export default function AppointmentsCard({
         <div className="flex-1 space-y-3 w-full">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              {/* Ícone muda de cor se concluído */}
               <div
                 className={`${isActuallyCompleted ? "bg-green-600/20" : "bg-amber-600/10"} p-2 rounded transition-colors`}
               >

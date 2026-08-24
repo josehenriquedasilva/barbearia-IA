@@ -23,7 +23,6 @@ interface WhatsAppStatusProps {
 }
 
 export function WhatsAppStatus({
-  shopId,
   slug,
   defaultPhoneNumber,
 }: WhatsAppStatusProps) {

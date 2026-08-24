@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { formatTime } from "@/utils/formatters";
 
 // -----------------------------------------------------------------------------
 // TIPOS E HELPER DE INTEGRAÇÃO
@@ -202,7 +203,7 @@ export async function cancelAppointmentAction(
       data: { status: "CANCELED", cancelReason: reason },
     });
 
-    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${app.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.\nVeja outro horário disponível enviando uma mensagem por aqui.`;
+    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${formatTime(app.startTime)} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.\n\nVeja outro horário disponível enviando uma mensagem por aqui.`;
 
     const instanceName = app.shop.whatsappInstance || app.shop.slug;
     await sendWhatsAppMessage(instanceName, app.clientPhone, message);
