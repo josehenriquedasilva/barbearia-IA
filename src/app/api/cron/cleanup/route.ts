@@ -10,16 +10,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    const seisMesesAtras = new Date();
-    seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 3);
+    const tresMesesAtras = new Date();
+    tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
 
     const vinteQuatroHorasAtras = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const deleted = await prisma.service.deleteMany({
+    const duasSemanasAtras = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const dataLimiteStr = duasSemanasAtras.toISOString().split("T")[0];
+
+    const deletedServices = await prisma.service.deleteMany({
       where: {
         active: false,
         disableAt: {
-          lte: seisMesesAtras,
+          lte: tresMesesAtras,
         },
       },
     });
@@ -30,10 +33,17 @@ export async function GET(request: Request) {
       },
     });
 
+    const deletedClosedDays = await prisma.closedDay.deleteMany({
+      where: {
+        date: { lt: dataLimiteStr },
+      },
+    });
+
     return NextResponse.json({
       success: true,
-      servicesRemoved: deleted.count,
+      servicesRemoved: deletedServices.count,
       messagesRemoved: deletedMessages.count,
+      closedDaysRemoved: deletedClosedDays.count,
       message: "Limpeza concluída com sucesso.",
     });
   } catch (error) {

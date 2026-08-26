@@ -1,7 +1,12 @@
 import { ClosedDaysModalProps } from "@/types/types";
 import { useEffect, useState } from "react";
-import { BiCalendar, BiCheckCircle, BiPlus, BiX } from "react-icons/bi";
-import { BsTrash2 } from "react-icons/bs";
+import {
+  BiCalendar,
+  BiCheckCircle,
+  BiPlus,
+  BiTrash,
+  BiX,
+} from "react-icons/bi";
 import { FiAlertCircle } from "react-icons/fi";
 
 export default function ClosedDaysModal({
@@ -56,8 +61,14 @@ export default function ClosedDaysModal({
     setReason("");
   };
 
-  const handleRemoveClosedDay = (date: string) => {
-    setLocalClosedDays(localClosedDays.filter((d) => d.date !== date));
+  // Função para remover apenas itens que ainda NÃO foram salvos no banco
+  const handleRemoveDraftDay = (dateToRemove: string) => {
+    setLocalClosedDays((prev) => prev.filter((d) => d.date !== dateToRemove));
+  };
+
+  // Verifica se o dia é um rascunho (adicionado agora, ainda não salvo)
+  const isDraftDay = (dateStr: string) => {
+    return !closedDays.some((d) => d.date === dateStr);
   };
 
   const handleSave = async () => {
@@ -132,7 +143,7 @@ export default function ClosedDaysModal({
               <BiCalendar className="w-5 h-5 text-amber-500" />
             </div>
             <div>
-              <h3 className="text-neutral-50 text-lg md:text-xl">
+              <h3 className="text-neutral-50 text-lg md:text-xl font-semibold">
                 Dias de Fechamento
               </h3>
               <p className="text-neutral-400 text-sm">
@@ -149,6 +160,21 @@ export default function ClosedDaysModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+          {/* Aviso Resumido e Profissional */}
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
+            <FiAlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs md:text-sm text-amber-200/90 leading-relaxed">
+              <strong className="text-amber-400 font-semibold">Atenção:</strong>{" "}
+              Ao salvar, qualquer agendamento existente nos novos dias
+              selecionados será{" "}
+              <strong className="text-amber-400 font-semibold">
+                cancelado automaticamente
+              </strong>{" "}
+              e um aviso via WhatsApp será enviado ao cliente. Esta ação não
+              poderá ser desfeita.
+            </p>
+          </div>
+
           <div className="bg-neutral-800/50 border border-neutral-700 rounded-lg p-5">
             <h4 className="text-neutral-50 mb-4 flex items-center gap-2">
               <BiPlus className="w-5 h-5" />
@@ -194,7 +220,7 @@ export default function ClosedDaysModal({
               <button
                 onClick={handleAddClosedDay}
                 disabled={!selectedDate}
-                className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-700 disabled:cursor-not-allowed text-neutral-950 disabled:text-neutral-500 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-700 disabled:cursor-not-allowed text-neutral-950 disabled:text-neutral-500 font-medium rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <BiPlus className="w-5 h-5" />
                 <span>Adicionar</span>
@@ -210,52 +236,64 @@ export default function ClosedDaysModal({
               </h4>
 
               <div className="space-y-2">
-                {futureClosedDays.map((date) => (
-                  <div
-                    key={date.date}
-                    className="group bg-neutral-800/40 border border-neutral-700/50 rounded-xl p-4 flex items-center gap-4 hover:border-amber-500/50 hover:bg-neutral-800 transition-all duration-300"
-                  >
-                    <div className="flex flex-col items-center justify-center min-w-[65px] h-[65px] bg-neutral-900 border border-neutral-700 rounded-lg group-hover:border-amber-500/30 transition-colors">
-                      <span className="text-[10px] uppercase tracking-widest text-amber-500 font-bold">
-                        {getDayOfWeek(date.date).substring(0, 3)}
-                      </span>
-                      <span className="text-xl font-bold text-neutral-50 leading-none">
-                        {date.date.split("-")[2]}
-                      </span>
-                      <span className="text-[10px] text-neutral-400">
-                        {new Intl.DateTimeFormat("pt-BR", { month: "short" })
-                          .format(new Date(date.date + "T00:00:00"))
-                          .replace(".", "")}
-                      </span>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-neutral-200 font-medium truncate">
-                          {formatDateBR(date.date)}
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-700 text-neutral-400 uppercase font-semibold">
-                          {getDayOfWeek(date.date)}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50" />
-                        <p className="text-neutral-400 text-sm italic truncate">
-                          {date.reason || "Sem motivo informado"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleRemoveClosedDay(date.date)}
-                      className="p-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg transition-all duration-200 cursor-pointer opacity-0 group-hover:opacity-100"
-                      title="Remover dia"
+                {futureClosedDays.map((date) => {
+                  const isDraft = isDraftDay(date.date);
+                  return (
+                    <div
+                      key={date.date}
+                      className="group bg-neutral-800/40 border border-neutral-700/50 rounded-xl p-4 flex items-center gap-4 hover:border-amber-500/50 hover:bg-neutral-800 transition-all duration-300"
                     >
-                      <BsTrash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex flex-col items-center justify-center min-w-[65px] h-[65px] bg-neutral-900 border border-neutral-700 rounded-lg group-hover:border-amber-500/30 transition-colors">
+                        <span className="text-[10px] uppercase tracking-widest text-amber-500 font-bold">
+                          {getDayOfWeek(date.date).substring(0, 3)}
+                        </span>
+                        <span className="text-xl font-bold text-neutral-50 leading-none">
+                          {date.date.split("-")[2]}
+                        </span>
+                        <span className="text-[10px] text-neutral-400">
+                          {new Intl.DateTimeFormat("pt-BR", { month: "short" })
+                            .format(new Date(date.date + "T00:00:00"))
+                            .replace(".", "")}
+                        </span>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-neutral-200 font-medium truncate">
+                            {formatDateBR(date.date)}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-700 text-neutral-400 uppercase font-semibold">
+                            {getDayOfWeek(date.date)}
+                          </span>
+                          {isDraft && (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-medium">
+                              Novo (Não salvo)
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50" />
+                          <p className="text-neutral-400 text-sm italic truncate">
+                            {date.reason || "Sem motivo informado"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Exibe o botão de lixeira APENAS para os itens que ainda não foram salvos */}
+                      {isDraft && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDraftDay(date.date)}
+                          className="p-2 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                          title="Remover este dia antes de salvar"
+                        >
+                          <BiTrash className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -311,7 +349,7 @@ export default function ClosedDaysModal({
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-neutral-950 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="flex-1 px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-neutral-950 font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             {isSaving ? (
               <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />

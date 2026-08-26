@@ -230,7 +230,7 @@ export async function updateClosedDays(
     const notificationsToSend: Array<{
       clientName: string;
       clientPhone: string;
-      date: string;
+      startTime: Date;
       reason?: string;
     }> = [];
 
@@ -253,39 +253,46 @@ export async function updateClosedDays(
       });
 
       for (const day of days) {
-        const startOfDay = new Date(`${day.date}T00:00:00Z`);
-        const endOfDay = new Date(`${day.date}T23:59:59Z`);
+        const [year, month, dayNum] = day.date.split("-").map(Number);
+        const startOfDay = new Date(year, month - 1, dayNum, 0, 0, 0, 0);
+        const endOfDay = new Date(year, month - 1, dayNum, 23, 59, 59, 999);
 
         const affectedApps = await tx.appointment.findMany({
           where: {
             shopId,
             startTime: { gte: startOfDay, lte: endOfDay },
-            status: "CONFIRMED",
+            status: { not: "CANCELED" },
           },
         });
 
         for (const app of affectedApps) {
+          const reasonText = day.reason || "Não informado";
+
           await tx.appointment.update({
             where: { id: app.id },
             data: {
               status: "CANCELED",
-              cancelReason: `Dia fechado: ${day.reason || "Não informado"}`,
+              cancelReason: `Dia fechado: ${reasonText}`,
             },
           });
 
           notificationsToSend.push({
             clientName: app.clientName,
             clientPhone: app.clientPhone,
-            date: day.date,
+            startTime: app.startTime,
             reason: day.reason,
           });
         }
       }
     });
 
-    // Disparo das mensagens fora da transação
     for (const notify of notificationsToSend) {
-      const msg = `Olá *${notify.clientName}*, estamos entrando em contato para informar que a barbearia estará fechada no dia ${notify.date} (*Motivo: ${notify.reason || "Não informado"}*). Por isso, seu agendamento foi cancelado. Por favor, escolha uma nova data enviando uma mensagem por aqui.`;
+      const dateFormatted = notify.startTime.toLocaleDateString("pt-BR");
+      const timeFormatted = formatTime(notify.startTime);
+      const reasonText = notify.reason || "Não informado";
+
+      const msg = `Olá *${notify.clientName}*, infelizmente seu agendamento para o dia ${dateFormatted} às ${timeFormatted} foi *cancelado* pois a barbearia estará *fechada* nesta data.\n\n*Motivo:* ${reasonText}.\n\nVeja outro horário disponível enviando uma mensagem por aqui.`;
+
       try {
         await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
       } catch (err) {

@@ -201,6 +201,7 @@ export async function setInstanceSettings(numberId: string) {
           rejectCall: true,
           msgRejectCall: "Não atendo por aqui",
           ignoreGroups: true,
+          ignoreNewsletters: true,
         },
       }),
     });
