@@ -129,7 +129,7 @@ export async function getAvailableSlotsForDay(
 
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
-  const maxCloseMin = closeMin + 20; // Tolerância de finalização pós-fechamento
+  const maxCloseMin = closeMin + 20;
 
   const lunchStartMin =
     shop.hasLunchBreak && shop.lunchStart
@@ -143,7 +143,6 @@ export async function getAvailableSlotsForDay(
   const interval = 10;
   let min = openMin;
 
-  // Duração total necessária na agenda (Serviço + 10 min de intervalo técnico)
   const totalRequiredDuration = serviceDuration + 10;
 
   while (min <= closeMin) {
@@ -151,7 +150,6 @@ export async function getAvailableSlotsForDay(
     const slotEnd = slotStart + totalRequiredDuration;
     const timeString = minutesToTime(slotStart);
 
-    // Se ultrapassar o limite final permitido com tolerância (fechamento + 20min), encerra a grade
     if (slotEnd > maxCloseMin) {
       break;
     }
@@ -164,7 +162,6 @@ export async function getAvailableSlotsForDay(
           min = lunchEndMin;
           continue;
         } else {
-          // Começa antes do almoço mas invade o horário de almoço
           slots.push({ time: timeString, status: "OCUPADO" });
           min += interval;
           continue;
@@ -172,14 +169,13 @@ export async function getAvailableSlotsForDay(
       }
     }
 
-    // --- VERIFICAÇÃO DE CONFLITO COM AGENDAMENTOS EXISTENTES ---
     const conflictingApp = busyRanges.find(
       (range) => slotStart < range.end && slotEnd > range.start,
     );
 
     if (conflictingApp) {
       slots.push({ time: timeString, status: "OCUPADO" });
-      min = conflictingApp.end; // Avança direto para o fim do agendamento (que já inclui os +10 min)
+      min = conflictingApp.end;
       continue;
     }
 
@@ -209,7 +205,6 @@ export async function getAvailableSlotsForDay(
     } else {
       slots.push({ time: timeString, status: "DISPONIVEL" });
     }
-
     min += interval;
   }
 
