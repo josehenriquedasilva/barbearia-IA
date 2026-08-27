@@ -32,12 +32,6 @@ function getFormattedCurrentDate() {
   return new Date().toLocaleDateString("pt-BR", options);
 }
 
-// Garante formato HH:MM (ex: "9:30" -> "09:30")
-function normalizeTimeString(timeStr: string): string {
-  const [h, m] = timeStr.split(":");
-  return `${h.padStart(2, "0")}:${(m || "00").padStart(2, "0")}`;
-}
-
 async function sendMessageWithRetry(
   chat: ChatSession,
   content: string | (string | Part)[],
@@ -116,11 +110,17 @@ export async function POST(request: Request) {
     if (upcomingAppointment) {
       const dateStr = upcomingAppointment.startTime.toLocaleDateString(
         "pt-BR",
-        { timeZone: "America/Sao_Paulo" },
+        {
+          timeZone: "America/Sao_Paulo",
+        },
       );
       const timeStr = upcomingAppointment.startTime.toLocaleTimeString(
         "pt-BR",
-        { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" },
+        {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        },
       );
       appointmentInfo = `\n- O cliente JÁ TEM um agendamento para o dia ${dateStr} às ${timeStr} (${upcomingAppointment.service.name} com ${upcomingAppointment.barber.name}).`;
     }
@@ -187,14 +187,16 @@ export async function POST(request: Request) {
       history.shift();
     }
 
-    const firstSlotPostLunch =
-      shopData.hasLunchBreak && shopData.lunchEnd
-        ? (() => {
-            const [h, m] = shopData.lunchEnd.split(":").map(Number);
-            const total = h * 60 + m + 10;
-            return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-          })()
-        : "N/A";
+    const closedDaysList =
+      shopData.closedDays && shopData.closedDays.length > 0
+        ? shopData.closedDays
+            .map((cd) =>
+              new Date(cd.date).toLocaleDateString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+              }),
+            )
+            .join(", ")
+        : "Nenhum feriado/data especial cadastrado";
 
     const systemInstruction = `Você é o assistente da "${shopData.name}".
 ${appointmentInfo}
@@ -208,7 +210,15 @@ DIRETRIZES:
   - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
   - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
   - Intervalo obrigatório: 10 min entre atendimentos.
-  - Primeiro horário pós-almoço: ${firstSlotPostLunch}.
+  - Primeiro horário pós-almoço: ${
+    shopData.hasLunchBreak && shopData.lunchEnd
+      ? (() => {
+          const [h, m] = shopData.lunchEnd.split(":").map(Number);
+          const total = h * 60 + m + 10;
+          return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+        })()
+      : "N/A"
+  }.
 
 SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
@@ -219,6 +229,11 @@ SITUAÇÕES DE AGENDAMENTO:
      - SE HOUVER HORÁRIOS LIVRES no retorno da ferramenta: NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres para aquele dia e peça para o cliente informar o horário que ele deseja (ex: "Olá, bem-vindo à ${shopData.name}. Temos sim horários disponíveis para amanhã. Me fale o horário que vc deseja, que verifico aqui.").
      - SE NÃO HOUVER HORÁRIOS LIVRES no retorno da ferramenta: Informe que não há horários disponíveis para aquele dia e pergunte se pode ser em outro dia.
      - OBSERVAÇÃO: Apenas liste os horários individualmente se o cliente pedir explicitamente (ex: "Quais são os horários livres?").
+
+DIAS E HORÁRIOS DE FUNCIONAMENTO:
+  - Domingo fechado: ${shopData.isClosedSunday ? "Sim" : "Não"}
+  - Dia de folga semanal: ${shopData.dayOff || "Nenhum"}
+  - Datas específicas FECHADAS (Feriados/Folgas): ${closedDaysList}
 
 REGRAS GERAIS:
   - REGRA DE PERGUNTA AO SUGERIR: Quando você sugerir horários específicos por conta própria (ex: em caso de conflito ou após o cliente pedir uma lista), se contiver apenas 1 horário, termine com "Pode ser?". Se contiver 2 ou mais horários, termine com "Qual prefere?".
@@ -255,7 +270,7 @@ INFO ATUAL:
                 time: {
                   type: SchemaType.STRING,
                   description:
-                    "Hora no formato HH:MM - O horário escolhido pelo usuário.",
+                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use the horário sugerido.",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
@@ -291,7 +306,7 @@ INFO ATUAL:
           {
             name: "getAvailableSlots",
             description:
-              "Busca a grade completa de horários de um dia específico para o barbeiro e serviço escolhido.",
+              "Busca a grade completa de horários de um dia específico (livres, ocupados e recomendados) para o barbeiro e serviço escolhido.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -372,7 +387,7 @@ INFO ATUAL:
           return NextResponse.json({
             status: "ERROR",
             ai_response: [
-              "Você não tem agendamento ativo. Quer marcar um horário?",
+              "Você não tem agendamento ativo. quer marcar um horário?",
             ],
           });
         }
@@ -380,11 +395,9 @@ INFO ATUAL:
           where: { id: upcomingAppointment.id },
           data: { status: "CANCELED" },
         });
-
         await prisma.chatMessage.deleteMany({
           where: { shopId: Number(shopId), clientPhone },
         });
-
         return NextResponse.json({
           status: "SUCCESS",
           ai_response: ["Agendamento cancelado com sucesso."],
@@ -397,16 +410,14 @@ INFO ATUAL:
         if (!args.time || !args.date) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: ["Preciso da data e hora para agendar."],
+            ai_response: "Preciso da data e hora para agendar.",
           });
         }
 
-        const formattedTime = normalizeTimeString(args.time);
-        const [hour, minute] = formattedTime.split(":").map(Number);
+        const [hour, minute] = args.time.split(":").map(Number);
         const appointmentMinutes = hour * 60 + minute;
         const dataAgendamento = new Date(`${args.date}T12:00:00Z`);
         const diaDaSemana = dataAgendamento.getUTCDay();
-
         const diasSemanaMap: Record<string, number> = {
           domingo: 0,
           "segunda-feira": 1,
@@ -422,7 +433,37 @@ INFO ATUAL:
         if (diaDaSemana === 0 && shopData.isClosedSunday) {
           return NextResponse.json({
             status: "CLOSED",
-            ai_response: ["Não abrimos aos domingos. Pode escolher outro dia?"],
+            ai_response: "Não abrimos aos domingos. Pode escolher outro dia?",
+          });
+        }
+
+        if (shopData.closedDays && shopData.closedDays.length > 0) {
+          const isClosedDay = shopData.closedDays.some((cd) => {
+            const formattedCdDate = new Date(cd.date)
+              .toISOString()
+              .split("T")[0];
+            return formattedCdDate === args.date; // args.date no formato YYYY-MM-DD
+          });
+
+          if (isClosedDay) {
+            return NextResponse.json({
+              status: "CLOSED_DAY",
+              ai_response:
+                "Identifiquei que estaremos fechados nesta data específica. Pode escolher outro dia?",
+            });
+          }
+        }
+
+        // 2. Valida se a data cai no dia de folga fixo (dayOff) ou Domingo fechado
+        const [year, month, day] = args.date.split("-").map(Number);
+        const targetDate = new Date(year, month - 1, day);
+        const dayOfWeek = targetDate.getDay();
+
+        if (dayOfWeek === 0 && shopData.isClosedSunday) {
+          return NextResponse.json({
+            status: "CLOSED_SUNDAY",
+            ai_response:
+              "Não abrimos aos domingos. Deseja agendar para outro dia?",
           });
         }
 
@@ -437,6 +478,7 @@ INFO ATUAL:
           const lunchEndTotal = lEndH * 60 + lEndM;
           const firstSlotAfterLunch = lunchEndTotal + 10;
 
+          // Busca a duração do serviço atual para calcular o término real do atendimento
           const serviceForLunchCheck = shopData.services.find(
             (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
           );
@@ -445,16 +487,21 @@ INFO ATUAL:
             : 0;
           const appointmentEndMinutesNoInterval =
             appointmentMinutes + serviceDuration;
+
+          // Define o limite máximo que o corte pode invadir o almoço (Início + 10 minutos)
           const maxLunchInvasion = lunchStartTotal + 10;
 
+          // 1. Bloqueia se o serviço terminar DEPOIS da tolerância de 10 min e começou antes do almoço terminar
           const invadesLunchPastTolerance =
             appointmentEndMinutesNoInterval > maxLunchInvasion &&
             appointmentMinutes < lunchEndTotal;
 
+          // 2. Bloqueia se o cliente tentar iniciar o serviço depois que o almoço já começou
           const startsDuringLunch =
             appointmentMinutes >= lunchStartTotal &&
             appointmentMinutes < lunchEndTotal;
 
+          // 3. Bloqueia se tentar iniciar no buffer de intervalo de 10 min logo após o almoço
           const insidePostLunchBuffer =
             appointmentMinutes >= lunchEndTotal &&
             appointmentMinutes < firstSlotAfterLunch;
@@ -481,7 +528,7 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "LUNCH_BREAK",
-              ai_response: [ai_response],
+              ai_response: ai_response,
             });
           }
         }
@@ -493,9 +540,7 @@ INFO ATUAL:
         ) {
           return NextResponse.json({
             status: "DAY_OFF",
-            ai_response: [
-              `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
-            ],
+            ai_response: `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
           });
         }
 
@@ -509,7 +554,7 @@ INFO ATUAL:
         if (!targetService || !targetBarber) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: ["Não encontrei o serviço ou barbeiro. Pode repetir?"],
+            ai_response: "Não encontrei o serviço ou barbeiro. Pode repetir?",
           });
         }
 
@@ -528,13 +573,11 @@ INFO ATUAL:
         ) {
           return NextResponse.json({
             status: "CLOSED",
-            ai_response: [
-              `No momento estamos fechados nesse horário. Nosso expediente de atendimento vai até às ${shopData.closingTime}, permitindo serviços que finalizem até no máximo 20 minutos após o fechamento. Que tal escolher outro horário?`,
-            ],
+            ai_response: `No momento estamos fechados nesse horário. Nosso expediente de atendimento vai até às ${shopData.closingTime}, permitindo serviços que finalizem até no máximo 20 minutos após o fechamento. Que tal escolher outro horário?`,
           });
         }
 
-        const startAt = new Date(`${args.date}T${formattedTime}:00-03:00`);
+        const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
         const startOfDay = new Date(`${args.date}T00:00:00-03:00`);
 
         const durationWithInterval = targetService.durationMinutes + 10;
@@ -659,7 +702,7 @@ INFO ATUAL:
 
           return NextResponse.json({
             status: "SUCCESS",
-            ai_response: [successMsg],
+            ai_response: successMsg,
             details: finalAppointment,
           });
         } catch (txError: unknown) {
@@ -684,7 +727,7 @@ INFO ATUAL:
                   minute: "2-digit",
                   timeZone: "America/Sao_Paulo",
                 })
-              : formattedTime;
+              : args.time;
 
             const clientTime =
               upcomingAppointment?.startTime.toLocaleTimeString("pt-BR", {
@@ -704,6 +747,7 @@ INFO ATUAL:
               });
             }
 
+            // Ajustado para o novo formato formal de Horário Ocupado
             const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
@@ -717,12 +761,14 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "UNAVAILABLE",
-              ai_response: [ai_response],
+              ai_response: ai_response,
             });
           }
 
           if (errorMessage.startsWith("GAP_DETECTED:")) {
             const closerTime = errorMessage.split(":")[1];
+
+            // Ajustado para o novo formato formal de Otimização de Agenda/Gap
             const ai_response = `Temos horário disponível às ${closerTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
@@ -736,7 +782,7 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "GAP_DETECTED",
-              ai_response: [ai_response],
+              ai_response: ai_response,
             });
           }
 
@@ -744,7 +790,6 @@ INFO ATUAL:
         }
       }
 
-      // Envia a resposta da Tool de volta para o Gemini continuar o raciocínio
       result = await sendMessageWithRetry(chat, [
         {
           functionResponse: {
@@ -773,7 +818,6 @@ INFO ATUAL:
       const messagesToSend = aiFinalText
         .split(/(?<=[.!?])\s+/)
         .filter((msg: string) => msg.trim().length > 0);
-
       return NextResponse.json({
         status: "TEXT_RESPONSE",
         ai_response: messagesToSend,
