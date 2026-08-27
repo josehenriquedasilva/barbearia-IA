@@ -187,17 +187,6 @@ export async function POST(request: Request) {
       history.shift();
     }
 
-    const closedDaysList =
-      shopData.closedDays && shopData.closedDays.length > 0
-        ? shopData.closedDays
-            .map((cd) =>
-              new Date(cd.date).toLocaleDateString("pt-BR", {
-                timeZone: "America/Sao_Paulo",
-              }),
-            )
-            .join(", ")
-        : "Nenhum feriado/data especial cadastrado";
-
     const systemInstruction = `Você é o assistente da "${shopData.name}".
 ${appointmentInfo}
 Hoje: ${currentDate}.
