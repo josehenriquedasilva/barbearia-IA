@@ -18,5 +18,6 @@ export const formatTime = (date: string | Date) => {
   return new Date(date).toLocaleTimeString("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "America/Sao_Paulo", // ✅ Garante que renderize no fuso correto em qualquer servidor
   });
 };

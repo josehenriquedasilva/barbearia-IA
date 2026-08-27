@@ -226,14 +226,11 @@ SITUAÇÕES DE AGENDAMENTO:
   3. Confirmação de Horário: Se o cliente perguntar se determinado horário específico está disponível (ex: "Tem horário às 14h?"), responda se está livre ou não e peça os dados restantes.
   4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se você listar ou sugerir MAIS DE UM horário alternativo, termine obrigatoriamente com "Qual prefere?".
   5. Consulta Geral de Horários: Sempre que o cliente perguntar se tem horários disponíveis em um dia (ex: "Tem horário para amanhã?"), acione a ferramenta 'getAvailableSlots'.
-     - SE HOUVER HORÁRIOS LIVRES no retorno da ferramenta: NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres para aquele dia e peça para o cliente informar o horário que ele deseja (ex: "Olá, bem-vindo à ${shopData.name}. Temos sim horários disponíveis para amanhã. Me fale o horário que vc deseja, que verifico aqui.").
-     - SE NÃO HOUVER HORÁRIOS LIVRES no retorno da ferramenta: Informe que não há horários disponíveis para aquele dia e pergunte se pode ser em outro dia.
-     - OBSERVAÇÃO: Apenas liste os horários individualmente se o cliente pedir explicitamente (ex: "Quais são os horários livres?").
+   - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente ao cliente que a barbearia estará FECHADA nessa data/dia e pergunte se ele deseja verificar outro dia.
+   - SE HOUVER HORÁRIOS LIVRES (isClosed: false e grid com horários): NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres para aquele dia e peça para o cliente informar o horário que ele deseja.
+   - SE A GRADE ESTIVER VAZIA (isClosed: false e grid vazio): Informe que os horários para este dia já estão todos lotados/preenchidos e pergunte se pode ser em outro dia.
 
-DIAS E HORÁRIOS DE FUNCIONAMENTO:
-  - Domingo fechado: ${shopData.isClosedSunday ? "Sim" : "Não"}
-  - Dia de folga semanal: ${shopData.dayOff || "Nenhum"}
-  - Datas específicas FECHADAS (Feriados/Folgas): ${closedDaysList}
+
 
 REGRAS GERAIS:
   - REGRA DE PERGUNTA AO SUGERIR: Quando você sugerir horários específicos por conta própria (ex: em caso de conflito ou após o cliente pedir uma lista), se contiver apenas 1 horário, termine com "Pode ser?". Se contiver 2 ou mais horários, termine com "Qual prefere?".
@@ -356,29 +353,39 @@ INFO ATUAL:
             message: "Barbeiro ou serviço inválido para essa loja.",
           };
         } else {
-          const slotsGrid = await getAvailableSlotsForDay(
+          // A própria função já faz todas as checagens de datas fechadas e horários
+          const result = await getAvailableSlotsForDay(
             Number(shopId),
             date,
             targetBarber.id,
             targetService.durationMinutes,
           );
 
-          const slotsDisponiveis = slotsGrid.filter(
-            (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
-          );
+          if (result.isClosed) {
+            functionResponse = {
+              isClosed: true,
+              reason: result.closedReason,
+              message: result.closedReason,
+            };
+          } else {
+            const slotsDisponiveis = result.slots.filter(
+              (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
+            );
 
-          functionResponse = {
-            date,
-            barberName,
-            serviceName,
-            grid: slotsDisponiveis.map((s) => ({
-              horario: s.time,
-              preferencial:
-                s.status === "RECOMENDADO"
-                  ? "SIM (Ofereça esse primeiro para o cliente)"
-                  : "NÃO",
-            })),
-          };
+            functionResponse = {
+              isClosed: false,
+              date,
+              barberName,
+              serviceName,
+              grid: slotsDisponiveis.map((s) => ({
+                horario: s.time,
+                preferencial:
+                  s.status === "RECOMENDADO"
+                    ? "SIM (Ofereça este primeiro ao cliente)"
+                    : "NÃO",
+              })),
+            };
+          }
         }
       }
 
