@@ -140,63 +140,56 @@ export async function getAvailableSlotsForDay(
     shop.hasLunchBreak && shop.lunchEnd ? timeToMinutes(shop.lunchEnd) : null;
 
   const slots: Slot[] = [];
-  const interval = 10;
-  let min = openMin;
+  const interval = 10; // Pausa obrigatória entre atendimentos
+  const totalRequiredDuration = serviceDuration + interval;
 
-  const totalRequiredDuration = serviceDuration + 10;
+  let min = openMin;
 
   while (min <= closeMin) {
     const slotStart = min;
-    const slotEnd = slotStart + totalRequiredDuration;
+    const slotEndWithInterval = slotStart + totalRequiredDuration; // Fim do serviço + 10m de pausa
     const timeString = minutesToTime(slotStart);
 
-    if (slotEnd > maxCloseMin) {
+    // Se o serviço + intervalo estourar o limite máximo de encerramento
+    if (slotEndWithInterval > maxCloseMin) {
       break;
     }
 
     // --- VERIFICAÇÃO DE ALMOÇO ---
     if (lunchStartMin !== null && lunchEndMin !== null) {
-      if (slotStart < lunchEndMin && slotEnd > lunchStartMin) {
+      // Se o bloco do agendamento cruza com o horário de almoço
+      if (slotStart < lunchEndMin && slotEndWithInterval > lunchStartMin) {
         if (slotStart >= lunchStartMin && slotStart < lunchEndMin) {
           slots.push({ time: timeString, status: "ALMOCO" });
-          min = lunchEndMin;
-          continue;
-        } else {
-          slots.push({ time: timeString, status: "OCUPADO" });
-          min += interval;
-          continue;
         }
+        // Pula o indicador direto para o final do almoço
+        min = lunchEndMin;
+        continue;
       }
     }
 
+    // --- VERIFICAÇÃO DE CONFLITO COM OUTROS AGENDAMENTOS ---
+    // Considera que cada agendamento ocupado precisa de 10 min de intervalo após ele terminar
     const conflictingApp = busyRanges.find(
-      (range) => slotStart < range.end && slotEnd > range.start,
+      (range) =>
+        slotStart < range.end + interval && slotEndWithInterval > range.start,
     );
 
     if (conflictingApp) {
       slots.push({ time: timeString, status: "OCUPADO" });
-      min = conflictingApp.end;
+      // Salta o ponteiro de tempo para o FIM do agendamento existente + 10 min de intervalo
+      min = conflictingApp.end + interval;
       continue;
     }
 
-    // --- REGRA DE RECOMENDAÇÃO (OTIMIZAÇÃO DE ESPAÇOS) ---
+    // --- REGRA DE RECOMENDAÇÃO (ENFILEIRAMENTO PERFEITO) ---
     const isBeginningOfDay = slotStart === openMin;
     const isAfterLunch = lunchEndMin !== null && slotStart === lunchEndMin;
-
     const isBackToBackWithPrevious = busyRanges.some(
-      (range) => range.end === slotStart,
+      (range) => range.end + interval === slotStart,
     );
 
-    const isBackToBackWithNext = busyRanges.some(
-      (range) => range.start === slotEnd,
-    );
-
-    if (
-      isBeginningOfDay ||
-      isAfterLunch ||
-      isBackToBackWithPrevious ||
-      isBackToBackWithNext
-    ) {
+    if (isBeginningOfDay || isAfterLunch || isBackToBackWithPrevious) {
       slots.push({
         time: timeString,
         status: "RECOMENDADO",
@@ -205,7 +198,11 @@ export async function getAvailableSlotsForDay(
     } else {
       slots.push({ time: timeString, status: "DISPONIVEL" });
     }
-    min += interval;
+
+    // --- PONTO CHAVE DO MVP ---
+    // Em vez de avanço fixo de 10 min (min += 10), avançamos o bloco completo (duração do serviço + 10 min intervalo)
+    // Isso encadeia os horários em uma grade lógica perfeita sem lacunas vazias.
+    min += totalRequiredDuration;
   }
 
   return {
