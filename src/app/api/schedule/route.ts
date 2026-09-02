@@ -211,18 +211,21 @@ DIRETRIZES:
 
 SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
-  2. Coleta de Dados: Olhe o histórico e peça APENAS o dado que está faltando (Nome ou Serviço). Se o cliente já falou o serviço, NUNCA repita o nome dele e nem mencione-o novamente; peça apenas o Nome.
-  3. Confirmação de Horário: Se o cliente perguntar se determinado horário específico está disponível (ex: "Tem horário às 14h?"), responda se está livre ou não e peça os dados restantes.
+  2. Coleta do Serviço PRIMEIRO:
+     - Para calcular a disponibilidade de horários (seja para um dia ou para um horário específico), você PRECISA saber qual o serviço desejado.
+     - Se o cliente perguntar se tem vaga em determinado dia ou horário (ex: "Tem horário amanhã?", "Tem horário às 14h?") e AINDA NÃO tiver informado o serviço, pergunte PRIMEIRO qual serviço ele deseja realizar (a menos que a loja só tenha 1 serviço).
+  3. Confirmação e Consulta de Horários:
+     - Sempre que tiver o serviço definido e o cliente perguntar sobre disponibilidade (geral ou de horário específico), acione a ferramenta 'getAvailableSlots'.
+     - Se o cliente perguntar se um horário específico está livre (ex: "Tem às 14h?"), chame 'getAvailableSlots'. Se o horário constar no grid como livre ou recomendado, confirme para o cliente e peça apenas o Nome dele. Se não estiver livre, ofereça um horário alternativo do grid.
   4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se você listar ou sugerir MAIS DE UM horário alternativo, termine obrigatoriamente com "Qual prefere?".
-  5. Consulta Geral de Horários: Sempre que o cliente perguntar se tem horários disponíveis em um dia (ex: "Tem horário para amanhã?"), acione a ferramenta 'getAvailableSlots'.
+  5. Retorno do 'getAvailableSlots':
    - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente ao cliente que a barbearia estará FECHADA nessa data/dia e pergunte se ele deseja verificar outro dia.
    - SE HOUVER HORÁRIOS LIVRES (isClosed: false e grid com horários): NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres para aquele dia e peça para o cliente informar o horário que ele deseja.
    - SE A GRADE ESTIVER VAZIA (isClosed: false e grid vazio): Informe que os horários para este dia já estão todos lotados/preenchidos e pergunte se pode ser em outro dia.
 
-
 REGRAS GERAIS:
   - REGRA DE PERGUNTA AO SUGERIR: Quando você sugerir horários específicos por conta própria (ex: em caso de conflito ou após o cliente pedir uma lista), se contiver apenas 1 horário, termine com "Pode ser?". Se contiver 2 ou mais horários, termine com "Qual prefere?".
-  - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoServico}"), a menos que o cliente pergunte explicitamente.` : ""}
+  - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA pergunte qual serviço o cliente deseja e NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoServico}"), a menos que o cliente pergunte explicitamente.` : ""}
   - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoBarbeiro}"), a menos que o cliente pergunte explicitamente.` : ""}
   - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
   - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
@@ -255,7 +258,7 @@ INFO ATUAL:
                 time: {
                   type: SchemaType.STRING,
                   description:
-                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use the horário sugerido.",
+                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use o horário sugerido.",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
@@ -301,11 +304,11 @@ INFO ATUAL:
                 },
                 barberName: {
                   type: SchemaType.STRING,
-                  description: "Nome do barbeiro.",
+                  description: `Nome do barbeiro. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.`,
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: "Nome do serviço desejado.",
+                  description: `Nome do serviço desejado. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
                 },
               },
               required: ["date", "barberName", "serviceName"],

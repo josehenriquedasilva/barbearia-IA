@@ -124,12 +124,12 @@ export async function getAvailableSlotsForDay(
   });
 
   // -------------------------------------------------------------
-  // 3. CÁLCULO DA GRADE DE HORÁRIOS (SLOTS)
+  // 3. CÁLCULO DA GRADE DINÂMICA
   // -------------------------------------------------------------
 
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
-  const maxCloseMin = closeMin + 20;
+  const maxCloseMin = closeMin + 10; // Tolerância máxima de término
 
   const lunchStartMin =
     shop.hasLunchBreak && shop.lunchStart
@@ -139,74 +139,86 @@ export async function getAvailableSlotsForDay(
   const lunchEndMin =
     shop.hasLunchBreak && shop.lunchEnd ? timeToMinutes(shop.lunchEnd) : null;
 
-  const slots: Slot[] = [];
-  const interval = 10; // Pausa obrigatória entre atendimentos
-  const totalRequiredDuration = serviceDuration + interval;
+  const rawSlots: Slot[] = [];
+  const interval = 10;
+  const slotStep = 10; // Avalia de 10 em 10 min internamente
 
   let min = openMin;
 
   while (min <= closeMin) {
     const slotStart = min;
-    const slotEndWithInterval = slotStart + totalRequiredDuration; // Fim do serviço + 10m de pausa
+    const serviceEnd = slotStart + serviceDuration;
     const timeString = minutesToTime(slotStart);
 
-    // Se o serviço + intervalo estourar o limite máximo de encerramento
-    if (slotEndWithInterval > maxCloseMin) {
-      break;
+    // Valida se o serviço cabe dentro do limite de fechamento
+    if (serviceEnd > maxCloseMin) {
+      min += slotStep;
+      continue;
     }
 
-    // --- VERIFICAÇÃO DE ALMOÇO ---
+    // Valida conflito com o horário de almoço
     if (lunchStartMin !== null && lunchEndMin !== null) {
-      // Se o bloco do agendamento cruza com o horário de almoço
-      if (slotStart < lunchEndMin && slotEndWithInterval > lunchStartMin) {
+      if (slotStart < lunchEndMin && serviceEnd > lunchStartMin) {
         if (slotStart >= lunchStartMin && slotStart < lunchEndMin) {
-          slots.push({ time: timeString, status: "ALMOCO" });
+          rawSlots.push({ time: timeString, status: "ALMOCO" });
         }
-        // Pula o indicador direto para o final do almoço
-        min = lunchEndMin;
+        min += slotStep;
         continue;
       }
     }
 
-    // --- VERIFICAÇÃO DE CONFLITO COM OUTROS AGENDAMENTOS ---
-    // Considera que cada agendamento ocupado precisa de 10 min de intervalo após ele terminar
-    const conflictingApp = busyRanges.find(
+    // Valida colisões com outros agendamentos
+    const hasCollision = busyRanges.some(
       (range) =>
-        slotStart < range.end + interval && slotEndWithInterval > range.start,
+        slotStart < range.end + interval && serviceEnd + interval > range.start,
     );
 
-    if (conflictingApp) {
-      slots.push({ time: timeString, status: "OCUPADO" });
-      // Salta o ponteiro de tempo para o FIM do agendamento existente + 10 min de intervalo
-      min = conflictingApp.end + interval;
+    if (hasCollision) {
+      rawSlots.push({ time: timeString, status: "OCUPADO" });
+      min += slotStep;
       continue;
     }
 
-    // --- REGRA DE RECOMENDAÇÃO (ENFILEIRAMENTO PERFEITO) ---
+    // Identificação de Encaixes Reais (apenas colados a eventos)
     const isBeginningOfDay = slotStart === openMin;
     const isAfterLunch = lunchEndMin !== null && slotStart === lunchEndMin;
     const isBackToBackWithPrevious = busyRanges.some(
       (range) => range.end + interval === slotStart,
     );
+    const fitsPerfectlyBeforeNext = busyRanges.some(
+      (range) => serviceEnd + interval === range.start,
+    );
 
-    if (isBeginningOfDay || isAfterLunch || isBackToBackWithPrevious) {
-      slots.push({
-        time: timeString,
-        status: "RECOMENDADO",
-        reason: "Otimiza a sequência de atendimentos da barbearia",
-      });
-    } else {
-      slots.push({ time: timeString, status: "DISPONIVEL" });
-    }
+    const isRecommended =
+      isBeginningOfDay ||
+      isAfterLunch ||
+      isBackToBackWithPrevious ||
+      fitsPerfectlyBeforeNext;
 
-    // --- PONTO CHAVE DO MVP ---
-    // Em vez de avanço fixo de 10 min (min += 10), avançamos o bloco completo (duração do serviço + 10 min intervalo)
-    // Isso encadeia os horários em uma grade lógica perfeita sem lacunas vazias.
-    min += totalRequiredDuration;
+    rawSlots.push({
+      time: timeString,
+      status: isRecommended ? "RECOMENDADO" : "DISPONIVEL",
+      reason: isRecommended ? "Encaixe ideal de atendimento" : undefined,
+    });
+
+    min += slotStep;
   }
+
+  // -------------------------------------------------------------
+  // 4. FILTRAGEM DE UX (Grade Padrão de 30 min + Encaixes Especiais)
+  // -------------------------------------------------------------
+  const cleanSlots = rawSlots.filter((slot) => {
+    if (slot.status === "OCUPADO" || slot.status === "ALMOCO") return false;
+
+    const slotMins = timeToMinutes(slot.time);
+    const isRounded30Min = slotMins % 30 === 0;
+
+    // Retorna horários padronizados (:00 ou :30) OU encaixes colados a atendimentos
+    return isRounded30Min || slot.status === "RECOMENDADO";
+  });
 
   return {
     isClosed: false,
-    slots,
+    slots: cleanSlots,
   };
 }
