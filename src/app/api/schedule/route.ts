@@ -200,41 +200,30 @@ DIRETRIZES:
   - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
   - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
   - Intervalo obrigatório: 10 min entre atendimentos.
-  - Primeiro horário pós-almoço: ${
-    shopData.hasLunchBreak && shopData.lunchEnd
-      ? (() => {
-          const [h, m] = shopData.lunchEnd.split(":").map(Number);
-          const total = h * 60 + m + 10;
-          return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-        })()
-      : "N/A"
-  }.
 
 SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
   2. Coleta do Serviço PRIMEIRO:
-     - Para calcular a disponibilidade de horários (seja para um dia ou para um horário específico), você PRECISA saber qual o serviço desejado.
+     - Para calcular a disponibilidade de horários, você PRECISA saber qual o serviço desejado.
      - Se o cliente perguntar se tem vaga em determinado dia ou horário e AINDA NÃO tiver informado o serviço, pergunte PRIMEIRO qual serviço ele deseja realizar (a menos que a loja só tenha 1 serviço).
   3. Consulta e Validação Obrigatória na Grade:
-     - OBRIGATÓRIO: Toda solicitação de agendamento (mesmo que o cliente forneça todos os dados de uma vez, ex: "quero agendar amanhã às 9:30") EXIGE que você chame PRIMEIRO a ferramenta 'getAvailableSlots' para verificar a disponibilidade na grade.
+     - OBRIGATÓRIO: Toda solicitação de agendamento EXIGE que você chame PRIMEIRO a ferramenta 'getAvailableSlots' para verificar a disponibilidade na grade.
      - NUNCA chame 'scheduleAppointment' sem antes ter chamado 'getAvailableSlots' e confirmado que o horário desejado consta no 'grid' de horários disponíveis.
      - Se o horário solicitado pelo cliente ESTIVER no 'grid' retornado por 'getAvailableSlots', acione 'scheduleAppointment' (ou peça o nome se ainda não tiver).
-     - Se o horário solicitado pelo cliente NÃO ESTIVER no 'grid' (ou se a grade estiver vazia/fechada), NÃO acione 'scheduleAppointment'. Informe educadamente que o horário não está disponível e ofereça as opções do 'grid' (ou pergunte se prefere outro dia).
-  4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se você listar ou sugerir MAIS DE UM horário alternativo, termine obrigatoriamente com "Qual prefere?".
+     - Se o horário solicitado NÃO ESTIVER no 'grid' (ou se a grade estiver vazia/fechada), NÃO acione 'scheduleAppointment'. Informe educadamente que o horário não está disponível e ofereça as opções do 'grid'.
+  4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se sugerir MAIS DE UM horário, termine com "Qual prefere?".
   5. Retorno do 'getAvailableSlots':
-   - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente ao cliente que a barbearia estará FECHADA nessa data/dia e pergunte se ele deseja verificar outro dia.
+   - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente que a barbearia estará FECHADA e pergunte se deseja verificar outro dia.
    - SE HOUVER HORÁRIOS LIVRES (isClosed: false e grid com horários):
-     * Se o cliente especificou um horário (ex: 9:30) e ele consta no grid: Agende diretamente via 'scheduleAppointment' (ou peça o nome se faltar).
-     * Se o cliente perguntou genericamente por horários no dia: NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres e peça para o cliente informar o horário que ele deseja.
-   - SE A GRADE ESTIVER VAZIA (isClosed: false e grid vazio): Informe que os horários para este dia já estão todos lotados/preenchidos e pergunte se pode ser em outro dia.
+     * Se o cliente especificou um horário e ele consta no grid: Agende via 'scheduleAppointment' (ou peça o nome se faltar).
+     * Se o cliente perguntou genericamente por horários no dia: Apenas confirme que SIM, existem horários livres e peça para o cliente informar o horário desejado.
+   - SE A GRADE ESTIVER VAZIA: Informe que os horários já estão todos lotados para esse dia e pergunte se pode ser em outro dia.
 
 REGRAS GERAIS:
-  - REGRA DE PERGUNTA AO SUGERIR: Quando você sugerir horários específicos por conta própria (ex: em caso de conflito ou após o cliente pedir uma lista), se contiver apenas 1 horário, termine com "Pode ser?". Se contiver 2 ou mais horários, termine com "Qual prefere?".
-  - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA pergunte qual serviço o cliente deseja e NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoServico}"), a menos que o cliente pergunte explicitamente.` : ""}
-  - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas (ex: NÃO diga "com ${unicoBarbeiro}"), a menos que o cliente pergunte explicitamente.` : ""}
+  - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA pergunte qual serviço o cliente deseja e NUNCA mencione o nome dele nas respostas.` : ""}
+  - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas.` : ""}
   - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
   - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
-  - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
   - Analise rigorosamente o histórico antes de responder para nunca pedir dados já fornecidos.
 
 INFO ATUAL:
@@ -248,13 +237,13 @@ INFO ATUAL:
           {
             name: "scheduleAppointment",
             description:
-              "Executa o agendamento final. OBRIGATÓRIO: Só execute esta ferramenta APÓS ter consultado 'getAvailableSlots' e confirmado que o horário solicitado pelo cliente está no grid de horários disponíveis.",
+              "Executa o agendamento final. OBRIGATÓRIO: Só execute esta ferramenta APÓS ter consultado 'getAvailableSlots' e confirmado que o horário solicitado pelo cliente está no grid.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
                 barberName: {
                   type: SchemaType.STRING,
-                  description: `Nome do barbeiro selecionado. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.`,
+                  description: `Nome do barbeiro. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.`,
                 },
                 date: {
                   type: SchemaType.STRING,
@@ -262,12 +251,11 @@ INFO ATUAL:
                 },
                 time: {
                   type: SchemaType.STRING,
-                  description:
-                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use o horário sugerido.",
+                  description: "Hora no formato HH:MM escolhida pelo usuário.",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: `O nome EXATO do serviço conforme a lista fornecida no sistema. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
+                  description: `Nome exato do serviço. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
                 },
                 clientName: {
                   type: SchemaType.STRING,
@@ -299,7 +287,7 @@ INFO ATUAL:
           {
             name: "getAvailableSlots",
             description:
-              "OBRIGATÓRIO CHAMAR ANTES DE QUALQUER AGENDAMENTO. Busca a grade completa de horários de um dia específico (livres, ocupados e recomendados) para validar se o horário solicitado pelo cliente está livre.",
+              "OBRIGATÓRIO CHAMAR ANTES DE QUALQUER AGENDAMENTO. Busca a grade completa de horários de um dia específico para validar a disponibilidade.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -430,9 +418,7 @@ INFO ATUAL:
           });
         }
 
-        // VALIDAÇÃO DE SEGURANÇA DA GRADE NO BACKEND:
-        // Garante que mesmo se a IA chamar 'scheduleAppointment' diretamente,
-        // o horário solicitado PRECISA estar livre na grade gerada pelo 'getAvailableSlotsForDay'
+        // VALIDAÇÃO DE SEGURANÇA NA GRADE (Fonte da Verdade Única)
         const slotValidation = await getAvailableSlotsForDay(
           Number(shopId),
           args.date,
@@ -493,158 +479,8 @@ INFO ATUAL:
           });
         }
 
-        const [hour, minute] = args.time.split(":").map(Number);
-        const appointmentMinutes = hour * 60 + minute;
-        const dataAgendamento = new Date(`${args.date}T12:00:00Z`);
-        const diaDaSemana = dataAgendamento.getUTCDay();
-        const diasSemanaMap: Record<string, number> = {
-          domingo: 0,
-          "segunda-feira": 1,
-          "terça-feira": 2,
-          "quarta-feira": 3,
-          "quinta-feira": 4,
-          "sexta-feira": 5,
-          sábado: 6,
-          segunda: 1,
-          terca: 2,
-        };
-
-        if (diaDaSemana === 0 && shopData.isClosedSunday) {
-          return NextResponse.json({
-            status: "CLOSED",
-            ai_response: ["Não abrimos aos domingos. Pode escolher outro dia?"],
-          });
-        }
-
-        if (shopData.closedDays && shopData.closedDays.length > 0) {
-          const isClosedDay = shopData.closedDays.some((cd) => {
-            const formattedCdDate = new Date(cd.date)
-              .toISOString()
-              .split("T")[0];
-            return formattedCdDate === args.date;
-          });
-
-          if (isClosedDay) {
-            return NextResponse.json({
-              status: "CLOSED_DAY",
-              ai_response: [
-                "Identifiquei que estaremos fechados nesta data específica. Pode escolher outro dia?",
-              ],
-            });
-          }
-        }
-
-        const [year, month, day] = args.date.split("-").map(Number);
-        const targetDate = new Date(year, month - 1, day);
-        const dayOfWeek = targetDate.getDay();
-
-        if (dayOfWeek === 0 && shopData.isClosedSunday) {
-          return NextResponse.json({
-            status: "CLOSED_SUNDAY",
-            ai_response: [
-              "Não abrimos aos domingos. Deseja agendar para outro dia?",
-            ],
-          });
-        }
-
-        if (
-          shopData.hasLunchBreak &&
-          shopData.lunchStart &&
-          shopData.lunchEnd
-        ) {
-          const [lStartH, lStartM] = shopData.lunchStart.split(":").map(Number);
-          const [lEndH, lEndM] = shopData.lunchEnd.split(":").map(Number);
-          const lunchStartTotal = lStartH * 60 + lStartM;
-          const lunchEndTotal = lEndH * 60 + lEndM;
-          const firstSlotAfterLunch = lunchEndTotal + 10;
-
-          const serviceForLunchCheck = shopData.services.find(
-            (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
-          );
-          const serviceDuration = serviceForLunchCheck
-            ? serviceForLunchCheck.durationMinutes
-            : 0;
-          const appointmentEndMinutesNoInterval =
-            appointmentMinutes + serviceDuration;
-
-          const maxLunchInvasion = lunchStartTotal + 10;
-
-          const invadesLunchPastTolerance =
-            appointmentEndMinutesNoInterval > maxLunchInvasion &&
-            appointmentMinutes < lunchEndTotal;
-
-          const startsDuringLunch =
-            appointmentMinutes >= lunchStartTotal &&
-            appointmentMinutes < lunchEndTotal;
-
-          const insidePostLunchBuffer =
-            appointmentMinutes >= lunchEndTotal &&
-            appointmentMinutes < firstSlotAfterLunch;
-
-          if (
-            invadesLunchPastTolerance ||
-            startsDuringLunch ||
-            insidePostLunchBuffer
-          ) {
-            const suggestH = Math.floor(firstSlotAfterLunch / 60);
-            const suggestM = firstSlotAfterLunch % 60;
-            const suggestTime = `${String(suggestH).padStart(2, "0")}:${String(suggestM).padStart(2, "0")}`;
-
-            const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
-
-            await prisma.chatMessage.create({
-              data: {
-                role: "model",
-                content: ai_response,
-                shopId: Number(shopId),
-                clientPhone,
-              },
-            });
-
-            return NextResponse.json({
-              status: "LUNCH_BREAK",
-              ai_response: [ai_response],
-            });
-          }
-        }
-
-        if (
-          shopData.hasDayOff &&
-          shopData.dayOff &&
-          diaDaSemana === diasSemanaMap[shopData.dayOff.toLowerCase()]
-        ) {
-          return NextResponse.json({
-            status: "DAY_OFF",
-            ai_response: [
-              `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
-            ],
-          });
-        }
-
-        const [openH, openM] = shopData.openingTime.split(":").map(Number);
-        const [closeH, closeM] = shopData.closingTime.split(":").map(Number);
-        const openingMinutes = openH * 60 + openM;
-        const closingMinutes = closeH * 60 + closeM;
-
-        const maxClosingMinutes = closingMinutes + 20;
-        const appointmentEndMinutes =
-          appointmentMinutes + targetService.durationMinutes;
-
-        if (
-          appointmentMinutes < openingMinutes ||
-          appointmentEndMinutes > maxClosingMinutes
-        ) {
-          return NextResponse.json({
-            status: "CLOSED",
-            ai_response: [
-              `No momento estamos fechados nesse horário. Nosso expediente vai até às ${shopData.closingTime}. Que tal escolher outro horário?`,
-            ],
-          });
-        }
-
+        // CÁLCULO E GRAVAÇÃO DO AGENDAMENTO
         const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
-        const startOfDay = new Date(`${args.date}T00:00:00-03:00`);
-
         const durationWithInterval = targetService.durationMinutes + 10;
         const endTime = new Date(
           startAt.getTime() + durationWithInterval * 60000,
@@ -666,69 +502,6 @@ INFO ATUAL:
 
             if (existing) {
               throw new Error("TIME_SLOT_TAKEN");
-            }
-
-            const lastBefore = await tx.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                startTime: { lt: startAt, gte: startOfDay },
-                NOT: { id: upcomingAppointment?.id },
-              },
-              orderBy: { endTime: "desc" },
-            });
-
-            const timeToStr = (d: Date) =>
-              d.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
-              });
-
-            let isGap = false;
-            let suggestedCloserTime = "";
-
-            if (lastBefore) {
-              const idealStartTime = new Date(lastBefore.endTime);
-              const diffInMinutes =
-                (startAt.getTime() - idealStartTime.getTime()) / 60000;
-
-              if (diffInMinutes > 0 && diffInMinutes <= 45) {
-                isGap = true;
-                suggestedCloserTime = timeToStr(idealStartTime);
-              }
-            } else {
-              const [openH, openM] = shopData.openingTime
-                .split(":")
-                .map(Number);
-              const openingDate = new Date(startAt);
-              openingDate.setHours(openH, openM, 0, 0);
-
-              const diffFromOpening =
-                (startAt.getTime() - openingDate.getTime()) / 60000;
-
-              if (diffFromOpening > 10 && diffFromOpening <= 45) {
-                isGap = true;
-                suggestedCloserTime = shopData.openingTime;
-              }
-            }
-
-            if (isGap) {
-              const alreadySuggested = history.some(
-                (msg) =>
-                  msg.role === "model" &&
-                  msg.parts.some(
-                    (p) =>
-                      typeof p.text === "string" &&
-                      (p.text.includes("ajudar na agenda") ||
-                        p.text.includes("horários disponíveis") ||
-                        p.text.includes("Disponíveis:")),
-                  ),
-              );
-
-              if (!alreadySuggested) {
-                throw new Error(`GAP_DETECTED:${suggestedCloserTime}`);
-              }
             }
 
             if (upcomingAppointment) {
@@ -774,45 +547,20 @@ INFO ATUAL:
           const errorMessage = txError instanceof Error ? txError.message : "";
 
           if (errorMessage === "TIME_SLOT_TAKEN") {
-            const existingCollision = await prisma.appointment.findFirst({
-              where: {
-                barberId: targetBarber.id,
-                status: "CONFIRMED",
-                NOT: { id: upcomingAppointment?.id },
-                AND: [
-                  { startTime: { lt: endTime } },
-                  { endTime: { gt: startAt } },
-                ],
-              },
-            });
+            const freshSlots = await getAvailableSlotsForDay(
+              Number(shopId),
+              args.date,
+              targetBarber.id,
+              targetService.durationMinutes,
+            );
 
-            let suggestTime = existingCollision
-              ? existingCollision.endTime.toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: "America/Sao_Paulo",
-                })
-              : args.time;
+            const firstFree = freshSlots.slots.find(
+              (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
+            );
 
-            const clientTime =
-              upcomingAppointment?.startTime.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
-              });
-
-            if (suggestTime === clientTime && upcomingAppointment) {
-              const nextTick = new Date(
-                upcomingAppointment.endTime.getTime() + 10 * 60000,
-              );
-              suggestTime = nextTick.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo",
-              });
-            }
-
-            const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
+            const ai_response = firstFree
+              ? `Temos horário disponível às ${firstFree.time}. Pode ser?`
+              : "Esse horário acabou de ser ocupado e não há mais vagas neste dia. Deseja verificar outro dia?";
 
             await prisma.chatMessage.create({
               data: {
@@ -825,25 +573,6 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "UNAVAILABLE",
-              ai_response: [ai_response],
-            });
-          }
-
-          if (errorMessage.startsWith("GAP_DETECTED:")) {
-            const closerTime = errorMessage.split(":")[1];
-            const ai_response = `Temos horário disponível às ${closerTime}. Pode ser?`;
-
-            await prisma.chatMessage.create({
-              data: {
-                role: "model",
-                content: ai_response,
-                shopId: Number(shopId),
-                clientPhone,
-              },
-            });
-
-            return NextResponse.json({
-              status: "GAP_DETECTED",
               ai_response: [ai_response],
             });
           }

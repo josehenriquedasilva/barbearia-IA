@@ -12,6 +12,9 @@ export interface SlotsResult {
   slots: Slot[];
 }
 
+const BUFFER_MINUTES = 10; // Intervalo de limpeza/descanso
+const MIN_SERVICE_DURATION = 30; // Menor tempo de serviço da barbearia
+
 function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(":").map(Number);
   return h * 60 + m;
@@ -36,10 +39,7 @@ export async function getAvailableSlotsForDay(
 
   if (!shop) throw new Error("Barbearia não encontrada.");
 
-  // -------------------------------------------------------------
   // 1. CHECAGEM DE FERIADOS, DOMINGOS E FOLGAS
-  // -------------------------------------------------------------
-
   const [year, month, day] = dateStr.split("-").map(Number);
   const targetDate = new Date(year, month - 1, day);
   const dayOfWeek = targetDate.getDay();
@@ -94,10 +94,8 @@ export async function getAvailableSlotsForDay(
     };
   }
 
-  // -------------------------------------------------------------
   // 2. BUSCA DE AGENDAMENTOS EXISTENTES
-  // -------------------------------------------------------------
-
+  // Assume que app.endTime no Banco já inclui serviceDuration + BUFFER_MINUTES
   const startOfDay = new Date(`${dateStr}T00:00:00-03:00`);
   const endOfDay = new Date(`${dateStr}T23:59:59-03:00`);
   const appointments = await prisma.appointment.findMany({
@@ -123,13 +121,10 @@ export async function getAvailableSlotsForDay(
     return { start: timeToMinutes(startLocal), end: timeToMinutes(endLocal) };
   });
 
-  // -------------------------------------------------------------
   // 3. CÁLCULO DA GRADE DINÂMICA
-  // -------------------------------------------------------------
-
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
-  const maxCloseMin = closeMin + 10; // Tolerância máxima de término
+  const totalNeededMinutes = serviceDuration + BUFFER_MINUTES;
 
   const lunchStartMin =
     shop.hasLunchBreak && shop.lunchStart
@@ -140,25 +135,24 @@ export async function getAvailableSlotsForDay(
     shop.hasLunchBreak && shop.lunchEnd ? timeToMinutes(shop.lunchEnd) : null;
 
   const rawSlots: Slot[] = [];
-  const interval = 10;
-  const slotStep = 10; // Avalia de 10 em 10 min internamente
+  const slotStep = 10; // Varredura a cada 10 min
 
   let min = openMin;
 
   while (min <= closeMin) {
     const slotStart = min;
-    const serviceEnd = slotStart + serviceDuration;
+    const slotEnd = slotStart + totalNeededMinutes;
     const timeString = minutesToTime(slotStart);
 
-    // Valida se o serviço cabe dentro do limite de fechamento
-    if (serviceEnd > maxCloseMin) {
+    // Valida encerramento do expediente
+    if (slotEnd > closeMin + BUFFER_MINUTES) {
       min += slotStep;
       continue;
     }
 
-    // Valida conflito com o horário de almoço
+    // Valida conflito com almoço
     if (lunchStartMin !== null && lunchEndMin !== null) {
-      if (slotStart < lunchEndMin && serviceEnd > lunchStartMin) {
+      if (slotStart < lunchEndMin && slotEnd > lunchStartMin) {
         if (slotStart >= lunchStartMin && slotStart < lunchEndMin) {
           rawSlots.push({ time: timeString, status: "ALMOCO" });
         }
@@ -167,10 +161,9 @@ export async function getAvailableSlotsForDay(
       }
     }
 
-    // Valida colisões com outros agendamentos
+    // Valida colisão direta com outros agendamentos
     const hasCollision = busyRanges.some(
-      (range) =>
-        slotStart < range.end + interval && serviceEnd + interval > range.start,
+      (range) => slotStart < range.end && slotEnd > range.start,
     );
 
     if (hasCollision) {
@@ -179,14 +172,14 @@ export async function getAvailableSlotsForDay(
       continue;
     }
 
-    // Identificação de Encaixes Reais (apenas colados a eventos)
+    // Pontos de Ancoragem (Início do dia, Volta do Almoço ou Colado ao término do cliente anterior)
     const isBeginningOfDay = slotStart === openMin;
     const isAfterLunch = lunchEndMin !== null && slotStart === lunchEndMin;
     const isBackToBackWithPrevious = busyRanges.some(
-      (range) => range.end + interval === slotStart,
+      (range) => range.end === slotStart,
     );
     const fitsPerfectlyBeforeNext = busyRanges.some(
-      (range) => serviceEnd + interval === range.start,
+      (range) => slotEnd === range.start,
     );
 
     const isRecommended =
@@ -198,23 +191,34 @@ export async function getAvailableSlotsForDay(
     rawSlots.push({
       time: timeString,
       status: isRecommended ? "RECOMENDADO" : "DISPONIVEL",
-      reason: isRecommended ? "Encaixe ideal de atendimento" : undefined,
+      reason: isRecommended ? "Encaixe ideal sem lacunas" : undefined,
     });
 
     min += slotStep;
   }
 
-  // -------------------------------------------------------------
-  // 4. FILTRAGEM DE UX (Grade Padrão de 30 min + Encaixes Especiais)
-  // -------------------------------------------------------------
+  // 4. FILTRAGEM ANTI-LACUNAS (UX)
   const cleanSlots = rawSlots.filter((slot) => {
     if (slot.status === "OCUPADO" || slot.status === "ALMOCO") return false;
 
-    const slotMins = timeToMinutes(slot.time);
-    const isRounded30Min = slotMins % 30 === 0;
+    // 1. Todo horário Ancorado/Recomendado deve aparecer (pois garante 0 minutos de buraco)
+    if (slot.status === "RECOMENDADO") return true;
 
-    // Retorna horários padronizados (:00 ou :30) OU encaixes colados a atendimentos
-    return isRounded30Min || slot.status === "RECOMENDADO";
+    const slotStartMins = timeToMinutes(slot.time);
+    const isRounded30Min = slotStartMins % 30 === 0;
+
+    if (!isRounded30Min) return false;
+
+    // 2. Para horários redondos (:00 e :30) que não são ancorados,
+    // verifica se o intervalo gerado antes dele é suficiente para caber ao menos o menor serviço
+    const prevBoundary = busyRanges
+      .filter((r) => r.end <= slotStartMins)
+      .reduce((max, r) => Math.max(max, r.end), openMin);
+
+    const gapBefore = slotStartMins - prevBoundary;
+
+    // Se o espaço antes for 0 ou maior/igual ao menor serviço, o slot é válido
+    return gapBefore === 0 || gapBefore >= MIN_SERVICE_DURATION;
   });
 
   return {
