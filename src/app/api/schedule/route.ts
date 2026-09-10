@@ -214,14 +214,18 @@ SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
   2. Coleta do Serviço PRIMEIRO:
      - Para calcular a disponibilidade de horários (seja para um dia ou para um horário específico), você PRECISA saber qual o serviço desejado.
-     - Se o cliente perguntar se tem vaga em determinado dia ou horário (ex: "Tem horário amanhã?", "Tem horário às 14h?") e AINDA NÃO tiver informado o serviço, pergunte PRIMEIRO qual serviço ele deseja realizar (a menos que a loja só tenha 1 serviço).
-  3. Confirmação e Consulta de Horários:
-     - Sempre que tiver o serviço definido e o cliente perguntar sobre disponibilidade (geral ou de horário específico), acione a ferramenta 'getAvailableSlots'.
-     - Se o cliente perguntar se um horário específico está livre (ex: "Tem às 14h?"), chame 'getAvailableSlots'. Se o horário constar no grid como livre ou recomendado, confirme para o cliente e peça apenas o Nome dele. Se não estiver livre, ofereça um horário alternativo do grid.
+     - Se o cliente perguntar se tem vaga em determinado dia ou horário e AINDA NÃO tiver informado o serviço, pergunte PRIMEIRO qual serviço ele deseja realizar (a menos que a loja só tenha 1 serviço).
+  3. Consulta e Validação Obrigatória na Grade:
+     - OBRIGATÓRIO: Toda solicitação de agendamento (mesmo que o cliente forneça todos os dados de uma vez, ex: "quero agendar amanhã às 9:30") EXIGE que você chame PRIMEIRO a ferramenta 'getAvailableSlots' para verificar a disponibilidade na grade.
+     - NUNCA chame 'scheduleAppointment' sem antes ter chamado 'getAvailableSlots' e confirmado que o horário desejado consta no 'grid' de horários disponíveis.
+     - Se o horário solicitado pelo cliente ESTIVER no 'grid' retornado por 'getAvailableSlots', acione 'scheduleAppointment' (ou peça o nome se ainda não tiver).
+     - Se o horário solicitado pelo cliente NÃO ESTIVER no 'grid' (ou se a grade estiver vazia/fechada), NÃO acione 'scheduleAppointment'. Informe educadamente que o horário não está disponível e ofereça as opções do 'grid' (ou pergunte se prefere outro dia).
   4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se você listar ou sugerir MAIS DE UM horário alternativo, termine obrigatoriamente com "Qual prefere?".
   5. Retorno do 'getAvailableSlots':
    - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente ao cliente que a barbearia estará FECHADA nessa data/dia e pergunte se ele deseja verificar outro dia.
-   - SE HOUVER HORÁRIOS LIVRES (isClosed: false e grid com horários): NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres para aquele dia e peça para o cliente informar o horário que ele deseja.
+   - SE HOUVER HORÁRIOS LIVRES (isClosed: false e grid com horários):
+     * Se o cliente especificou um horário (ex: 9:30) e ele consta no grid: Agende diretamente via 'scheduleAppointment' (ou peça o nome se faltar).
+     * Se o cliente perguntou genericamente por horários no dia: NÃO liste os horários disponíveis. Apenas confirme que SIM, existem horários livres e peça para o cliente informar o horário que ele deseja.
    - SE A GRADE ESTIVER VAZIA (isClosed: false e grid vazio): Informe que os horários para este dia já estão todos lotados/preenchidos e pergunte se pode ser em outro dia.
 
 REGRAS GERAIS:
@@ -244,7 +248,7 @@ INFO ATUAL:
           {
             name: "scheduleAppointment",
             description:
-              "Executa o agendamento após confirmação final do cliente.",
+              "Executa o agendamento final. OBRIGATÓRIO: Só execute esta ferramenta APÓS ter consultado 'getAvailableSlots' e confirmado que o horário solicitado pelo cliente está no grid de horários disponíveis.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -295,7 +299,7 @@ INFO ATUAL:
           {
             name: "getAvailableSlots",
             description:
-              "Busca a grade completa de horários de um dia específico (livres, ocupados e recomendados) para o barbeiro e serviço escolhido.",
+              "OBRIGATÓRIO CHAMAR ANTES DE QUALQUER AGENDAMENTO. Busca a grade completa de horários de um dia específico (livres, ocupados e recomendados) para validar se o horário solicitado pelo cliente está livre.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -409,6 +413,83 @@ INFO ATUAL:
           return NextResponse.json({
             status: "ERROR",
             ai_response: ["Preciso da data e hora para agendar."],
+          });
+        }
+
+        const targetService = shopData.services.find(
+          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
+        );
+        const targetBarber = shopData.barbers.find(
+          (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
+        );
+
+        if (!targetService || !targetBarber) {
+          return NextResponse.json({
+            status: "ERROR",
+            ai_response: ["Não encontrei o serviço ou barbeiro. Pode repetir?"],
+          });
+        }
+
+        // VALIDAÇÃO DE SEGURANÇA DA GRADE NO BACKEND:
+        // Garante que mesmo se a IA chamar 'scheduleAppointment' diretamente,
+        // o horário solicitado PRECISA estar livre na grade gerada pelo 'getAvailableSlotsForDay'
+        const slotValidation = await getAvailableSlotsForDay(
+          Number(shopId),
+          args.date,
+          targetBarber.id,
+          targetService.durationMinutes,
+        );
+
+        if (slotValidation.isClosed) {
+          const closedMsg =
+            slotValidation.closedReason ||
+            "A barbearia estará fechada nesta data.";
+          await prisma.chatMessage.create({
+            data: {
+              role: "model",
+              content: closedMsg,
+              shopId: Number(shopId),
+              clientPhone,
+            },
+          });
+          return NextResponse.json({
+            status: "CLOSED",
+            ai_response: [closedMsg],
+          });
+        }
+
+        const isSlotAvailable = slotValidation.slots.some(
+          (s) =>
+            s.time === args.time &&
+            (s.status === "DISPONIVEL" || s.status === "RECOMENDADO"),
+        );
+
+        if (!isSlotAvailable) {
+          const availableSlots = slotValidation.slots.filter(
+            (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
+          );
+
+          let ai_response = "";
+          if (availableSlots.length > 0) {
+            const suggestTime = availableSlots[0].time;
+            ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
+          } else {
+            ai_response =
+              "Infelizmente os horários para este dia já estão todos lotados. Deseja agendar para outro dia?";
+          }
+
+          await prisma.chatMessage.create({
+            data: {
+              role: "model",
+              content: ai_response,
+              shopId: Number(shopId),
+              clientPhone,
+            },
+          });
+
+          return NextResponse.json({
+            status: "UNAVAILABLE",
+            ai_response: [ai_response],
           });
         }
 
@@ -537,20 +618,6 @@ INFO ATUAL:
             ai_response: [
               `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
             ],
-          });
-        }
-
-        const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
-        );
-        const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
-        );
-
-        if (!targetService || !targetBarber) {
-          return NextResponse.json({
-            status: "ERROR",
-            ai_response: ["Não encontrei o serviço ou barbeiro. Pode repetir?"],
           });
         }
 
