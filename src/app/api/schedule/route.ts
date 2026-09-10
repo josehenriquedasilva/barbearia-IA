@@ -70,14 +70,14 @@ export async function POST(request: Request) {
       currentMessageIds = [],
     } = await request.json();
 
-    const clientPhone = rawClientPhone.replace(/^55/, "");
-
     if (!shopId) {
       return NextResponse.json(
         { message: "ID da barbearia não fornecido." },
         { status: 400 },
       );
     }
+
+    const clientPhone = rawClientPhone ? rawClientPhone.replace(/^55/, "") : "";
 
     const shopData = await prisma.shop.findUnique({
       where: { id: Number(shopId) },
@@ -95,6 +95,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Busca agendamento futuro ativo do cliente
     const upcomingAppointment = await prisma.appointment.findFirst({
       where: {
         clientPhone: clientPhone,
@@ -110,9 +111,7 @@ export async function POST(request: Request) {
     if (upcomingAppointment) {
       const dateStr = upcomingAppointment.startTime.toLocaleDateString(
         "pt-BR",
-        {
-          timeZone: "America/Sao_Paulo",
-        },
+        { timeZone: "America/Sao_Paulo" },
       );
       const timeStr = upcomingAppointment.startTime.toLocaleTimeString(
         "pt-BR",
@@ -131,6 +130,7 @@ export async function POST(request: Request) {
     const unicoServico =
       shopData.services.length === 1 ? shopData.services[0].name : null;
 
+    // Busca grade ocupada dos próximos 2 dias
     const searchLimit = new Date();
     searchLimit.setDate(searchLimit.getDate() + 2);
 
@@ -168,6 +168,7 @@ export async function POST(request: Request) {
         .map((s) => s.name)
         .join(", ") + (shopData.services.length > 3 ? "..." : "");
 
+    // Histórico de mensagens
     const lastMessages = await prisma.chatMessage.findMany({
       where: {
         shopId: Number(shopId),
@@ -344,7 +345,6 @@ INFO ATUAL:
             message: "Barbeiro ou serviço inválido para essa loja.",
           };
         } else {
-          // A própria função já faz todas as checagens de datas fechadas e horários
           const result = await getAvailableSlotsForDay(
             Number(shopId),
             date,
@@ -385,7 +385,7 @@ INFO ATUAL:
           return NextResponse.json({
             status: "ERROR",
             ai_response: [
-              "Você não tem agendamento ativo. quer marcar um horário?",
+              "Você não tem agendamento ativo. Quer marcar um horário?",
             ],
           });
         }
@@ -408,7 +408,7 @@ INFO ATUAL:
         if (!args.time || !args.date) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: "Preciso da data e hora para agendar.",
+            ai_response: ["Preciso da data e hora para agendar."],
           });
         }
 
@@ -431,7 +431,7 @@ INFO ATUAL:
         if (diaDaSemana === 0 && shopData.isClosedSunday) {
           return NextResponse.json({
             status: "CLOSED",
-            ai_response: "Não abrimos aos domingos. Pode escolher outro dia?",
+            ai_response: ["Não abrimos aos domingos. Pode escolher outro dia?"],
           });
         }
 
@@ -440,19 +440,19 @@ INFO ATUAL:
             const formattedCdDate = new Date(cd.date)
               .toISOString()
               .split("T")[0];
-            return formattedCdDate === args.date; // args.date no formato YYYY-MM-DD
+            return formattedCdDate === args.date;
           });
 
           if (isClosedDay) {
             return NextResponse.json({
               status: "CLOSED_DAY",
-              ai_response:
+              ai_response: [
                 "Identifiquei que estaremos fechados nesta data específica. Pode escolher outro dia?",
+              ],
             });
           }
         }
 
-        // 2. Valida se a data cai no dia de folga fixo (dayOff) ou Domingo fechado
         const [year, month, day] = args.date.split("-").map(Number);
         const targetDate = new Date(year, month - 1, day);
         const dayOfWeek = targetDate.getDay();
@@ -460,8 +460,9 @@ INFO ATUAL:
         if (dayOfWeek === 0 && shopData.isClosedSunday) {
           return NextResponse.json({
             status: "CLOSED_SUNDAY",
-            ai_response:
+            ai_response: [
               "Não abrimos aos domingos. Deseja agendar para outro dia?",
+            ],
           });
         }
 
@@ -476,7 +477,6 @@ INFO ATUAL:
           const lunchEndTotal = lEndH * 60 + lEndM;
           const firstSlotAfterLunch = lunchEndTotal + 10;
 
-          // Busca a duração do serviço atual para calcular o término real do atendimento
           const serviceForLunchCheck = shopData.services.find(
             (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
           );
@@ -486,20 +486,16 @@ INFO ATUAL:
           const appointmentEndMinutesNoInterval =
             appointmentMinutes + serviceDuration;
 
-          // Define o limite máximo que o corte pode invadir o almoço (Início + 10 minutos)
           const maxLunchInvasion = lunchStartTotal + 10;
 
-          // 1. Bloqueia se o serviço terminar DEPOIS da tolerância de 10 min e começou antes do almoço terminar
           const invadesLunchPastTolerance =
             appointmentEndMinutesNoInterval > maxLunchInvasion &&
             appointmentMinutes < lunchEndTotal;
 
-          // 2. Bloqueia se o cliente tentar iniciar o serviço depois que o almoço já começou
           const startsDuringLunch =
             appointmentMinutes >= lunchStartTotal &&
             appointmentMinutes < lunchEndTotal;
 
-          // 3. Bloqueia se tentar iniciar no buffer de intervalo de 10 min logo após o almoço
           const insidePostLunchBuffer =
             appointmentMinutes >= lunchEndTotal &&
             appointmentMinutes < firstSlotAfterLunch;
@@ -526,7 +522,7 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "LUNCH_BREAK",
-              ai_response: ai_response,
+              ai_response: [ai_response],
             });
           }
         }
@@ -538,7 +534,9 @@ INFO ATUAL:
         ) {
           return NextResponse.json({
             status: "DAY_OFF",
-            ai_response: `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
+            ai_response: [
+              `Estamos fechados às ${shopData.dayOff}s. Que tal outro dia?`,
+            ],
           });
         }
 
@@ -552,7 +550,7 @@ INFO ATUAL:
         if (!targetService || !targetBarber) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: "Não encontrei o serviço ou barbeiro. Pode repetir?",
+            ai_response: ["Não encontrei o serviço ou barbeiro. Pode repetir?"],
           });
         }
 
@@ -571,7 +569,9 @@ INFO ATUAL:
         ) {
           return NextResponse.json({
             status: "CLOSED",
-            ai_response: `No momento estamos fechados nesse horário. Nosso expediente de atendimento vai até às ${shopData.closingTime}, permitindo serviços que finalizem até no máximo 20 minutos após o fechamento. Que tal escolher outro horário?`,
+            ai_response: [
+              `No momento estamos fechados nesse horário. Nosso expediente vai até às ${shopData.closingTime}. Que tal escolher outro horário?`,
+            ],
           });
         }
 
@@ -700,7 +700,7 @@ INFO ATUAL:
 
           return NextResponse.json({
             status: "SUCCESS",
-            ai_response: successMsg,
+            ai_response: [successMsg],
             details: finalAppointment,
           });
         } catch (txError: unknown) {
@@ -745,7 +745,6 @@ INFO ATUAL:
               });
             }
 
-            // Ajustado para o novo formato formal de Horário Ocupado
             const ai_response = `Temos horário disponível às ${suggestTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
@@ -759,14 +758,12 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "UNAVAILABLE",
-              ai_response: ai_response,
+              ai_response: [ai_response],
             });
           }
 
           if (errorMessage.startsWith("GAP_DETECTED:")) {
             const closerTime = errorMessage.split(":")[1];
-
-            // Ajustado para o novo formato formal de Otimização de Agenda/Gap
             const ai_response = `Temos horário disponível às ${closerTime}. Pode ser?`;
 
             await prisma.chatMessage.create({
@@ -780,7 +777,7 @@ INFO ATUAL:
 
             return NextResponse.json({
               status: "GAP_DETECTED",
-              ai_response: ai_response,
+              ai_response: [ai_response],
             });
           }
 
@@ -816,6 +813,7 @@ INFO ATUAL:
       const messagesToSend = aiFinalText
         .split(/(?<=[.!?])\s+/)
         .filter((msg: string) => msg.trim().length > 0);
+
       return NextResponse.json({
         status: "TEXT_RESPONSE",
         ai_response: messagesToSend,
@@ -829,7 +827,7 @@ INFO ATUAL:
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Erro desconhecido";
-    console.error("Erro no processamento", error);
+    console.error("Erro no processamento:", error);
 
     if (
       errorMessage.includes("503") ||
@@ -846,7 +844,7 @@ INFO ATUAL:
     }
 
     return NextResponse.json(
-      { status: "Error", message: (error as Error).message },
+      { status: "Error", message: errorMessage },
       { status: 500 },
     );
   }
