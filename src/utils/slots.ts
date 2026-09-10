@@ -12,8 +12,7 @@ export interface SlotsResult {
   slots: Slot[];
 }
 
-const BUFFER_MINUTES = 10; // Intervalo de limpeza/descanso
-const MIN_SERVICE_DURATION = 30; // Menor tempo de serviço da barbearia
+const BUFFER_MINUTES = 10; // Intervalo fixo de limpeza/descanso
 
 function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(":").map(Number);
@@ -32,14 +31,23 @@ export async function getAvailableSlotsForDay(
   barberId: number,
   serviceDuration: number,
 ): Promise<SlotsResult> {
+  // Inclui os serviços para calcular dinamicamente o menor tempo de serviço da barbearia
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
-    include: { closedDays: true },
+    include: { closedDays: true, services: true },
   });
 
   if (!shop) throw new Error("Barbearia não encontrada.");
 
-  // 1. CHECAGEM DE FERIADOS, DOMINGOS E FOLGAS
+  // 1. CÁLCULO DINÂMICO DO MENOR SERVIÇO + BUFFER
+  const minServiceDuration =
+    shop.services && shop.services.length > 0
+      ? Math.min(...shop.services.map((s) => s.durationMinutes))
+      : 30;
+
+  const minNeededGap = minServiceDuration + BUFFER_MINUTES;
+
+  // 2. CHECAGEM DE FERIADOS, DOMINGOS E FOLGAS
   const [year, month, day] = dateStr.split("-").map(Number);
   const targetDate = new Date(year, month - 1, day);
   const dayOfWeek = targetDate.getDay();
@@ -94,8 +102,7 @@ export async function getAvailableSlotsForDay(
     };
   }
 
-  // 2. BUSCA DE AGENDAMENTOS EXISTENTES
-  // Assume que app.endTime no Banco já inclui serviceDuration + BUFFER_MINUTES
+  // 3. BUSCA DE AGENDAMENTOS EXISTENTES
   const startOfDay = new Date(`${dateStr}T00:00:00-03:00`);
   const endOfDay = new Date(`${dateStr}T23:59:59-03:00`);
   const appointments = await prisma.appointment.findMany({
@@ -121,7 +128,7 @@ export async function getAvailableSlotsForDay(
     return { start: timeToMinutes(startLocal), end: timeToMinutes(endLocal) };
   });
 
-  // 3. CÁLCULO DA GRADE DINÂMICA
+  // 4. CÁLCULO DA GRADE DINÂMICA
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
   const totalNeededMinutes = serviceDuration + BUFFER_MINUTES;
@@ -197,11 +204,11 @@ export async function getAvailableSlotsForDay(
     min += slotStep;
   }
 
-  // 4. FILTRAGEM ANTI-LACUNAS (UX)
+  // 5. FILTRAGEM ANTI-LACUNAS DINÂMICA
   const cleanSlots = rawSlots.filter((slot) => {
     if (slot.status === "OCUPADO" || slot.status === "ALMOCO") return false;
 
-    // 1. Todo horário Ancorado/Recomendado deve aparecer (pois garante 0 minutos de buraco)
+    // Horários Ancorados/Recomendados (garantem 0 minutos de lacuna)
     if (slot.status === "RECOMENDADO") return true;
 
     const slotStartMins = timeToMinutes(slot.time);
@@ -209,16 +216,16 @@ export async function getAvailableSlotsForDay(
 
     if (!isRounded30Min) return false;
 
-    // 2. Para horários redondos (:00 e :30) que não são ancorados,
-    // verifica se o intervalo gerado antes dele é suficiente para caber ao menos o menor serviço
+    // Para horários redondos (:00 e :30) que não são ancorados,
+    // verifica se o intervalo gerado antes dele comporta o menor serviço + buffer
     const prevBoundary = busyRanges
       .filter((r) => r.end <= slotStartMins)
       .reduce((max, r) => Math.max(max, r.end), openMin);
 
     const gapBefore = slotStartMins - prevBoundary;
 
-    // Se o espaço antes for 0 ou maior/igual ao menor serviço, o slot é válido
-    return gapBefore === 0 || gapBefore >= MIN_SERVICE_DURATION;
+    // O espaço anterior deve ser 0 (colado) ou maior/igual ao menor serviço + buffer
+    return gapBefore === 0 || gapBefore >= minNeededGap;
   });
 
   return {
