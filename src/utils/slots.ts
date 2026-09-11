@@ -12,7 +12,7 @@ export interface SlotsResult {
   slots: Slot[];
 }
 
-const BUFFER_MINUTES = 10; // Intervalo fixo de limpeza/descanso
+const BUFFER_MINUTES = 10;
 
 function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(":").map(Number);
@@ -31,7 +31,6 @@ export async function getAvailableSlotsForDay(
   barberId: number,
   serviceDuration: number,
 ): Promise<SlotsResult> {
-  // Inclui os serviços para calcular dinamicamente o menor tempo de serviço da barbearia
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
     include: { closedDays: true, services: true },
@@ -39,15 +38,12 @@ export async function getAvailableSlotsForDay(
 
   if (!shop) throw new Error("Barbearia não encontrada.");
 
-  // 1. CÁLCULO DINÂMICO DO MENOR SERVIÇO + BUFFER
-  const minServiceDuration =
-    shop.services && shop.services.length > 0
-      ? Math.min(...shop.services.map((s) => s.durationMinutes))
-      : 30;
-
+  const minDbService = shop.services?.length
+    ? Math.min(...shop.services.map((s) => s.durationMinutes))
+    : 30;
+  const minServiceDuration = Math.min(minDbService, serviceDuration);
   const minNeededGap = minServiceDuration + BUFFER_MINUTES;
 
-  // 2. CHECAGEM DE FERIADOS, DOMINGOS E FOLGAS
   const [year, month, day] = dateStr.split("-").map(Number);
   const targetDate = new Date(year, month - 1, day);
   const dayOfWeek = targetDate.getDay();
@@ -102,7 +98,6 @@ export async function getAvailableSlotsForDay(
     };
   }
 
-  // 3. BUSCA DE AGENDAMENTOS EXISTENTES
   const startOfDay = new Date(`${dateStr}T00:00:00-03:00`);
   const endOfDay = new Date(`${dateStr}T23:59:59-03:00`);
   const appointments = await prisma.appointment.findMany({
@@ -115,20 +110,18 @@ export async function getAvailableSlotsForDay(
     orderBy: { startTime: "asc" },
   });
 
-  const busyRanges = appointments.map((app) => {
-    const formatter = new Intl.DateTimeFormat("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-      timeZone: "America/Sao_Paulo",
-    });
-
-    const startLocal = formatter.format(app.startTime);
-    const endLocal = formatter.format(app.endTime);
-    return { start: timeToMinutes(startLocal), end: timeToMinutes(endLocal) };
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Sao_Paulo",
   });
 
-  // 4. CÁLCULO DA GRADE DINÂMICA
+  const busyRanges = appointments.map((app) => ({
+    start: timeToMinutes(formatter.format(app.startTime)),
+    end: timeToMinutes(formatter.format(app.endTime)),
+  }));
+
   const openMin = timeToMinutes(shop.openingTime);
   const closeMin = timeToMinutes(shop.closingTime);
   const totalNeededMinutes = serviceDuration + BUFFER_MINUTES;
@@ -137,29 +130,39 @@ export async function getAvailableSlotsForDay(
     shop.hasLunchBreak && shop.lunchStart
       ? timeToMinutes(shop.lunchStart)
       : null;
-
   const lunchEndMin =
     shop.hasLunchBreak && shop.lunchEnd ? timeToMinutes(shop.lunchEnd) : null;
 
-  const rawSlots: Slot[] = [];
-  const slotStep = 10; // Varredura a cada 10 min
+  const allBlockers = [
+    { start: 0, end: openMin },
+    { start: closeMin, end: 24 * 60 },
+    ...busyRanges,
+  ];
 
+  if (lunchStartMin !== null && lunchEndMin !== null) {
+    allBlockers.push({ start: lunchStartMin, end: lunchEndMin });
+  }
+
+  const rawSlots: Slot[] = [];
+  const slotStep = 10;
   let min = openMin;
 
   while (min <= closeMin) {
     const slotStart = min;
+    const serviceOnlyEnd = slotStart + serviceDuration;
     const slotEnd = slotStart + totalNeededMinutes;
     const timeString = minutesToTime(slotStart);
 
-    // Valida encerramento do expediente
-    if (slotEnd > closeMin + BUFFER_MINUTES) {
+    if (serviceOnlyEnd > closeMin) {
       min += slotStep;
       continue;
     }
 
-    // Valida conflito com almoço
     if (lunchStartMin !== null && lunchEndMin !== null) {
-      if (slotStart < lunchEndMin && slotEnd > lunchStartMin) {
+      const serviceCollidesLunch =
+        slotStart < lunchEndMin && serviceOnlyEnd > lunchStartMin;
+
+      if (serviceCollidesLunch) {
         if (slotStart >= lunchStartMin && slotStart < lunchEndMin) {
           rawSlots.push({ time: timeString, status: "ALMOCO" });
         }
@@ -168,7 +171,6 @@ export async function getAvailableSlotsForDay(
       }
     }
 
-    // Valida colisão direta com outros agendamentos
     const hasCollision = busyRanges.some(
       (range) => slotStart < range.end && slotEnd > range.start,
     );
@@ -179,21 +181,16 @@ export async function getAvailableSlotsForDay(
       continue;
     }
 
-    // Pontos de Ancoragem (Início do dia, Volta do Almoço ou Colado ao término do cliente anterior)
-    const isBeginningOfDay = slotStart === openMin;
-    const isAfterLunch = lunchEndMin !== null && slotStart === lunchEndMin;
-    const isBackToBackWithPrevious = busyRanges.some(
-      (range) => range.end === slotStart,
+    const isAnchoredStart = allBlockers.some(
+      (b) => b.end === slotStart && b.end !== 0,
     );
-    const fitsPerfectlyBeforeNext = busyRanges.some(
-      (range) => slotEnd === range.start,
+    const isAnchoredEnd = allBlockers.some(
+      (b) =>
+        (b.start === slotEnd || b.start === serviceOnlyEnd) &&
+        b.start !== 24 * 60,
     );
 
-    const isRecommended =
-      isBeginningOfDay ||
-      isAfterLunch ||
-      isBackToBackWithPrevious ||
-      fitsPerfectlyBeforeNext;
+    const isRecommended = isAnchoredStart || isAnchoredEnd;
 
     rawSlots.push({
       time: timeString,
@@ -204,28 +201,41 @@ export async function getAvailableSlotsForDay(
     min += slotStep;
   }
 
-  // 5. FILTRAGEM ANTI-LACUNAS DINÂMICA
   const cleanSlots = rawSlots.filter((slot) => {
     if (slot.status === "OCUPADO" || slot.status === "ALMOCO") return false;
-
-    // Horários Ancorados/Recomendados (garantem 0 minutos de lacuna)
     if (slot.status === "RECOMENDADO") return true;
 
     const slotStartMins = timeToMinutes(slot.time);
-    const isRounded30Min = slotStartMins % 30 === 0;
+    const serviceOnlyEndMins = slotStartMins + serviceDuration;
+    const slotEndMins = slotStartMins + totalNeededMinutes;
 
-    if (!isRounded30Min) return false;
+    const prevBoundary = allBlockers
+      .filter((b) => b.end <= slotStartMins)
+      .reduce((max, b) => Math.max(max, b.end), 0);
 
-    // Para horários redondos (:00 e :30) que não são ancorados,
-    // verifica se o intervalo gerado antes dele comporta o menor serviço + buffer
-    const prevBoundary = busyRanges
-      .filter((r) => r.end <= slotStartMins)
-      .reduce((max, r) => Math.max(max, r.end), openMin);
+    const nextBoundary = allBlockers
+      .filter((b) => b.start >= serviceOnlyEndMins)
+      .reduce((minVal, b) => Math.min(minVal, b.start), 24 * 60);
 
     const gapBefore = slotStartMins - prevBoundary;
 
-    // O espaço anterior deve ser 0 (colado) ou maior/igual ao menor serviço + buffer
-    return gapBefore === 0 || gapBefore >= minNeededGap;
+    const effectiveEnd =
+      slotEndMins > nextBoundary && serviceOnlyEndMins <= nextBoundary
+        ? nextBoundary
+        : slotEndMins;
+    const gapAfter = nextBoundary - effectiveEnd;
+
+    const isBeforeValid =
+      gapBefore === 0 ||
+      (gapBefore >= minNeededGap && gapBefore % minNeededGap === 0);
+
+    const isAfterValid =
+      gapAfter === 0 ||
+      (gapAfter >= minNeededGap && gapAfter % minNeededGap === 0) ||
+      (gapAfter >= serviceDuration &&
+        (gapAfter - serviceDuration) % minNeededGap === 0);
+
+    return isBeforeValid && isAfterValid;
   });
 
   return {
