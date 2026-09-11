@@ -214,7 +214,9 @@ SITUAÇÕES DE AGENDAMENTO:
      - Se o cliente perguntar se tem vaga em determinado dia ou horário (ex: "Tem horário amanhã?", "Tem horário às 14h?") e AINDA NÃO tiver informado o serviço, pergunte PRIMEIRO qual serviço ele deseja realizar (a menos que a loja só tenha 1 serviço).
   3. Confirmação e Consulta de Horários:
      - Sempre que tiver o serviço definido e o cliente perguntar sobre disponibilidade (geral ou de horário específico), acione a ferramenta 'getAvailableSlots'.
-     - Se o cliente perguntar se um horário específico está livre (ex: "Tem às 14h?"), chame 'getAvailableSlots'. Se o horário constar no grid fornecido como disponível ou recomendado, confirme para o cliente e peça apenas o Nome dele. Se não estiver livre, ofereça um horário alternativo do grid.
+     - Se o cliente perguntar se um horário específico está livre (ex: "Tem às 14h?"):
+       * Se estiver LIVRE/RECOMENDADO no grid: Confirme para o cliente e peça o Nome dele.
+       * Se NÃO estiver livre ou for ocupado: Ofereça APENAS os horários LIVRES/RECOMENDADOS que sejam os MAIS PRÓXIMOS (imediatamente antes ou depois) do horário que ele pediu. NUNCA dê saltos grandes de horário (ex: pular da manhã para a tarde), a menos que não haja nenhuma outra vaga no mesmo turno.
   4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se você listar ou sugerir MAIS DE UM horário alternativo, termine obrigatoriamente com "Qual prefere?".
   5. Retorno do 'getAvailableSlots':
    - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente ao cliente o motivo ('reason') e pergunte se ele deseja verificar outro dia.
@@ -222,6 +224,7 @@ SITUAÇÕES DE AGENDAMENTO:
    - SE A GRADE ESTIVER VAZIA (isClosed: false e grid vazio): Informe que os horários para este dia já estão todos lotados/preenchidos e pergunte se pode ser em outro dia.
 
 REGRAS GERAIS:
+  - REGRA DE PROXIMIDADE DE HORÁRIOS: Ao sugerir alternativas de horário para o cliente, selecione SEMPRE os horários livres mais próximos do horário originalmente solicitado por ele. Priorize horários no mesmo turno (manhã com manhã, tarde com tarde).
   - REGRA DE PERGUNTA AO SUGERIR: Quando você sugerir horários específicos por conta própria (ex: em caso de conflito ou após o cliente pedir uma lista), se contiver apenas 1 horário, termine com "Pode ser?". Se contiver 2 ou mais horários, termine com "Qual prefere?".
   - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA pergunte qual serviço o cliente deseja e NUNCA mencione o nome dele nas respostas, a menos que o cliente pergunte explicitamente.` : ""}
   - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas, a menos que o cliente pergunte explicitamente.` : ""}
@@ -367,7 +370,7 @@ INFO ATUAL:
                 status: s.status,
                 preferencial:
                   s.status === "RECOMENDADO"
-                    ? "SIM (Ofereça este primeiro se for sugerir)"
+                    ? "SIM (Ofereça preferencialmente se for o mais próximo do pedido do cliente)"
                     : "NÃO",
               })),
             };
