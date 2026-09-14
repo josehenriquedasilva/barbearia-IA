@@ -35,7 +35,7 @@ function getFormattedCurrentDate() {
 async function sendMessageWithRetry(
   chat: ChatSession,
   content: string | (string | Part)[],
-  maxRetries = 2
+  maxRetries = 2,
 ) {
   let retryCount = 0;
   while (retryCount <= maxRetries) {
@@ -51,7 +51,7 @@ async function sendMessageWithRetry(
       if (isOverloaded && retryCount < maxRetries) {
         retryCount++;
         console.log(
-          `Gemini ocupado (503/429). Tentativa ${retryCount} de ${maxRetries}...`
+          `Gemini ocupado (503/429). Tentativa ${retryCount} de ${maxRetries}...`,
         );
         await new Promise((resolve) => setTimeout(resolve, 2000));
         continue;
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     if (!shopId) {
       return NextResponse.json(
         { message: "ID da barbearia não fornecido." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     if (!shopData) {
       return NextResponse.json(
         { message: "Barbearia não encontrada." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     if (upcomingAppointment) {
       const dateStr = upcomingAppointment.startTime.toLocaleDateString(
         "pt-BR",
-        { timeZone: "America/Sao_Paulo" }
+        { timeZone: "America/Sao_Paulo" },
       );
       const timeStr = upcomingAppointment.startTime.toLocaleTimeString(
         "pt-BR",
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
           hour: "2-digit",
           minute: "2-digit",
           timeZone: "America/Sao_Paulo",
-        }
+        },
       );
       appointmentInfo = `\n- O cliente JÁ TEM um agendamento para o dia ${dateStr} às ${timeStr} (${upcomingAppointment.service.name} com ${upcomingAppointment.barber.name}).`;
     }
@@ -171,10 +171,10 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
 SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?".
   2. Confirmação e Consulta de Horários (Apenas APÓS ter o serviço definido):
-     - Acione a ferramenta 'getAvailableSlots' fornecendo a data, o serviço e, se o cliente perguntou por um horário específico (ex: "Tem às 15h?"), passe o parâmetro 'requestedTime' (ex: "15:00").
+     - Acione a ferramenta 'getAvailableSlots' fornecendo a data, o serviço e, se o cliente perguntou por um horário específico (ex: "Tem às 15h?"), passe o parâmetro 'requestedTime' no formato HH:MM (ex: "15:00").
      - Se o cliente perguntou por um horário específico:
        * Se 'horarioSolicitadoDisponivel' for true: Confirme que o horário das [HORA] está livre e peça o nome do cliente.
-       * Se 'horarioSolicitadoDisponivel' for false: Diga educadamente que o horário solicitado não está livre e ofereça EXATAMENTE os horários contidos na lista 'sugestoesHorariosMaisProximos'. NUNCA sugira horários fora dessa lista.
+       * Se 'horarioSolicitadoDisponivel' for false: Diga educadamente que o horário solicitado não está livre. Se a lista 'sugestoesHorariosMaisProximos' tiver horários, ofereça EXATAMENTE esses horários. Se a lista estiver vazia, diga que não há horários próximos no período e pergunte se prefere outro período.
   3. Retorno do 'getAvailableSlots':
      - SE 'isClosed: true': Informe o motivo do fechamento ao cliente e pergunte se deseja verificar outro dia.
      - SE HOUVER HORÁRIOS LIVRES (sem horário específico do cliente): NÃO liste todos os horários. Apenas confirme que existem horários livres e peça para o cliente dizer o horário de preferência dele.
@@ -296,10 +296,10 @@ ${servicosInfo}`;
           call.args as unknown as CheckArgs;
 
         const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === barberName.toLowerCase()
+          (b) => b.name.toLowerCase() === barberName.toLowerCase(),
         );
         const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === serviceName.toLowerCase()
+          (s) => s.name.toLowerCase() === serviceName.toLowerCase(),
         );
 
         if (!targetBarber || !targetService) {
@@ -312,7 +312,7 @@ ${servicosInfo}`;
             Number(shopId),
             date,
             targetBarber.id,
-            targetService.durationMinutes
+            targetService.durationMinutes,
           );
 
           if (slotsResult.isClosed) {
@@ -324,19 +324,23 @@ ${servicosInfo}`;
           } else {
             let sugestoesProximas: string[] = [];
             let isRequestedAvailable = false;
+            let formattedRequestedTime: string | null = null;
 
             if (requestedTime) {
+              formattedRequestedTime = requestedTime.trim().slice(0, 5);
+
               const requestedSlot = slotsResult.slots.find(
-                (s) => s.time === requestedTime
+                (s) => s.time === formattedRequestedTime,
               );
+
               isRequestedAvailable =
                 requestedSlot?.status === "DISPONIVEL" ||
                 requestedSlot?.status === "RECOMENDADO";
 
               sugestoesProximas = getClosestSlots(
                 slotsResult.slots,
-                requestedTime,
-                120
+                formattedRequestedTime,
+                120,
               );
             }
 
@@ -345,8 +349,8 @@ ${servicosInfo}`;
               date,
               barberName,
               serviceName,
-              horarioSolicitado: requestedTime || null,
-              horarioSolicitadoDisponivel: requestedTime
+              horarioSolicitado: formattedRequestedTime,
+              horarioSolicitadoDisponivel: formattedRequestedTime
                 ? isRequestedAvailable
                 : null,
               sugestoesHorariosMaisProximos: sugestoesProximas,
@@ -393,10 +397,10 @@ ${servicosInfo}`;
         }
 
         const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase()
+          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
         );
         const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === args.barberName.toLowerCase()
+          (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
         );
 
         if (!targetService || !targetBarber) {
@@ -410,7 +414,7 @@ ${servicosInfo}`;
           Number(shopId),
           args.date,
           targetBarber.id,
-          targetService.durationMinutes
+          targetService.durationMinutes,
         );
 
         if (slotsResult.isClosed) {
@@ -465,7 +469,7 @@ ${servicosInfo}`;
         const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
         const durationWithInterval = targetService.durationMinutes + 10;
         const endTime = new Date(
-          startAt.getTime() + durationWithInterval * 60000
+          startAt.getTime() + durationWithInterval * 60000,
         );
 
         try {
@@ -526,8 +530,7 @@ ${servicosInfo}`;
             details: finalAppointment,
           });
         } catch (txError: unknown) {
-          const errorMessage =
-            txError instanceof Error ? txError.message : "";
+          const errorMessage = txError instanceof Error ? txError.message : "";
 
           if (errorMessage === "TIME_SLOT_TAKEN") {
             const ai_response =
@@ -611,7 +614,7 @@ ${servicosInfo}`;
 
     return NextResponse.json(
       { status: "Error", message: errorMessage },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

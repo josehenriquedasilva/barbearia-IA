@@ -28,62 +28,48 @@ function minutesToTime(mins: number): string {
 export function getClosestSlots(
   slots: Slot[],
   requestedTime: string,
-  maxDiffMinutes = 120
+  maxDiffMinutes = 120,
 ): string[] {
   const available = slots.filter(
-    (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO"
+    (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
   );
 
   if (available.length === 0) return [];
 
-  const targetMins = timeToMinutes(requestedTime);
+  // Normaliza para formato HH:MM (ex: "15:00:00" -> "15:00")
+  const cleanRequestedTime = requestedTime.trim().slice(0, 5);
+  const targetMins = timeToMinutes(cleanRequestedTime);
 
-  // Slots anteriores (ordenados do mais próximo ao mais distante do horário pedido)
-  const beforeSlots = available
+  // 1. Filtra apenas os horários dentro da janela (ex: até 2 horas antes ou depois)
+  const slotsInWindow = available.filter(
+    (s) => Math.abs(timeToMinutes(s.time) - targetMins) <= maxDiffMinutes,
+  );
+
+  // Se houver horários dentro da janela, usa eles. Se não houver nenhum, cai no fallback do dia.
+  const pool = slotsInWindow.length > 0 ? slotsInWindow : available;
+
+  const beforeSlots = pool
     .filter((s) => timeToMinutes(s.time) < targetMins)
-    .sort((a, b) => timeToMinutes(b.time) - timeToMinutes(a.time));
+    .sort((a, b) => timeToMinutes(b.time) - timeToMinutes(a.time)); // Do mais próximo ao mais distante
 
-  // Slots posteriores (ordenados do mais próximo ao mais distante do horário pedido)
-  const afterSlots = available
+  const afterSlots = pool
     .filter((s) => timeToMinutes(s.time) > targetMins)
-    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-
-  const closestBefore = beforeSlots[0];
-  const closestAfter = afterSlots[0];
-
-  const isBeforeTooFar =
-    !closestBefore ||
-    targetMins - timeToMinutes(closestBefore.time) > maxDiffMinutes;
-
-  const isAfterTooFar =
-    !closestAfter ||
-    timeToMinutes(closestAfter.time) - targetMins > maxDiffMinutes;
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time)); // Do mais próximo ao mais distante
 
   let selected: Slot[] = [];
 
-  // Regra 1: 1 anterior e 1 posterior se nenhum estiver "muito longe"
-  if (closestBefore && closestAfter && !isBeforeTooFar && !isAfterTooFar) {
-    selected = [closestBefore, closestAfter];
-  }
-  // Regra 2: Anterior muito longe (ou inexistente) -> pega os 2 posteriores mais próximos
-  else if (isBeforeTooFar && afterSlots.length > 0) {
+  if (beforeSlots.length > 0 && afterSlots.length > 0) {
+    // Pega 1 opção imediatamente antes e 1 imediatamente depois dentro da janela
+    selected = [beforeSlots[0], afterSlots[0]];
+  } else if (beforeSlots.length > 0) {
+    // Apenas opções anteriores mais próximas
+    selected = beforeSlots.slice(0, 2);
+  } else if (afterSlots.length > 0) {
+    // Apenas opções posteriores mais próximas
     selected = afterSlots.slice(0, 2);
   }
-  // Regra 3: Posterior muito longe (ou inexistente) -> pega os 2 anteriores mais próximos
-  else if (isAfterTooFar && beforeSlots.length > 0) {
-    selected = beforeSlots.slice(0, 2);
-  }
-  // Fallback: seleciona os 2 com menor diferença absoluta
-  else {
-    const sortedAll = [...available].sort(
-      (a, b) =>
-        Math.abs(timeToMinutes(a.time) - targetMins) -
-        Math.abs(timeToMinutes(b.time) - targetMins)
-    );
-    selected = sortedAll.slice(0, 2);
-  }
 
-  // Ordena cronologicamente para a IA responder de forma natural (ex: "13:30 ou 14:00")
+  // Ordena cronologicamente para exibição (ex: "14:30 e 15:30")
   return selected
     .map((s) => s.time)
     .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
@@ -93,7 +79,7 @@ export async function getAvailableSlotsForDay(
   shopId: number,
   dateStr: string,
   barberId: number,
-  serviceDuration: number
+  serviceDuration: number,
 ): Promise<SlotsResult> {
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
@@ -236,7 +222,7 @@ export async function getAvailableSlotsForDay(
     }
 
     const hasCollision = busyRanges.some(
-      (range) => slotStart < range.end && slotEnd > range.start
+      (range) => slotStart < range.end && slotEnd > range.start,
     );
 
     if (hasCollision) {
@@ -246,12 +232,12 @@ export async function getAvailableSlotsForDay(
     }
 
     const isAnchoredStart = allBlockers.some(
-      (b) => b.end === slotStart && b.end !== 0
+      (b) => b.end === slotStart && b.end !== 0,
     );
     const isAnchoredEnd = allBlockers.some(
       (b) =>
         (b.start === slotEnd || b.start === serviceOnlyEnd) &&
-        b.start !== 24 * 60
+        b.start !== 24 * 60,
     );
 
     const isRecommended = isAnchoredStart || isAnchoredEnd;
