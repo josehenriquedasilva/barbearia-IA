@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { startNewChat } from "@/lib/gemini";
 import { ChatSession, Part, SchemaType, Tool } from "@google/generative-ai";
-import { getAvailableSlotsForDay } from "@/utils/slots";
+import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +17,8 @@ interface ScheduleArgs {
 interface CheckArgs {
   barberName: string;
   date: string;
-  time: string;
   serviceName: string;
-}
-
-function timeToMinutes(timeStr: string): number {
-  const [h, m] = timeStr.split(":").map(Number);
-  return h * 60 + m;
+  requestedTime?: string;
 }
 
 function getFormattedCurrentDate() {
@@ -40,7 +35,7 @@ function getFormattedCurrentDate() {
 async function sendMessageWithRetry(
   chat: ChatSession,
   content: string | (string | Part)[],
-  maxRetries = 2,
+  maxRetries = 2
 ) {
   let retryCount = 0;
   while (retryCount <= maxRetries) {
@@ -56,7 +51,7 @@ async function sendMessageWithRetry(
       if (isOverloaded && retryCount < maxRetries) {
         retryCount++;
         console.log(
-          `Gemini ocupado (503/429). Tentativa ${retryCount} de ${maxRetries}...`,
+          `Gemini ocupado (503/429). Tentativa ${retryCount} de ${maxRetries}...`
         );
         await new Promise((resolve) => setTimeout(resolve, 2000));
         continue;
@@ -78,7 +73,7 @@ export async function POST(request: Request) {
     if (!shopId) {
       return NextResponse.json(
         { message: "ID da barbearia não fornecido." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -96,11 +91,10 @@ export async function POST(request: Request) {
     if (!shopData) {
       return NextResponse.json(
         { message: "Barbearia não encontrada." },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
-    // Busca agendamento futuro ativo do cliente
     const upcomingAppointment = await prisma.appointment.findFirst({
       where: {
         clientPhone: clientPhone,
@@ -116,7 +110,7 @@ export async function POST(request: Request) {
     if (upcomingAppointment) {
       const dateStr = upcomingAppointment.startTime.toLocaleDateString(
         "pt-BR",
-        { timeZone: "America/Sao_Paulo" },
+        { timeZone: "America/Sao_Paulo" }
       );
       const timeStr = upcomingAppointment.startTime.toLocaleTimeString(
         "pt-BR",
@@ -124,7 +118,7 @@ export async function POST(request: Request) {
           hour: "2-digit",
           minute: "2-digit",
           timeZone: "America/Sao_Paulo",
-        },
+        }
       );
       appointmentInfo = `\n- O cliente JÁ TEM um agendamento para o dia ${dateStr} às ${timeStr} (${upcomingAppointment.service.name} com ${upcomingAppointment.barber.name}).`;
     }
@@ -139,8 +133,6 @@ export async function POST(request: Request) {
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
       .join("\n");
 
-
-    // Histórico de mensagens
     const lastMessages = await prisma.chatMessage.findMany({
       where: {
         shopId: Number(shopId),
@@ -179,13 +171,13 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
 SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?".
   2. Confirmação e Consulta de Horários (Apenas APÓS ter o serviço definido):
-     - Acione a ferramenta 'getAvailableSlots' fornecendo a data e o serviço informado pelo cliente.
-     - Se o cliente perguntou por um horário específico (ex: "Tem às 14h?"):
-       * Se o horário estiver no grid retornado: Confirme para o cliente e peça o Nome dele.
-       * Se NÃO estiver no grid: Ofereça APENAS os horários LIVRES/RECOMENDADOS mais próximos do horário solicitado.
+     - Acione a ferramenta 'getAvailableSlots' fornecendo a data, o serviço e, se o cliente perguntou por um horário específico (ex: "Tem às 15h?"), passe o parâmetro 'requestedTime' (ex: "15:00").
+     - Se o cliente perguntou por um horário específico:
+       * Se 'horarioSolicitadoDisponivel' for true: Confirme que o horário das [HORA] está livre e peça o nome do cliente.
+       * Se 'horarioSolicitadoDisponivel' for false: Diga educadamente que o horário solicitado não está livre e ofereça EXATAMENTE os horários contidos na lista 'sugestoesHorariosMaisProximos'. NUNCA sugira horários fora dessa lista.
   3. Retorno do 'getAvailableSlots':
      - SE 'isClosed: true': Informe o motivo do fechamento ao cliente e pergunte se deseja verificar outro dia.
-     - SE HOUVER HORÁRIOS LIVRES: NÃO liste todos os horários. Apenas confirme que existem horários livres e peça para o cliente dizer o horário de preferência dele.
+     - SE HOUVER HORÁRIOS LIVRES (sem horário específico do cliente): NÃO liste todos os horários. Apenas confirme que existem horários livres e peça para o cliente dizer o horário de preferência dele.
      - SE A GRADE ESTIVER VAZIA: Informe que os horários do dia estão lotados e pergunte se deseja verificar outra data.
 
 REGRAS GERAIS:
@@ -257,7 +249,7 @@ ${servicosInfo}`;
           {
             name: "getAvailableSlots",
             description:
-              "Busca a grade completa de horários de um dia específico para o barbeiro e serviço escolhidos pelo cliente.",
+              "Busca a grade completa ou sugestões mais próximas de horários de um dia para barbeiro e serviço.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -277,6 +269,11 @@ ${servicosInfo}`;
                     ? `Nome do serviço. Use '${unicoServico}' automaticamente.`
                     : "Nome do serviço explicitamente informado pelo cliente.",
                 },
+                requestedTime: {
+                  type: SchemaType.STRING,
+                  description:
+                    "Horário específico perguntado pelo cliente no formato HH:MM (ex: 15:00), se houver.",
+                },
               },
               required: ["date", "barberName", "serviceName"],
             },
@@ -295,14 +292,14 @@ ${servicosInfo}`;
       let functionResponse: Record<string, unknown> = {};
 
       if (call.name === "getAvailableSlots") {
-        const { date, barberName, serviceName } =
+        const { date, barberName, serviceName, requestedTime } =
           call.args as unknown as CheckArgs;
 
         const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === barberName.toLowerCase(),
+          (b) => b.name.toLowerCase() === barberName.toLowerCase()
         );
         const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === serviceName.toLowerCase(),
+          (s) => s.name.toLowerCase() === serviceName.toLowerCase()
         );
 
         if (!targetBarber || !targetService) {
@@ -315,7 +312,7 @@ ${servicosInfo}`;
             Number(shopId),
             date,
             targetBarber.id,
-            targetService.durationMinutes,
+            targetService.durationMinutes
           );
 
           if (slotsResult.isClosed) {
@@ -325,19 +322,38 @@ ${servicosInfo}`;
               message: slotsResult.closedReason,
             };
           } else {
+            let sugestoesProximas: string[] = [];
+            let isRequestedAvailable = false;
+
+            if (requestedTime) {
+              const requestedSlot = slotsResult.slots.find(
+                (s) => s.time === requestedTime
+              );
+              isRequestedAvailable =
+                requestedSlot?.status === "DISPONIVEL" ||
+                requestedSlot?.status === "RECOMENDADO";
+
+              sugestoesProximas = getClosestSlots(
+                slotsResult.slots,
+                requestedTime,
+                120
+              );
+            }
+
             functionResponse = {
               isClosed: false,
               date,
               barberName,
               serviceName,
+              horarioSolicitado: requestedTime || null,
+              horarioSolicitadoDisponivel: requestedTime
+                ? isRequestedAvailable
+                : null,
+              sugestoesHorariosMaisProximos: sugestoesProximas,
               totalSlots: slotsResult.slots.length,
               grid: slotsResult.slots.map((s) => ({
                 horario: s.time,
                 status: s.status,
-                preferencial:
-                  s.status === "RECOMENDADO"
-                    ? "SIM (Ofereça preferencialmente se for o mais próximo do pedido do cliente)"
-                    : "NÃO",
               })),
             };
           }
@@ -377,10 +393,10 @@ ${servicosInfo}`;
         }
 
         const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
+          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase()
         );
         const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
+          (b) => b.name.toLowerCase() === args.barberName.toLowerCase()
         );
 
         if (!targetService || !targetBarber) {
@@ -394,7 +410,7 @@ ${servicosInfo}`;
           Number(shopId),
           args.date,
           targetBarber.id,
-          targetService.durationMinutes,
+          targetService.durationMinutes
         );
 
         if (slotsResult.isClosed) {
@@ -410,26 +426,10 @@ ${servicosInfo}`;
         const chosenSlot = slotsResult.slots.find((s) => s.time === args.time);
 
         if (!chosenSlot) {
-          const recommendedSlots = slotsResult.slots.filter(
-            (s) => s.status === "RECOMENDADO",
-          );
-          const candidateList =
-            recommendedSlots.length > 0 ? recommendedSlots : slotsResult.slots;
+          const sugestoes = getClosestSlots(slotsResult.slots, args.time, 120);
 
-          let suggestedTime = "";
-          if (candidateList.length > 0) {
-            const reqMins = timeToMinutes(args.time);
-            const sortedByDiff = [...candidateList].sort((a, b) => {
-              return (
-                Math.abs(timeToMinutes(a.time) - reqMins) -
-                Math.abs(timeToMinutes(b.time) - reqMins)
-              );
-            });
-            suggestedTime = sortedByDiff[0].time;
-          }
-
-          if (suggestedTime) {
-            const ai_response = `Temos horário disponível às ${suggestedTime}. Pode ser?`;
+          if (sugestoes.length > 0) {
+            const ai_response = `O horário das ${args.time} não está mais livre. Temos opções às ${sugestoes.join(" ou ")}. Pode ser?`;
             await prisma.chatMessage.create({
               data: {
                 role: "model",
@@ -465,7 +465,7 @@ ${servicosInfo}`;
         const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
         const durationWithInterval = targetService.durationMinutes + 10;
         const endTime = new Date(
-          startAt.getTime() + durationWithInterval * 60000,
+          startAt.getTime() + durationWithInterval * 60000
         );
 
         try {
@@ -526,7 +526,8 @@ ${servicosInfo}`;
             details: finalAppointment,
           });
         } catch (txError: unknown) {
-          const errorMessage = txError instanceof Error ? txError.message : "";
+          const errorMessage =
+            txError instanceof Error ? txError.message : "";
 
           if (errorMessage === "TIME_SLOT_TAKEN") {
             const ai_response =
@@ -610,7 +611,7 @@ ${servicosInfo}`;
 
     return NextResponse.json(
       { status: "Error", message: errorMessage },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
