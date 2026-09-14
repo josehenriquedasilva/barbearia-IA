@@ -135,43 +135,10 @@ export async function POST(request: Request) {
     const unicoServico =
       shopData.services.length === 1 ? shopData.services[0].name : null;
 
-    // Busca grade ocupada dos próximos 2 dias para context da IA
-    const searchLimit = new Date();
-    searchLimit.setDate(searchLimit.getDate() + 2);
-
-    const busyAppointments = await prisma.appointment.findMany({
-      where: {
-        shopId: Number(shopId),
-        startTime: { gte: new Date(), lte: searchLimit },
-        status: "CONFIRMED",
-      },
-      select: {
-        startTime: true,
-        endTime: true,
-        barber: { select: { name: true } },
-      },
-      orderBy: { startTime: "asc" },
-    });
-
-    const busyScheduleString =
-      busyAppointments.length > 0
-        ? busyAppointments
-            .map(
-              (a) =>
-                `- ${a.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} das ${a.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} até às ${a.endTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })} com ${a.barber.name}`,
-            )
-            .join("\n")
-        : "Nenhum horário ocupado nos próximos dias.";
-
     const servicosInfo = shopData.services
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
       .join("\n");
 
-    const listaResumida =
-      shopData.services
-        .slice(0, 3)
-        .map((s) => s.name)
-        .join(", ") + (shopData.services.length > 3 ? "..." : "");
 
     // Histórico de mensagens
     const lastMessages = await prisma.chatMessage.findMany({
@@ -197,46 +164,38 @@ export async function POST(request: Request) {
 ${appointmentInfo}
 Hoje: ${currentDate}.
 
-DIRETRIZES:
+DIRETRIZES DE SAUDAÇÃO E COMPORTAMENTO:
   - Na primeira mensagem da conversa, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}.") integrada com a resposta ao cliente.
   - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?", EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.
   - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
   - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
   - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
+  - Se precisar perguntar o nome do cliente, NUNCA peça o nome inteiro, peça apenas o primeiro nome.
   - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
-  - Intervalo obrigatório: 10 min entre atendimentos.
-  - Retorno do almoço: ${shopData.hasLunchBreak && shopData.lunchEnd ? shopData.lunchEnd : "N/A"}.
+
+REGRA ABSOLUTA DE COLETA DO SERVIÇO:
+  ${unicoServico ? `A barbearia possui serviço único: ${unicoServico}. Assuma este serviço automaticamente sem perguntar ao cliente.` : `NUNCA chame a ferramenta 'getAvailableSlots' e NUNCA confirme horários se o cliente ainda NÃO informou qual serviço deseja realizar. Se o cliente perguntar por disponibilidade ou horários (ex: "Tem horário hoje?", "Tem às 14h?"), pergunte PRIMEIRO qual serviço ele quer fazer.`}
 
 SITUAÇÕES DE AGENDAMENTO:
-  1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?". Se ele fizer uma pergunta ou pedido direto, ignore a saudação e responda à dúvida dele diretamente.
-  2. Coleta do Serviço PRIMEIRO:
-     - Para calcular a disponibilidade de horários (seja para um dia ou para um horário específico), você PRECISA saber qual o serviço desejado.
-     - Se o cliente perguntar se tem vaga em determinado dia ou horário (ex: "Tem horário amanhã?", "Tem horário às 14h?") e AINDA NÃO tiver informado o serviço, pergunte PRIMEIRO qual serviço ele deseja realizar (a menos que a loja só tenha 1 serviço).
-  3. Confirmação e Consulta de Horários:
-     - Sempre que tiver o serviço definido e o cliente perguntar sobre disponibilidade (geral ou de horário específico), acione a ferramenta 'getAvailableSlots'.
-     - Se o cliente perguntar se um horário específico está livre (ex: "Tem às 14h?"):
-       * Se estiver LIVRE/RECOMENDADO no grid: Confirme para o cliente e peça o Nome dele.
-       * Se NÃO estiver livre ou for ocupado: Ofereça APENAS os horários LIVRES/RECOMENDADOS que sejam os MAIS PRÓXIMOS (imediatamente antes ou depois) do horário que ele pediu. NUNCA dê saltos grandes de horário (ex: pular da manhã para a tarde), a menos que não haja nenhuma outra vaga no mesmo turno.
-  4. Ocupado/Almoço: Se sugerir apenas UM horário alternativo, use: "Temos horário disponível às [hora sugerida]. Pode ser?". Se você listar ou sugerir MAIS DE UM horário alternativo, termine obrigatoriamente com "Qual prefere?".
-  5. Retorno do 'getAvailableSlots':
-   - SE O RETORNO INDICAR 'isClosed: true': Informe educadamente ao cliente o motivo ('reason') e pergunte se ele deseja verificar outro dia.
-   - SE HOUVER HORÁRIOS LIVRES (isClosed: false e grid com horários): NÃO liste todos os horários disponíveis. Apenas confirme que SIM, existem horários livres para aquele dia e peça para o cliente informar o horário que ele deseja.
-   - SE A GRADE ESTIVER VAZIA (isClosed: false e grid vazio): Informe que os horários para este dia já estão todos lotados/preenchidos e pergunte se pode ser em outro dia.
+  1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?".
+  2. Confirmação e Consulta de Horários (Apenas APÓS ter o serviço definido):
+     - Acione a ferramenta 'getAvailableSlots' fornecendo a data e o serviço informado pelo cliente.
+     - Se o cliente perguntou por um horário específico (ex: "Tem às 14h?"):
+       * Se o horário estiver no grid retornado: Confirme para o cliente e peça o Nome dele.
+       * Se NÃO estiver no grid: Ofereça APENAS os horários LIVRES/RECOMENDADOS mais próximos do horário solicitado.
+  3. Retorno do 'getAvailableSlots':
+     - SE 'isClosed: true': Informe o motivo do fechamento ao cliente e pergunte se deseja verificar outro dia.
+     - SE HOUVER HORÁRIOS LIVRES: NÃO liste todos os horários. Apenas confirme que existem horários livres e peça para o cliente dizer o horário de preferência dele.
+     - SE A GRADE ESTIVER VAZIA: Informe que os horários do dia estão lotados e pergunte se deseja verificar outra data.
 
 REGRAS GERAIS:
-  - REGRA DE PROXIMIDADE DE HORÁRIOS: Ao sugerir alternativas de horário para o cliente, selecione SEMPRE os horários livres mais próximos do horário originalmente solicitado por ele. Priorize horários no mesmo turno (manhã com manhã, tarde com tarde).
-  - REGRA DE PERGUNTA AO SUGERIR: Quando você sugerir horários específicos por conta própria (ex: em caso de conflito ou após o cliente pedir uma lista), se contiver apenas 1 horário, termine com "Pode ser?". Se contiver 2 ou mais horários, termine com "Qual prefere?".
-  - ${unicoServico ? `Serviço único: ${unicoServico}. Como a barbearia só possui este serviço, NUNCA pergunte qual serviço o cliente deseja e NUNCA mencione o nome dele nas respostas, a menos que o cliente pergunte explicitamente.` : ""}
-  - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Como a barbearia só possui este barbeiro, NUNCA mencione o nome dele nas respostas, a menos que o cliente pergunte explicitamente.` : ""}
+  - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Nunca mencione o nome do barbeiro nas respostas a menos que perguntado.` : ""}
   - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
   - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
-  - Use nomes reais nas Tools (ex: "cabelo" -> "Corte").
-  - Analise rigorosamente o histórico antes de responder para nunca pedir dados já fornecidos.
+  - Use nomes reais de serviços conforme a lista cadastrada.
 
-INFO ATUAL:
-  Ocupação: ${busyScheduleString}
-  Serviços: ${servicosInfo}
-  Lista de serviços resumida: ${listaResumida}.`;
+SERVIÇOS DISPONÍVEIS NA LOJA:
+${servicosInfo}`;
 
     const tools: Tool[] = [
       {
@@ -250,7 +209,9 @@ INFO ATUAL:
               properties: {
                 barberName: {
                   type: SchemaType.STRING,
-                  description: `Nome do barbeiro selecionado. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.`,
+                  description: unicoBarbeiro
+                    ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
+                    : "Nome do barbeiro selecionado.",
                 },
                 date: {
                   type: SchemaType.STRING,
@@ -258,12 +219,13 @@ INFO ATUAL:
                 },
                 time: {
                   type: SchemaType.STRING,
-                  description:
-                    "Hora no formato HH:MM - O horário escolhido pelo usuário. Se o usuário aceitou uma sugestão de horário, use o horário sugerido.",
+                  description: "Hora no formato HH:MM",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: `O nome EXATO do serviço conforme a lista fornecida no sistema. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
+                  description: unicoServico
+                    ? `Nome do serviço. Use '${unicoServico}' automaticamente.`
+                    : "Nome exato do serviço escolhido pelo cliente.",
                 },
                 clientName: {
                   type: SchemaType.STRING,
@@ -295,7 +257,7 @@ INFO ATUAL:
           {
             name: "getAvailableSlots",
             description:
-              "Busca a grade completa de horários de um dia específico (livres e recomendados) para o barbeiro e serviço escolhido.",
+              "Busca a grade completa de horários de um dia específico para o barbeiro e serviço escolhidos pelo cliente.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -305,11 +267,15 @@ INFO ATUAL:
                 },
                 barberName: {
                   type: SchemaType.STRING,
-                  description: `Nome do barbeiro. Se houver apenas um (${unicoBarbeiro}), use '${unicoBarbeiro}' automaticamente.`,
+                  description: unicoBarbeiro
+                    ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
+                    : "Nome do barbeiro.",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: `Nome do serviço desejado. Se houver apenas um (${unicoServico}), use '${unicoServico}' automaticamente.`,
+                  description: unicoServico
+                    ? `Nome do serviço. Use '${unicoServico}' automaticamente.`
+                    : "Nome do serviço explicitamente informado pelo cliente.",
                 },
               },
               required: ["date", "barberName", "serviceName"],
@@ -424,7 +390,6 @@ INFO ATUAL:
           });
         }
 
-        // 1. VALIDAÇÃO CENTRALIZADA VIA slots.ts
         const slotsResult = await getAvailableSlotsForDay(
           Number(shopId),
           args.date,
@@ -442,12 +407,9 @@ INFO ATUAL:
           });
         }
 
-        // Verifica se o horário escolhido pelo cliente é válido no grid do slots.ts
         const chosenSlot = slotsResult.slots.find((s) => s.time === args.time);
 
         if (!chosenSlot) {
-          // O horário escolhido é inválido (ocupado, almoço, fora de expediente ou gera lacuna proibida)
-          // Busca o horário alternativo mais próximo da escolha do cliente
           const recommendedSlots = slotsResult.slots.filter(
             (s) => s.status === "RECOMENDADO",
           );
@@ -500,7 +462,6 @@ INFO ATUAL:
           }
         }
 
-        // 2. TRANSAÇÃO DE GRAVAÇÃO COM TRAVA DE CONCORRÊNCIA
         const startAt = new Date(`${args.date}T${args.time}:00-03:00`);
         const durationWithInterval = targetService.durationMinutes + 10;
         const endTime = new Date(
