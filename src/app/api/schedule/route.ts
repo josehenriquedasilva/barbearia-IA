@@ -172,12 +172,13 @@ SITUAÇÕES DE AGENDAMENTO:
   1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?".
   2. Confirmação e Consulta de Horários (Apenas APÓS ter o serviço definido):
      - Acione a ferramenta 'getAvailableSlots' fornecendo a data, o serviço e, se o cliente perguntou por um horário específico (ex: "Tem às 15h?"), passe o parâmetro 'requestedTime' no formato HH:MM (ex: "15:00").
-     - Se o cliente perguntou por um horário específico:
-       * Se 'horarioSolicitadoDisponivel' for true: Confirme que o horário das [HORA] está livre e peça o nome do cliente.
-       * Se 'horarioSolicitadoDisponivel' for false: Diga educadamente que o horário solicitado não está livre. Se a lista 'sugestoesHorariosMaisProximos' tiver horários, ofereça EXATAMENTE esses horários. Se a lista estiver vazia, diga que não há horários próximos no período e pergunte se prefere outro período.
-  3. Retorno do 'getAvailableSlots':
+  3. Retorno da ferramenta 'getAvailableSlots':
      - SE 'isClosed: true': Informe o motivo do fechamento ao cliente e pergunte se deseja verificar outro dia.
-     - SE HOUVER HORÁRIOS LIVRES (sem horário específico do cliente): NÃO liste todos os horários. Apenas confirme que existem horários livres e peça para o cliente dizer o horário de preferência dele.
+     - SE O CLIENTE PERGUNTOU POR UM HORÁRIO ESPECÍFICO:
+       * Se 'horarioSolicitadoDisponivel' for true: Confirme que o horário solicitado está livre e peça o primeiro nome do cliente (se ainda não souber).
+       * Se 'horarioSolicitadoDisponivel' for false: Diga educadamente que o horário solicitado não está livre. Se a lista 'sugestoesHorariosMaisProximos' tiver horários, ofereça exatamente essas opções (ex: "Esse horário não está livre. Temos disponível às 14:30 ou 15:00. Algum desses fica bom?"). Se estiver vazia, diga que não há horários próximos no período e pergunte se prefere outro período.
+     - SE O CLIENTE PERGUNTOU POR HORÁRIOS EM GERAL (sem hora específica):
+       * Ofereça até 3 opções da lista 'sugestoesRecomendadasGerais' (ex: "Temos opções disponíveis às 09:00, 14:00 ou 16:30. Algum desses fica bom para você?").
      - SE A GRADE ESTIVER VAZIA: Informe que os horários do dia estão lotados e pergunte se deseja verificar outra data.
 
 REGRAS GERAIS:
@@ -249,7 +250,7 @@ ${servicosInfo}`;
           {
             name: "getAvailableSlots",
             description:
-              "Busca a grade completa ou sugestões mais próximas de horários de um dia para barbeiro e serviço.",
+              "Busca a disponibilidade e opções de horários recomendados para um dia, barbeiro e serviço.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -340,8 +341,35 @@ ${servicosInfo}`;
               sugestoesProximas = getClosestSlots(
                 slotsResult.slots,
                 formattedRequestedTime,
-                120,
+                180,
               );
+            }
+
+            // Seleciona até 3 sugestões ideais (prioriza RECOMENDADO, senão distribui no dia)
+            const recomendados = slotsResult.slots
+              .filter((s) => s.status === "RECOMENDADO")
+              .map((s) => s.time);
+
+            let sugestoesGerais: string[] = [];
+            if (recomendados.length >= 3) {
+              sugestoesGerais = [
+                recomendados[0],
+                recomendados[Math.floor(recomendados.length / 2)],
+                recomendados[recomendados.length - 1],
+              ];
+            } else if (recomendados.length > 0) {
+              sugestoesGerais = recomendados;
+            } else {
+              const disponiveis = slotsResult.slots.map((s) => s.time);
+              if (disponiveis.length >= 3) {
+                sugestoesGerais = [
+                  disponiveis[0],
+                  disponiveis[Math.floor(disponiveis.length / 2)],
+                  disponiveis[disponiveis.length - 1],
+                ];
+              } else {
+                sugestoesGerais = disponiveis;
+              }
             }
 
             functionResponse = {
@@ -354,11 +382,8 @@ ${servicosInfo}`;
                 ? isRequestedAvailable
                 : null,
               sugestoesHorariosMaisProximos: sugestoesProximas,
-              totalSlots: slotsResult.slots.length,
-              grid: slotsResult.slots.map((s) => ({
-                horario: s.time,
-                status: s.status,
-              })),
+              sugestoesRecomendadasGerais: sugestoesGerais,
+              totalSlotsDisponiveis: slotsResult.slots.length,
             };
           }
         }
