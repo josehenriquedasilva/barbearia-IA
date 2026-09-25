@@ -154,6 +154,8 @@ export async function setWebhookForInstance(
       "message.received",
       "number.connected",
       "number.disconnected",
+      "message.read",
+      "message.failed",
     ];
 
     const listRes = await fetch(`${baseUrl}/webhooks`, {
