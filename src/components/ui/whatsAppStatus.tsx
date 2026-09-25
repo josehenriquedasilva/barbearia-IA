@@ -7,7 +7,13 @@ import {
   updateShopPhoneAction,
 } from "@/app/(dashboard)/actions";
 import { useState, useEffect } from "react";
-import { BiErrorCircle, BiRefresh, BiEdit } from "react-icons/bi";
+import {
+  BiErrorCircle,
+  BiRefresh,
+  BiEdit,
+  BiCopy,
+  BiCheck,
+} from "react-icons/bi";
 import { TbLoader2 } from "react-icons/tb";
 import { BsPhoneVibrate, BsWhatsapp } from "react-icons/bs";
 import { formatPhone } from "@/utils/formatters";
@@ -29,11 +35,13 @@ export function WhatsAppStatus({
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const formattedPhone = formatPhone(defaultPhoneNumber);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
+
+  const formattedPhone = formatPhone(defaultPhoneNumber);
 
   useEffect(() => {
     async function checkStatus() {
@@ -57,15 +65,27 @@ export function WhatsAppStatus({
   async function handleGenerateCode() {
     setLoading(true);
     setError(null);
+    setCopied(false);
     const res = await getPairingCodeAction(defaultPhoneNumber);
     if (res.success && res.pairingCode) {
       setPairingCode(res.pairingCode);
     } else {
       setError(
-        res.error || "Não foi possível gerar o código. Tente novamente",
+        res.error || "Não foi possível gerar o código. Tente novamente.",
       );
     }
     setLoading(false);
+  }
+
+  async function handleCopyCode() {
+    if (!pairingCode) return;
+    try {
+      await navigator.clipboard.writeText(pairingCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setError("Erro ao copiar o código.");
+    }
   }
 
   async function handleDisconnect() {
@@ -90,9 +110,7 @@ export function WhatsAppStatus({
     if (isConnected) {
       const disconnectRes = await disconnectWhatsAppAction(slug);
       if (!disconnectRes.success) {
-        setError(
-          "Não foi possível desligar o número atual na API. Tente novamente.",
-        );
+        setError("Não foi possível desligar o número atual. Tente novamente.");
         setLoading(false);
         setIsChangeModalOpen(false);
         return;
@@ -114,142 +132,177 @@ export function WhatsAppStatus({
   if (isConnected === null) return null;
 
   return (
-    <div className="mb-3 w-full">
+    <div className="mb-4 w-full">
+      {/* Banner de Erro Simplificado */}
       {error && (
-        <div className="w-full bg-red-500/5 border border-red-500/10 rounded-xl p-2.5 flex items-start gap-2.5 mb-3 animate-in fade-in slide-in-from-top-2 duration-200">
-          <BiErrorCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider">
-              Erro de Conexão
-            </p>
-            <p className="text-xs text-red-200/60 leading-tight">{error}</p>
+        <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-center justify-between gap-2 mb-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <BiErrorCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-xs text-red-200 truncate">{error}</p>
           </div>
           <button
             onClick={() => setError(null)}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+            className="text-zinc-400 hover:text-zinc-200 p-1 shrink-0 cursor-pointer"
+            aria-label="Fechar erro"
           >
-            <IoClose size={14} />
+            <IoClose size={16} />
           </button>
         </div>
       )}
 
-      {isConnected ? (
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl shadow-md p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 animate-in fade-in duration-300">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-500/5 rounded-xl text-green-500 shrink-0 border border-green-500/10 relative">
-              <BsWhatsapp className="w-4 h-4" />
-              <div className="w-2 h-2 bg-green-500 rounded-full border border-zinc-900 absolute -top-0.5 -right-0.5 animate-pulse" />
+      {/* Card Principal Clean */}
+      <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+        {/* Topo: Status & Número */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className={`p-2.5 rounded-xl shrink-0 border ${
+                isConnected
+                  ? "bg-green-500/10 text-green-400 border-green-500/20"
+                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+              }`}
+            >
+              <BsWhatsapp className="w-5 h-5" />
             </div>
-            <div className="space-y-0.5">
-              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2 tracking-tight">
-                IA Assistente Ativa
-                <span className="text-[9px] bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded font-medium border border-green-500/10 uppercase tracking-wide">
-                  Online
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-zinc-100 truncate">
+                  WhatsApp IA
                 </span>
-              </h3>
-              <p className="text-xs text-zinc-400 flex flex-wrap items-center gap-1">
-                Atendendo no número{" "}
-                <span className="text-zinc-200 font-medium underline underline-offset-2 decoration-green-500/20">
+                <span
+                  className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                    isConnected
+                      ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                      : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isConnected
+                        ? "bg-green-400 animate-pulse"
+                        : "bg-amber-400"
+                    }`}
+                  />
+                  {isConnected ? "Online" : "Offline"}
+                </span>
+              </div>
+
+              {/* Número + Botão Trocar */}
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
+                <span className="font-medium text-zinc-300">
                   {formattedPhone}
                 </span>
                 <button
                   onClick={() => setIsChangeModalOpen(true)}
-                  className="text-[11px] text-amber-500 hover:text-amber-400 ml-1 inline-flex items-center gap-0.5 cursor-pointer transition-colors font-medium"
+                  className="text-amber-500 hover:text-amber-400 p-0.5 rounded transition-colors inline-flex items-center gap-0.5 font-medium text-[11px] cursor-pointer"
+                  title="Alterar número"
                 >
-                  <BiEdit size={12} /> Número errado?
+                  <BiEdit size={13} />
+                  <span>Trocar</span>
                 </button>
-              </p>
+              </div>
             </div>
           </div>
 
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="w-full sm:w-auto px-3 py-1.5 bg-red-500/5 hover:bg-red-500/10 text-red-400 border border-red-500/10 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.99]"
-          >
-            <VscDebugDisconnect size={13} />
-            Desconectar
-          </button>
+          {/* Botão de Desconectar (se conectado) */}
+          {isConnected && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
+            >
+              <VscDebugDisconnect size={14} />
+              <span className="hidden sm:inline">Desconectar</span>
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl overflow-hidden shadow-md">
-          <div className="flex flex-col md:flex-row items-stretch">
-            <div className="flex-1 p-4 flex items-center gap-3">
-              <div className="p-2 bg-amber-500/5 rounded-xl text-amber-500 shrink-0 border border-amber-500/10">
-                <BsWhatsapp className="w-4 h-4" />
-              </div>
-              <div className="space-y-0.5">
-                <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2 tracking-tight">
-                  Conexão Necessária
-                  <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded font-medium border border-amber-500/10 uppercase tracking-wide">
-                    Offline
-                  </span>
-                </h3>
-                <p className="text-xs text-zinc-400 flex flex-wrap items-center gap-1">
-                  Para ativar o agente de IA no{" "}
-                  <span className="text-zinc-200 font-medium underline underline-offset-2 decoration-amber-500/20">
-                    {formattedPhone}
-                  </span>
-                  , efetue o pareamento.
-                  <button
-                    onClick={() => setIsChangeModalOpen(true)}
-                    className="text-[11px] text-amber-500 hover:text-amber-400 ml-1 inline-flex items-center gap-0.5 cursor-pointer transition-colors font-medium"
-                  >
-                    <BiEdit size={12} /> Número errado?
-                  </button>
-                </p>
-              </div>
-            </div>
 
-            <div className="bg-zinc-950/40 border-t md:border-t-0 md:border-l border-zinc-800/60 p-4 flex flex-col items-center justify-center min-w-full md:min-w-[280px] lg:min-w-[310px] gap-3">
-              {!pairingCode ? (
+        {/* Área de Conexão / Gerar Código */}
+        {!isConnected && (
+          <div className="pt-3 border-t border-zinc-800/60">
+            {!pairingCode ? (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Conecte a IA ao seu WhatsApp gerando um código de pareamento.
+                </p>
                 <button
                   onClick={handleGenerateCode}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/40 text-zinc-950 rounded-lg text-xs font-semibold transition-all shadow-sm active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {loading ? (
-                    <TbLoader2 className="w-3.5 h-3.5 animate-spin" />
+                    <TbLoader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <BsPhoneVibrate className="w-3.5 h-3.5" />
+                    <BsPhoneVibrate className="w-4 h-4" />
                   )}
                   {loading ? "Gerando..." : "Gerar Código"}
                 </button>
-              ) : (
-                <div className="w-full flex items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
-                  <div className="flex flex-col space-y-0.5">
-                    <span className="text-[8px] uppercase font-bold text-zinc-500 tracking-wider">
-                      Seu Código
+              </div>
+            ) : (
+              /* Display do Código + Ações */
+              <div className="space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-center sm:text-left space-y-0.5">
+                    <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block">
+                      Código de Pareamento
                     </span>
-                    <span className="text-2xl font-mono font-bold text-amber-500 tracking-wider drop-shadow-[0_0_6px_rgba(245,158,11,0.15)]">
+                    <span className="text-2xl sm:text-3xl font-mono font-extrabold text-amber-500 tracking-widest block">
                       {pairingCode}
                     </span>
                   </div>
 
-                  <div className="flex flex-col items-end gap-1.5 max-w-[160px]">
-                    <p className="text-[10px] text-zinc-400 leading-tight text-right">
-                      No app, clique em{" "}
-                      <span className="text-amber-500 font-medium">
-                        Conectar com número
-                      </span>
-                    </p>
-
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {/* Botão Copiar Código */}
                     <button
-                      onClick={() => {
-                        setPairingCode(null);
-                        handleGenerateCode();
-                      }}
-                      className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-zinc-300 bg-zinc-800/60 hover:bg-zinc-800 px-2 py-1 rounded transition-colors cursor-pointer border border-zinc-700/50"
+                      onClick={handleCopyCode}
+                      className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer ${
+                        copied
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : "bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-sm"
+                      }`}
                     >
-                      <BiRefresh className="w-3 h-3" />
-                      Novo Código
+                      {copied ? (
+                        <>
+                          <BiCheck size={16} />
+                          Copiado!
+                        </>
+                      ) : (
+                        <>
+                          <BiCopy size={16} />
+                          Copiar Código
+                        </>
+                      )}
+                    </button>
+
+                    {/* Recarregar Código */}
+                    <button
+                      onClick={handleGenerateCode}
+                      disabled={loading}
+                      title="Gerar novo código"
+                      className="p-2.5 bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/60 rounded-xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {loading ? (
+                        <TbLoader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <BiRefresh size={18} />
+                      )}
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
+
+                <p className="text-[11px] text-zinc-500 text-center sm:text-left leading-tight">
+                  No WhatsApp:{" "}
+                  <span className="text-zinc-400">
+                    Configurações &gt; Aparelhos conectados &gt; Conectar um
+                    aparelho &gt; Conectar com número
+                  </span>
+                  .
+                </p>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <DisconnectModal
         isOpen={isModalOpen}
