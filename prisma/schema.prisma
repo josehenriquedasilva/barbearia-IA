@@ -61,6 +61,7 @@ model Shop {
   chatMessages ChatMessage[]
 
   whatsappInstance String? @unique
+  whatsappNumberId String?
   whatsappToken    String?
 
   @@map("shops")

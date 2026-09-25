@@ -57,13 +57,12 @@ export function WhatsAppStatus({
   async function handleGenerateCode() {
     setLoading(true);
     setError(null);
-    // Passa apenas o número de telefone (o shopId é obtido via sessão no servidor)
     const res = await getPairingCodeAction(defaultPhoneNumber);
     if (res.success && res.pairingCode) {
       setPairingCode(res.pairingCode);
     } else {
       setError(
-        res.error || "Não foi possível gerar o código. Tente novamente.",
+        res.error || "Não foi possível gerar o código. Tente novamente",
       );
     }
     setLoading(false);
@@ -72,7 +71,6 @@ export function WhatsAppStatus({
   async function handleDisconnect() {
     setLoading(true);
     setError(null);
-    // Passa apenas o slug/instanceName
     const res = await disconnectWhatsAppAction(slug);
     if (res.success) {
       setIsConnected(false);
@@ -101,7 +99,6 @@ export function WhatsAppStatus({
       }
     }
 
-    // Passa apenas o novo número para a action
     const res = await updateShopPhoneAction(newPhone);
     if (res.success) {
       setIsConnected(false);

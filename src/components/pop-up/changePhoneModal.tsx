@@ -19,6 +19,7 @@ export default function ChangePhoneModal({
   isOpen,
   onClose,
   onConfirm,
+  currentPhone, // <-- 1. Adicionado aqui no destructuring
   isConnected,
   loading,
 }: ChangePhoneModalProps) {
@@ -31,25 +32,46 @@ export default function ChangePhoneModal({
     e.preventDefault();
     setValidationError("");
 
-    const digits = newPhone.replace(/\D/g, "");
-    if (digits.length < 10) {
+    const cleanNew = newPhone.replace(/\D/g, "");
+    const cleanCurrent = (currentPhone || "").replace(/\D/g, "");
+
+    // Validação de tamanho mínimo
+    if (cleanNew.length < 10) {
       setValidationError("Digite um número válido com DDD (ex: 11999999999)");
       return;
     }
 
-    onConfirm(digits);
+    // Normalização com DDI 55 para comparação precisa
+    const newWith55 = cleanNew.startsWith("55") ? cleanNew : `55${cleanNew}`;
+    const currentWith55 = cleanCurrent.startsWith("55")
+      ? cleanCurrent
+      : `55${cleanCurrent}`;
+
+    // 2. Trava se for o mesmo número
+    if (cleanNew === cleanCurrent || newWith55 === currentWith55) {
+      setValidationError("O novo número é igual ao número atual cadastrado.");
+      return;
+    }
+
+    onConfirm(cleanNew);
+  };
+
+  const handleClose = () => {
+    setNewPhone("");
+    setValidationError("");
+    onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={loading ? undefined : onClose}
+        onClick={loading ? undefined : handleClose}
       />
 
       <div className="relative bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md p-6 shadow-2xl text-neutral-50 animate-in zoom-in-95 duration-200">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           disabled={loading}
           className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-200 p-1 rounded-lg hover:bg-neutral-800 transition-colors disabled:opacity-30 cursor-pointer"
         >
@@ -84,7 +106,10 @@ export default function ChangePhoneModal({
               placeholder="(11) 99999-9999"
               value={newPhone}
               disabled={loading}
-              onChange={(e) => setNewPhone(e.target.value)}
+              onChange={(e) => {
+                setNewPhone(e.target.value);
+                if (validationError) setValidationError("");
+              }}
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-neutral-50 focus:outline-none focus:border-amber-600 transition-colors disabled:opacity-50"
               autoFocus
             />
@@ -96,7 +121,7 @@ export default function ChangePhoneModal({
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={loading}
               className="w-full sm:flex-1 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl text-sm font-bold transition-all disabled:opacity-50 cursor-pointer"
             >

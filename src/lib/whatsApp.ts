@@ -1,34 +1,26 @@
-const PILOT_STATUS_NATIVE_URL =
-  process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
+const PILOT_STATUS_NATIVE_URL = process.env.PILOT_STATUS_NATIVE_URL;
+const API_KEY = process.env.EVOLUTION_TENANT_KEY;
 
-const API_KEY =
-  process.env.PILOT_STATUS_API_KEY ||
-  process.env.WHATSAPP_API_KEY ||
-  process.env.EVOLUTION_TENANT_KEY ||
-  "";
+interface DeletePilotStatusParams {
+  baseUrl: string;
+  apiKey: string;
+  numberId?: string | null;
+  instanceId?: string | null;
+}
 
 interface WebhookItem {
-  id?: string;
+  id: string;
   name?: string;
   url?: string;
   active?: boolean;
   whatsappNumberId?: string;
   whatsappNumberIds?: string[];
-  whatsappNumbers?: (string | { id?: string })[];
+  whatsappNumbers?: Array<string | { id: string | number }>;
 }
 
-interface WebhookListResponse {
-  data?: WebhookItem[];
-  webhooks?: WebhookItem[];
-}
-
-function getBaseUrl(): string {
-  let url = PILOT_STATUS_NATIVE_URL.replace(/\/$/, "");
-  if (!url.endsWith("/v1")) {
-    url = `${url}/v1`;
-  }
-  return url;
-}
+type WebhookListResponse =
+  | WebhookItem[]
+  | { data?: WebhookItem[]; webhooks?: WebhookItem[] };
 
 export async function sendWhatsAppMessage(
   instanceName: string,
@@ -39,7 +31,7 @@ export async function sendWhatsAppMessage(
     return null;
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = PILOT_STATUS_NATIVE_URL;
   const url = `${baseUrl}/messages/send`;
 
   const cleanDigits = number.replace(/\D/g, "");
@@ -70,31 +62,108 @@ export async function sendWhatsAppMessage(
   }
 }
 
-export async function setWebhookForInstance(numberId: string) {
+export async function deletePilotStatusNumberAndWebhooks({
+  baseUrl,
+  apiKey,
+  numberId,
+  instanceId,
+}: DeletePilotStatusParams): Promise<boolean> {
+  const targetId = numberId || instanceId;
+
+  if (!targetId) {
+    return true;
+  }
+
   try {
-    const baseUrl = getBaseUrl();
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/, "").endsWith("/v1")
+      ? baseUrl.replace(/\/+$/, "")
+      : `${baseUrl.replace(/\/+$/, "")}/v1`;
 
-    if (!API_KEY) return;
+    if (numberId) {
+      const headers = {
+        "x-api-key": apiKey,
+        "x-whatsapp-number-id": numberId,
+      };
 
-    const siteDomain =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "https://seu-dominio.com.br");
+      const webhooksRes = await fetch(`${normalizedBaseUrl}/webhooks`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
 
-    const targetWebhookUrl = `${siteDomain.replace(/\/$/, "")}/api/whatsapp`;
+      if (webhooksRes.ok) {
+        const webhooksData = (await webhooksRes
+          .json()
+          .catch(() => [])) as WebhookListResponse;
+        const list: WebhookItem[] = Array.isArray(webhooksData)
+          ? webhooksData
+          : (webhooksData.webhooks ?? webhooksData.data ?? []);
+
+        for (const wh of list) {
+          if (!wh?.id) continue;
+
+          await fetch(`${normalizedBaseUrl}/webhooks/${wh.id}`, {
+            method: "DELETE",
+            headers,
+          });
+        }
+      }
+    }
+
+    const delNumRes = await fetch(`${normalizedBaseUrl}/numbers/${targetId}`, {
+      method: "DELETE",
+      headers: {
+        "x-api-key": apiKey,
+      },
+    });
+
+    if (!delNumRes.ok && delNumRes.status !== 404) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setWebhookForInstance(
+  baseUrl: string,
+  apiKey: string,
+  numberId: string,
+  shopName?: string,
+): Promise<void> {
+  try {
+    if (!baseUrl || !apiKey || !numberId) return;
+
+    const siteDomain = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!siteDomain) return;
+
+    const targetWebhookUrl = `${siteDomain}/api/whatsapp`;
+    const webhookName = shopName
+      ? `Webhook - ${shopName}`
+      : `Webhook - ${numberId}`;
+
+    const headers = {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "x-whatsapp-number-id": numberId,
+    };
+
+    const selectedEvents = [
+      "message.received",
+      "number.connected",
+      "number.disconnected",
+    ];
 
     const listRes = await fetch(`${baseUrl}/webhooks`, {
       method: "GET",
-      headers: {
-        "x-api-key": API_KEY,
-      },
+      headers,
       cache: "no-store",
     });
 
     if (listRes.ok) {
-      const webhooks: WebhookListResponse | WebhookItem[] =
-        await listRes.json();
+      const webhooks = (await listRes.json()) as WebhookListResponse;
       const items: WebhookItem[] = Array.isArray(webhooks)
         ? webhooks
         : webhooks.data || webhooks.webhooks || [];
@@ -104,7 +173,7 @@ export async function setWebhookForInstance(numberId: string) {
         const targetUrlNormalized = targetWebhookUrl.replace(/\/$/, "");
 
         const isSameUrl = whUrlNormalized === targetUrlNormalized;
-        const isSameName = wh.name === `Webhook Barbearia - ${numberId}`;
+        const isSameName = wh.name === webhookName;
 
         const whNumberIds: string[] = Array.isArray(wh.whatsappNumberIds)
           ? wh.whatsappNumberIds
@@ -138,25 +207,18 @@ export async function setWebhookForInstance(numberId: string) {
               ? [existingWebhook.whatsappNumberId]
               : [];
 
-        if (currentNumberIds.includes(numberId)) {
-          return;
-        }
-
         const updatedNumberIds = Array.from(
           new Set([...currentNumberIds, numberId]),
         );
 
         await fetch(`${baseUrl}/webhooks/${existingWebhook.id}`, {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": API_KEY,
-            "x-whatsapp-number-id": numberId,
-          },
+          headers,
           body: JSON.stringify({
-            name: existingWebhook.name || `Webhook Barbearia`,
+            name: webhookName,
             url: targetWebhookUrl,
-            events: ["*"],
+            events: selectedEvents,
+            whatsappNumberId: numberId,
             whatsappNumberIds: updatedNumberIds,
             active: true,
           }),
@@ -168,15 +230,12 @@ export async function setWebhookForInstance(numberId: string) {
 
     await fetch(`${baseUrl}/webhooks`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": API_KEY,
-        "x-whatsapp-number-id": numberId,
-      },
+      headers,
       body: JSON.stringify({
-        name: `Webhook Barbearia - ${numberId}`,
+        name: webhookName,
         url: targetWebhookUrl,
-        events: ["*"],
+        events: selectedEvents,
+        whatsappNumberId: numberId,
         whatsappNumberIds: [numberId],
         active: true,
       }),
@@ -184,24 +243,27 @@ export async function setWebhookForInstance(numberId: string) {
   } catch {}
 }
 
-export async function setInstanceSettings(numberId: string) {
+export async function setInstanceSettings(
+  baseUrl: string,
+  apiKey: string,
+  numberId: string,
+): Promise<void> {
   try {
-    const baseUrl = getBaseUrl();
-
-    if (!API_KEY) return;
-
     await fetch(`${baseUrl}/numbers/${numberId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": API_KEY,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({
         settings: {
           rejectCall: true,
-          msgRejectCall: "Não atendo por aqui",
+          msgRejectCall: "Este número não aceita chamadas de áudio ou vídeo.",
           ignoreGroups: true,
+          ignoreStatus: true,
           ignoreNewsletters: true,
+          alwaysOnline: false,
+          readMessages: false,
         },
       }),
     });

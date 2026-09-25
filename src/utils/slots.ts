@@ -13,7 +13,7 @@ export interface SlotsResult {
 }
 
 const BUFFER_MINUTES = 10;
-const MARGEM_ANTECEDENCIA_MINUTOS = 15; // Antecedência mínima para agendar no mesmo dia
+const MARGEM_ANTECEDENCIA_MINUTOS = 15;
 
 function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(":").map(Number);
@@ -40,7 +40,6 @@ export function getClosestSlots(
   const cleanRequestedTime = requestedTime.trim().slice(0, 5);
   const targetMins = timeToMinutes(cleanRequestedTime);
 
-  // 1. Encontra o horário livre MAIS PRÓXIMO do horário solicitado (o substituto direto)
   const closestSlot = [...available].sort((a, b) => {
     const diffA = Math.abs(timeToMinutes(a.time) - targetMins);
     const diffB = Math.abs(timeToMinutes(b.time) - targetMins);
@@ -52,7 +51,6 @@ export function getClosestSlots(
   const selectedMap = new Map<string, Slot>();
   selectedMap.set(closestSlot.time, closestSlot);
 
-  // 2. Busca 1 opção ANTES com distância real do horário solicitado (<= target - minSpacing)
   const bestBefore = available
     .filter((s) => timeToMinutes(s.time) <= targetMins - minSpacingMinutes)
     .sort(
@@ -65,7 +63,6 @@ export function getClosestSlots(
     selectedMap.set(bestBefore.time, bestBefore);
   }
 
-  // 3. Busca 1 opção DEPOIS com distância real do horário solicitado (>= target + minSpacing)
   const bestAfter = available
     .filter((s) => timeToMinutes(s.time) >= targetMins + minSpacingMinutes)
     .sort(
@@ -78,7 +75,6 @@ export function getClosestSlots(
     selectedMap.set(bestAfter.time, bestAfter);
   }
 
-  // 4. Preenchimento de segurança (caso seja início/fim do dia ou agenda muito cheia)
   if (selectedMap.size < 3) {
     const remaining = available
       .filter((s) => !selectedMap.has(s.time))
@@ -102,7 +98,6 @@ export function getClosestSlots(
     }
   }
 
-  // 5. Fallback final caso a agenda esteja extremamente apertada
   if (selectedMap.size < 3) {
     const remaining = available
       .filter((s) => !selectedMap.has(s.time))
@@ -142,7 +137,6 @@ export async function getAvailableSlotsForDay(
   const minServiceDuration = Math.min(minDbService, serviceDuration);
   const minNeededGap = minServiceDuration + BUFFER_MINUTES;
 
-  // Garante que o dia da semana seja calculado de forma resiliente a fusos (meio-dia SP)
   const targetDate = new Date(`${dateStr}T12:00:00-03:00`);
   const dayOfWeek = targetDate.getDay();
 
@@ -331,7 +325,6 @@ export async function getAvailableSlotsForDay(
     return isBeforeValid && isAfterValid;
   });
 
-  // --- FILTRO DE HORÁRIOS PASSADOS (SÓ APLICA SE A CONSULTA FOR PARA O DIA DE HOJE) ---
   const now = new Date();
   const todayInSaoPaulo = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",

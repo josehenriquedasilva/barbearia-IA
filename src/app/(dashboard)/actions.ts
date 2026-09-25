@@ -6,6 +6,7 @@ import {
   sendWhatsAppMessage,
   setWebhookForInstance,
   setInstanceSettings,
+  deletePilotStatusNumberAndWebhooks,
 } from "@/lib/whatsApp";
 import { SettingsPayload } from "@/types/types";
 import bcrypt from "bcryptjs";
@@ -31,19 +32,11 @@ interface PilotStatusItem {
 
 // Helper padronizado para URL do Pilot Status
 function getPilotStatusBaseUrl(): string {
-  const rawBaseUrl =
-    process.env.PILOT_STATUS_NATIVE_URL || "https://pilotstatus.com.br";
-  const baseUrl = rawBaseUrl.replace(/\/$/, "");
-  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+  return process.env.PILOT_STATUS_NATIVE_URL || "";
 }
 
-// Helper para buscar chave da API do WhatsApp
-function getWhatsAppApiKey(): string | undefined {
-  return (
-    process.env.EVOLUTION_TENANT_KEY ||
-    process.env.PILOT_STATUS_API_KEY ||
-    process.env.WHATSAPP_API_KEY
-  );
+function getWhatsAppApiKey(): string {
+  return process.env.EVOLUTION_TENANT_KEY || "";
 }
 
 // Helper para buscar o ID do número cadastrado na conta do Pilot Status
@@ -463,21 +456,57 @@ export async function updateShopPhoneAction(newPhone: string) {
     if (cleanNumber.length < 10 || cleanNumber.length > 11) {
       return {
         success: false,
-        error:
-          "Por favor, insira um número de WhatsApp válido com DDD (ex: 11999999999).",
+        error: "Por favor, insira um número de WhatsApp válido com DDD.",
       };
+    }
+
+    const shop = await prisma.shop.findUnique({
+      where: { id: user.shopId },
+      select: {
+        phone: true,
+        whatsappNumberId: true,
+        whatsappInstance: true,
+      },
+    });
+
+    if (shop?.phone === cleanNumber) {
+      return { success: true };
+    }
+
+    const hasNumberId = !!shop?.whatsappNumberId;
+    const hasInstanceId = !!shop?.whatsappInstance;
+
+    if (hasNumberId || hasInstanceId) {
+      const baseUrl = process.env.PILOT_STATUS_NATIVE_URL;
+      const apiKey = process.env.EVOLUTION_TENANT_KEY;
+
+      if (baseUrl && apiKey) {
+        await deletePilotStatusNumberAndWebhooks({
+          baseUrl,
+          apiKey,
+          numberId: shop?.whatsappNumberId,
+          instanceId: shop?.whatsappInstance,
+        });
+      }
     }
 
     await prisma.shop.update({
       where: { id: user.shopId },
-      data: { phone: cleanNumber },
+      data: {
+        phone: cleanNumber,
+        whatsappInstance: null,
+        whatsappNumberId: null,
+        whatsappToken: null,
+      },
     });
 
     revalidatePath("/dashboard");
     return { success: true };
   } catch (error) {
-    console.error("Erro ao atualizar telefone no banco:", error);
-    return { success: false, error: "Erro interno ao salvar o novo número." };
+    return {
+      success: false,
+      error: `Erro interno ao salvar o novo número.${error}`,
+    };
   }
 }
 
@@ -531,6 +560,8 @@ export async function getPairingCodeAction(phoneNumber: string) {
     let initialQrCode: string | null = null;
     let initialPairingCode: string | null = null;
 
+    const shopDisplayName = shop.name || shop.slug || "Barbearia";
+
     if (!targetNumberId || !targetInstanceId) {
       const createRes = await fetch(`${baseUrl}/numbers`, {
         method: "POST",
@@ -539,7 +570,7 @@ export async function getPairingCodeAction(phoneNumber: string) {
           "x-api-key": apiKey,
         },
         body: JSON.stringify({
-          name: shop.name || shop.slug,
+          name: shopDisplayName,
           number: formattedPhone,
         }),
       });
@@ -586,18 +617,30 @@ export async function getPairingCodeAction(phoneNumber: string) {
     );
     const connectData = await connectRes.json();
 
-    const finalNumberId = String(targetNumberId || targetInstanceId);
+    const savedNumberId = targetNumberId ? String(targetNumberId) : null;
+    const savedInstanceId = targetInstanceId ? String(targetInstanceId) : null;
 
     await prisma.shop.update({
       where: { id: shopId },
       data: {
-        whatsappInstance: finalNumberId,
+        whatsappInstance: savedInstanceId,
+        whatsappNumberId: savedNumberId,
         whatsappToken: cleanNumber,
       },
     });
 
-    await setWebhookForInstance(finalNumberId);
-    await setInstanceSettings(finalNumberId);
+    if (savedNumberId) {
+      await setWebhookForInstance(
+        baseUrl,
+        apiKey,
+        savedNumberId,
+        shopDisplayName,
+      );
+    }
+
+    if (savedNumberId) {
+      await setInstanceSettings(baseUrl, apiKey, savedNumberId);
+    }
 
     return {
       success: true,
@@ -610,8 +653,7 @@ export async function getPairingCodeAction(phoneNumber: string) {
         connectData.qrcodeBase64 || connectData.qrcode || initialQrCode || null,
       instanceId: String(targetInstanceId),
     };
-  } catch (error) {
-    console.error("Erro na integração com Pilot Status:", error);
+  } catch {
     return {
       success: false,
       error: "Erro interno no servidor.",

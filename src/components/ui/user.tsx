@@ -38,7 +38,7 @@ export default function User({
             title="Configurações"
           >
             <CiSettings className="w-5 h-5 md:w-6 md:h-6" />
-            <span>Serviços</span>
+            <span>Configurações</span>
           </button>
         )}
         {isAdmin && (
