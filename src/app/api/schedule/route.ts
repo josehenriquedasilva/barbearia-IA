@@ -95,32 +95,40 @@ export async function POST(request: Request) {
       );
     }
 
-    const upcomingAppointment = await prisma.appointment.findFirst({
+    // 1. Busca o último agendamento confirmado do cliente
+    const now = new Date();
+    const latestAppointment = await prisma.appointment.findFirst({
       where: {
         clientPhone: clientPhone,
         shopId: Number(shopId),
-        startTime: { gte: new Date() },
         status: "CONFIRMED",
       },
       include: { barber: true, service: true },
-      orderBy: { startTime: "asc" },
+      orderBy: { startTime: "desc" },
     });
 
     let appointmentInfo = "";
-    if (upcomingAppointment) {
-      const dateStr = upcomingAppointment.startTime.toLocaleDateString(
-        "pt-BR",
-        { timeZone: "America/Sao_Paulo" },
-      );
-      const timeStr = upcomingAppointment.startTime.toLocaleTimeString(
-        "pt-BR",
-        {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "America/Sao_Paulo",
-        },
-      );
-      appointmentInfo = `\n- O cliente JÁ TEM um agendamento para o dia ${dateStr} às ${timeStr} (${upcomingAppointment.service.name} com ${upcomingAppointment.barber.name}).`;
+    let upcomingAppointment = null;
+
+    if (latestAppointment) {
+      // Verifica se o horário de término já passou
+      const isPassed = latestAppointment.endTime <= now;
+
+      const dateStr = latestAppointment.startTime.toLocaleDateString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+      });
+      const timeStr = latestAppointment.startTime.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "America/Sao_Paulo",
+      });
+
+      if (isPassed) {
+        appointmentInfo = `\n- HISTÓRICO: O último agendamento do cliente (dia ${dateStr} às ${timeStr}) JÁ FOI CONCLUÍDO/PASSOU. O cliente NÃO possui agendamentos ativos e está livre para marcar um novo.`;
+      } else {
+        upcomingAppointment = latestAppointment;
+        appointmentInfo = `\n- AGENDAMENTO ATIVO: O cliente JÁ TEM um agendamento futuro confirmado para o dia ${dateStr} às ${timeStr} (${latestAppointment.service.name} com ${latestAppointment.barber.name}).`;
+      }
     }
 
     const barbeiroNames = shopData.barbers.map((b) => b.name);
@@ -152,42 +160,57 @@ export async function POST(request: Request) {
       history.shift();
     }
 
-    const systemInstruction = `Você é o assistente da "${shopData.name}".
+    const systemInstruction = `Você é o assistente virtual da "${shopData.name}".
 ${appointmentInfo}
 Hoje: ${currentDate}.
 
-DIRETRIZES DE SAUDAÇÃO E COMPORTAMENTO:
-  - Na primeira mensagem da conversa, faça uma saudação curta (ex: "Olá, bem-vindo à ${shopData.name}.") integrada com a resposta ao cliente.
-  - NUNCA use frases genéricas de preenchimento como "Como posso ajudar?", "O que deseja?" ou "Em que posso ser útil?", EXCETO na situação de 'Agendamento Ativo', onde você deve perguntar como pode ajudar.
-  - Se o cliente mandou uma pergunta ou pedido junto com o "Oi", envie a saudação curta e, na mesma resposta, já responda à pergunta dele.
-  - Se a conversa já estiver em andamento, NUNCA repita saudações ("Olá", "Tudo bem?", etc). Vá direto ao ponto.
-  - Se o cliente aceitar uma sugestão sua: Responda apenas "Ok" antes de pedir os dados restantes.
-  - Se precisar perguntar o nome do cliente, NUNCA peça o nome inteiro, peça apenas o primeiro nome.
-  - Seja profissional, mas direto (máximo 2 frases). Separe por ponto final.
+REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
+  - Responda SEMPRE em UMA ÚNICA mensagem super objetiva e resumida (máximo 1 ou 2 frases curtas).
+  - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?" ou "Em que posso ser útil?".
+  - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele na mesma mensagem.
+  - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações ("Olá", "Tudo bem?").
+  - Se precisar perguntar o nome do cliente, peça apenas o primeiro nome.
+
+REGRAS PARA AGENDAMENTOS EXISTENTES:
+  - Se o cliente tiver AGENDAMENTO ATIVO no futuro:
+    * Se ele só mandou um "Oi", avise-o do agendamento: "Olá! Lembrete: você tem agendamento dia [DATA] às [HORA]. Deseja alterar ou precisa de algo mais?"
+    * Se ele quiser remarcar, altere o agendamento ativo dele.
+  - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento. Agende normalmente um novo horário sem mencionar o antigo.
 
 REGRA ABSOLUTA DE COLETA DO SERVIÇO:
-  ${unicoServico ? `A barbearia possui serviço único: ${unicoServico}. Assuma este serviço automaticamente sem perguntar ao cliente.` : `NUNCA chame a ferramenta 'getAvailableSlots' e NUNCA confirme horários se o cliente ainda NÃO informou qual serviço deseja realizar. Se o cliente perguntar por disponibilidade ou horários (ex: "Tem horário hoje?", "Tem às 14h?"), pergunte PRIMEIRO qual serviço ele quer fazer.`}
+  ${
+    unicoServico
+      ? `A barbearia possui serviço único: ${unicoServico}. Assuma este serviço automaticamente sem perguntar.`
+      : `NUNCA chame 'getAvailableSlots' sem saber o serviço desejado. Se o cliente perguntar por horários, pergunte PRIMEIRO qual serviço ele deseja.`
+  }
 
-SITUAÇÕES DE AGENDAMENTO:
-  1. Agendamento Ativo: Se o cliente mandar apenas uma saudação, diga exatamente: "Olá! Vi que você já tem horário dia [DATA] às [HORA]. Como posso ajudar?".
-  2. Confirmação e Consulta de Horários (Apenas APÓS ter o serviço definido):
-     - Acione a ferramenta 'getAvailableSlots' fornecendo a data, o serviço e, se o cliente perguntou por um horário específico (ex: "Tem às 15h?"), passe o parâmetro 'requestedTime' no formato HH:MM (ex: "15:00").
-  3. Retorno da ferramenta 'getAvailableSlots':
-     - SE 'isClosed: true': Informe o motivo do fechamento ao cliente e pergunte se deseja verificar outro dia.
-     - SE O CLIENTE PERGUNTOU POR UM HORÁRIO ESPECÍFICO:
-       * Se 'horarioSolicitadoDisponivel' for true: Confirme que o horário solicitado está livre e peça o primeiro nome do cliente (se ainda não souber).
-       * Se 'horarioSolicitadoDisponivel' for false: Diga educadamente que o horário solicitado não está livre. Se a lista 'sugestoesHorariosMaisProximos' tiver horários, ofereça exatamente essas opções (ex: "Esse horário não está livre. Temos disponível às 14:30 ou 15:00. Algum desses fica bom?"). Se estiver vazia, diga que não há horários próximos no período e pergunte se prefere outro período.
-     - SE O CLIENTE PERGUNTOU POR HORÁRIOS EM GERAL (sem hora específica):
-       * Ofereça até 3 opções da lista 'sugestoesRecomendadasGerais' (ex: "Temos opções disponíveis às 09:00, 14:00 ou 16:30. Algum desses fica bom para você?").
-     - SE A GRADE ESTIVER VAZIA: Informe que os horários do dia estão lotados e pergunte se deseja verificar outra data.
+CONSULTA DE HORÁRIOS E RETORNO:
+  - Ao consultar disponibilidade ('getAvailableSlots'):
+    * Se fechado: Informe o motivo brevemente.
+    * Se o horário solicitado estiver livre: Confirme e peça o primeiro nome.
+    * Se o horário solicitado estiver ocupado: Diga que está ocupado e sugira no máximo 2 opções próximas em uma frase curta.
+    * Se perguntar horários gerais: Diga 2 ou 3 opções disponíveis de forma bem resumida.
 
 REGRAS GERAIS:
-  - ${unicoBarbeiro ? `Barbeiro único: ${unicoBarbeiro}. Nunca mencione o nome do barbeiro nas respostas a menos que perguntado.` : ""}
-  - Funcionamento: Seg-Sáb ${shopData.openingTime}-${shopData.closingTime}. Dom: ${shopData.isClosedSunday ? "Fechado" : `${shopData.openingSunday}-${shopData.closingSunday}`}.
-  - Almoço: ${shopData.hasLunchBreak ? `${shopData.lunchStart}-${shopData.lunchEnd}` : "Não possui intervalo de almoço"}.
-  - Use nomes reais de serviços conforme a lista cadastrada.
+  - ${
+    unicoBarbeiro
+      ? `Barbeiro único: ${unicoBarbeiro}. Não mencione o nome do barbeiro nas respostas.`
+      : ""
+  }
+  - Funcionamento: Seg-Sáb ${shopData.openingTime}-${
+    shopData.closingTime
+  }. Dom: ${
+    shopData.isClosedSunday
+      ? "Fechado"
+      : `${shopData.openingSunday}-${shopData.closingSunday}`
+  }.
+  - Almoço: ${
+    shopData.hasLunchBreak
+      ? `${shopData.lunchStart}-${shopData.lunchEnd}`
+      : "Sem intervalo"
+  }.
 
-SERVIÇOS DISPONÍVEIS NA LOJA:
+SERVIÇOS DISPONÍVEIS:
 ${servicosInfo}`;
 
     const tools: Tool[] = [
@@ -236,7 +259,7 @@ ${servicosInfo}`;
           },
           {
             name: "cancelAppointment",
-            description: "Cancela definitivamente o agendamento atual.",
+            description: "Cancela definitivamente o agendamento ativo.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -250,7 +273,7 @@ ${servicosInfo}`;
           {
             name: "getAvailableSlots",
             description:
-              "Busca a disponibilidade e opções de horários recomendados para um dia, barbeiro e serviço.",
+              "Busca a disponibilidade de horários para um dia e serviço.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
@@ -345,7 +368,6 @@ ${servicosInfo}`;
               );
             }
 
-            // Seleciona até 3 sugestões ideais (prioriza RECOMENDADO, senão distribui no dia)
             const recomendados = slotsResult.slots
               .filter((s) => s.status === "RECOMENDADO")
               .map((s) => s.time);
@@ -393,9 +415,7 @@ ${servicosInfo}`;
         if (!upcomingAppointment) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: [
-              "Você não tem agendamento ativo. Quer marcar um horário?",
-            ],
+            ai_response: ["Você não tem nenhum agendamento ativo no momento."],
           });
         }
         await prisma.appointment.update({
@@ -407,7 +427,7 @@ ${servicosInfo}`;
         });
         return NextResponse.json({
           status: "SUCCESS",
-          ai_response: ["Agendamento cancelado com sucesso."],
+          ai_response: ["Seu agendamento foi cancelado com sucesso."],
         });
       }
 
@@ -417,7 +437,7 @@ ${servicosInfo}`;
         if (!args.time || !args.date) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: ["Preciso da data e hora para agendar."],
+            ai_response: ["Preciso da data e do horário para agendar."],
           });
         }
 
@@ -431,7 +451,7 @@ ${servicosInfo}`;
         if (!targetService || !targetBarber) {
           return NextResponse.json({
             status: "ERROR",
-            ai_response: ["Não encontrei o serviço ou barbeiro. Pode repetir?"],
+            ai_response: ["Não encontrei o serviço ou barbeiro informado."],
           });
         }
 
@@ -458,7 +478,7 @@ ${servicosInfo}`;
           const sugestoes = getClosestSlots(slotsResult.slots, args.time, 120);
 
           if (sugestoes.length > 0) {
-            const ai_response = `O horário das ${args.time} não está mais livre. Temos opções às ${sugestoes.join(" ou ")}. Pode ser?`;
+            const ai_response = `O horário das ${args.time} não está disponível. Temos às ${sugestoes.join(" ou ")}. Qual prefere?`;
             await prisma.chatMessage.create({
               data: {
                 role: "model",
@@ -474,7 +494,7 @@ ${servicosInfo}`;
             });
           } else {
             const ai_response =
-              "Infelizmente não temos mais horários disponíveis para este dia. Deseja verificar outra data?";
+              "Infelizmente não temos horários disponíveis para este dia. Quer verificar outra data?";
             await prisma.chatMessage.create({
               data: {
                 role: "model",
@@ -515,6 +535,7 @@ ${servicosInfo}`;
               throw new Error("TIME_SLOT_TAKEN");
             }
 
+            // Se o cliente tem um agendamento ATIVO no futuro, atualiza ele. Caso contrário, cria um novo!
             if (upcomingAppointment) {
               return await tx.appointment.update({
                 where: { id: upcomingAppointment.id },
@@ -546,8 +567,8 @@ ${servicosInfo}`;
           });
 
           const successMsg = upcomingAppointment
-            ? "Certo. Seu horário foi alterado com sucesso!"
-            : "Agendado com sucesso!";
+            ? "Seu horário foi alterado com sucesso!"
+            : "Agendamento realizado com sucesso!";
 
           return NextResponse.json({
             status: "SUCCESS",
@@ -559,7 +580,7 @@ ${servicosInfo}`;
 
           if (errorMessage === "TIME_SLOT_TAKEN") {
             const ai_response =
-              "Ops, esse horário acabou de ser preenchido por outro cliente. Podemos escolher outro?";
+              "Esse horário acabou de ser preenchido por outro cliente. Escolha outro, por favor.";
             await prisma.chatMessage.create({
               data: {
                 role: "model",
@@ -598,24 +619,21 @@ ${servicosInfo}`;
       await prisma.chatMessage.create({
         data: {
           role: "model",
-          content: aiFinalText,
+          content: aiFinalText.trim(),
           shopId: Number(shopId),
           clientPhone,
         },
       });
 
-      const messagesToSend = aiFinalText
-        .split(/(?<=[.!?])\s+/)
-        .filter((msg: string) => msg.trim().length > 0);
-
+      // Retorna a resposta completa em APENAS UMA mensagem (uma string dentro do array)
       return NextResponse.json({
         status: "TEXT_RESPONSE",
-        ai_response: messagesToSend,
+        ai_response: [aiFinalText.trim()],
       });
     } else {
       return NextResponse.json({
         status: "TEXT_RESPONSE",
-        ai_response: ["Entendido! Posso ajudar em algo mais?"],
+        ai_response: ["Entendido! Como posso ajudar?"],
       });
     }
   } catch (error: unknown) {
@@ -631,8 +649,7 @@ ${servicosInfo}`;
       return NextResponse.json({
         status: "TEXT_RESPONSE",
         ai_response: [
-          "Ops, tive um pequeno problema.",
-          "Repita sua última mensagem para eu tentar de novo.",
+          "Tive um pequeno problema. Por favor, repita sua mensagem.",
         ],
       });
     }
