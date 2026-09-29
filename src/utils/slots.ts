@@ -26,10 +26,17 @@ function minutesToTime(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * Retorna os horários disponíveis mais próximos do horário solicitado pelo cliente.
+ * - Prioriza horários no mesmo momento ou logo APÓS o solicitado (horários anteriores recebem pequena penalidade).
+ * - Evita opções coladas demais entre si.
+ * - Retorna no máximo `maxResults` opções (padrão: 2).
+ */
 export function getClosestSlots(
   slots: Slot[],
   requestedTime: string,
-  minSpacingMinutes = 25,
+  maxResults = 2,
+  minSpacingMinutes = 15,
 ): string[] {
   const available = slots.filter(
     (s) => s.status === "DISPONIVEL" || s.status === "RECOMENDADO",
@@ -40,82 +47,41 @@ export function getClosestSlots(
   const cleanRequestedTime = requestedTime.trim().slice(0, 5);
   const targetMins = timeToMinutes(cleanRequestedTime);
 
-  const closestSlot = [...available].sort((a, b) => {
-    const diffA = Math.abs(timeToMinutes(a.time) - targetMins);
-    const diffB = Math.abs(timeToMinutes(b.time) - targetMins);
-    return diffA - diffB;
-  })[0];
+  // Calcula score para cada slot disponível
+  const scoredSlots = available.map((slot) => {
+    const slotMins = timeToMinutes(slot.time);
+    const diff = slotMins - targetMins;
 
-  if (!closestSlot) return [];
+    // Se o horário for ANTES do solicitado, adiciona penalidade de 5 min no score
+    // Ex: Se pediu 15:15, o horário 15:20 (diff +5) vence de 15:10 (diff -5, score 5+5=10)
+    const penalty = diff < 0 ? 5 : 0;
+    const score = Math.abs(diff) + penalty;
 
-  const selectedMap = new Map<string, Slot>();
-  selectedMap.set(closestSlot.time, closestSlot);
+    return { slot, slotMins, score };
+  });
 
-  const bestBefore = available
-    .filter((s) => timeToMinutes(s.time) <= targetMins - minSpacingMinutes)
-    .sort(
-      (a, b) =>
-        Math.abs(timeToMinutes(a.time) - targetMins) -
-        Math.abs(timeToMinutes(b.time) - targetMins),
-    )[0];
+  // Ordena pelo menor score (melhor opção para o cliente)
+  scoredSlots.sort((a, b) => a.score - b.score);
 
-  if (bestBefore) {
-    selectedMap.set(bestBefore.time, bestBefore);
-  }
+  const selected: typeof scoredSlots = [];
 
-  const bestAfter = available
-    .filter((s) => timeToMinutes(s.time) >= targetMins + minSpacingMinutes)
-    .sort(
-      (a, b) =>
-        Math.abs(timeToMinutes(a.time) - targetMins) -
-        Math.abs(timeToMinutes(b.time) - targetMins),
-    )[0];
+  for (const item of scoredSlots) {
+    if (selected.length >= maxResults) break;
 
-  if (bestAfter) {
-    selectedMap.set(bestAfter.time, bestAfter);
-  }
+    // Garante que não vamos sugerir opções coladas (ex: 15:20 e 15:25)
+    const isFarEnough = selected.every(
+      (sel) => Math.abs(sel.slotMins - item.slotMins) >= minSpacingMinutes,
+    );
 
-  if (selectedMap.size < 3) {
-    const remaining = available
-      .filter((s) => !selectedMap.has(s.time))
-      .sort(
-        (a, b) =>
-          Math.abs(timeToMinutes(a.time) - targetMins) -
-          Math.abs(timeToMinutes(b.time) - targetMins),
-      );
-
-    for (const slot of remaining) {
-      if (selectedMap.size >= 3) break;
-      const slotMins = timeToMinutes(slot.time);
-
-      const isFarEnough = Array.from(selectedMap.values()).every(
-        (s) => Math.abs(timeToMinutes(s.time) - slotMins) >= 20,
-      );
-
-      if (isFarEnough) {
-        selectedMap.set(slot.time, slot);
-      }
+    if (isFarEnough) {
+      selected.push(item);
     }
   }
 
-  if (selectedMap.size < 3) {
-    const remaining = available
-      .filter((s) => !selectedMap.has(s.time))
-      .sort(
-        (a, b) =>
-          Math.abs(timeToMinutes(a.time) - targetMins) -
-          Math.abs(timeToMinutes(b.time) - targetMins),
-      );
-
-    for (const slot of remaining) {
-      if (selectedMap.size >= 3) break;
-      selectedMap.set(slot.time, slot);
-    }
-  }
-
-  return Array.from(selectedMap.keys()).sort(
-    (a, b) => timeToMinutes(a) - timeToMinutes(b),
-  );
+  // Retorna em ordem cronológica (ex: ["15:20", "15:40"])
+  return selected
+    .map((item) => item.slot.time)
+    .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
 
 export async function getAvailableSlotsForDay(

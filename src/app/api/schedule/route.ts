@@ -167,9 +167,11 @@ Hoje: ${currentDate}.
 REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Responda SEMPRE em UMA ÚNICA mensagem super objetiva e resumida (máximo 1 ou 2 frases curtas).
   - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?" ou "Em que posso ser útil?".
-  - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele na mesma mensagem.
+  - A primeira pergunta junto com a saudação SEMPRE deve ser perguntando para qual serviço ele deseja agendar (ex: (saudação). Para qual serviço deseja agendar?)
+  - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele na mesma mensagem (se a primeira mensagem dele for uma pergunta).
   - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações ("Olá", "Tudo bem?").
-  - Se precisar perguntar o nome do cliente, peça apenas o primeiro nome.
+  - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o "nome completo" ou "primeiro nome".
+  - SEMPRE faça apenas uma pergunta por mensagem.
 
 REGRAS PARA AGENDAMENTOS EXISTENTES:
   - Se o cliente tiver AGENDAMENTO ATIVO no futuro:
@@ -364,7 +366,8 @@ ${servicosInfo}`;
               sugestoesProximas = getClosestSlots(
                 slotsResult.slots,
                 formattedRequestedTime,
-                180,
+                2,
+                15,
               );
             }
 
@@ -475,7 +478,12 @@ ${servicosInfo}`;
         const chosenSlot = slotsResult.slots.find((s) => s.time === args.time);
 
         if (!chosenSlot) {
-          const sugestoes = getClosestSlots(slotsResult.slots, args.time, 120);
+          const sugestoes = getClosestSlots(
+            slotsResult.slots,
+            args.time,
+            2,
+            15,
+          );
 
           if (sugestoes.length > 0) {
             const ai_response = `O horário das ${args.time} não está disponível. Temos às ${sugestoes.join(" ou ")}. Qual prefere?`;
