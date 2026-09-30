@@ -265,6 +265,7 @@ export async function setInstanceSettings(
           ignoreStatus: true,
           ignoreNewsletters: true,
           alwaysOnline: false,
+          readMessages: true,
         },
       }),
     });
