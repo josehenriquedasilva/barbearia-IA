@@ -173,10 +173,11 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o "nome completo" ou "primeiro nome".
   - SEMPRE faça apenas uma pergunta por mensagem.
 
-REGRAS PARA AGENDAMENTOS EXISTENTES:
+REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
   - Se o cliente tiver AGENDAMENTO ATIVO no futuro:
     * Se ele só mandou um "Oi", avise-o do agendamento: "Olá! Lembrete: você tem agendamento dia [DATA] às [HORA]. Deseja alterar ou precisa de algo mais?"
     * Se ele quiser remarcar, altere o agendamento ativo dele.
+    * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza que deseja cancelar o agendamento informando a data e horário. NUNCA execute a ação de cancelamento sem que o cliente responda 'Sim' ou confirme explicitamente.
   - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento. Agende normalmente um novo horário sem mencionar o antigo.
 
 REGRA ABSOLUTA DE COLETA DO SERVIÇO:
@@ -261,12 +262,15 @@ ${servicosInfo}`;
           },
           {
             name: "cancelAppointment",
-            description: "Cancela definitivamente o agendamento ativo.",
+            description:
+              "Cancela definitivamente o agendamento ativo. SÓ chame esta função se o cliente CONFIRMOU EXPLICITAMENTE (ex: disse 'Sim' ou 'Pode cancelar') após ser perguntado.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
                 confirm: {
                   type: SchemaType.BOOLEAN,
+                  description:
+                    "Deve ser true quando o cliente confirmou explicitamente o cancelamento.",
                 },
               },
               required: ["confirm"],
@@ -633,7 +637,6 @@ ${servicosInfo}`;
         },
       });
 
-      // Retorna a resposta completa em APENAS UMA mensagem (uma string dentro do array)
       return NextResponse.json({
         status: "TEXT_RESPONSE",
         ai_response: [aiFinalText.trim()],
