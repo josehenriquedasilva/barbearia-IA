@@ -1,6 +1,6 @@
 import { BarbersData, MobileMenuProps } from "@/types/types";
 import { useEffect } from "react";
-import { BiCrown, BiUser, BiUserPlus } from "react-icons/bi";
+import { BiUser, BiUserPlus } from "react-icons/bi";
 import { CgClose } from "react-icons/cg";
 import { FaUsers } from "react-icons/fa";
 
@@ -14,8 +14,6 @@ export default function MobileMenu({
   setViewBarberName,
   setMenu,
   viewBarberId,
-  onOpenUpgradeModal,
-  currentPlan,
 }: MobileMenuProps) {
   useEffect(() => {
     if (menuOpen) {
@@ -104,17 +102,6 @@ export default function MobileMenu({
           {isAdmin && (
             <div className="p-4 border-t border-neutral-800 space-y-3">
               {" "}
-              <button
-                onClick={() => {
-                  onOpenUpgradeModal();
-                }}
-                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600/10 to-amber-600/5 border border-amber-600/30 text-amber-500 hover:border-amber-500 rounded-lg px-4 py-2.5 transition-all cursor-pointer group"
-              >
-                <BiCrown className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-bold uppercase tracking-wider">
-                  Atualizar Plano
-                </span>
-              </button>
               <button
                 onClick={baberModalOpen}
                 className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-neutral-950 rounded-lg px-4 py-3 transition-colors cursor-pointer"

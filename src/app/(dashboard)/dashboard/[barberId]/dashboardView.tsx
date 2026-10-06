@@ -7,7 +7,7 @@ import CancelModal from "@/components/pop-up/cancelModal";
 import ClosedDaysModal from "@/components/pop-up/closedDaysModal";
 import ManageBarbersModal from "@/components/pop-up/manageBarbersModal";
 import SettingsModal from "@/components/pop-up/settingsModal";
-import UpgradePlanModal from "@/components/pop-up/upgradePlanModal";
+
 
 import Info from "@/components/ui/info";
 import User from "@/components/ui/user";
@@ -23,7 +23,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { IoMenu } from "react-icons/io5";
-import { RiScissorsFill } from "react-icons/ri";
+import { RiScissorsFill, RiVipCrown2Fill } from "react-icons/ri";
 
 import useSWR from "swr";
 import {
@@ -34,6 +34,7 @@ import {
   updateClosedDays,
   updateServicesAction,
 } from "../../actions";
+import SubscriptionModal from "@/components/pop-up/subscriptionModal";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -183,6 +184,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
   return (
     <div className="min-h-screen bg-neutral-950">
+      {/* CABEÇALHO */}
       <header className="flex bg-neutral-900 border-b border-neutral-800 h-18">
         <div className="flex w-full items-center px-3 py-2 gap-2 max-w-[900px] mx-auto">
           <IoMenu
@@ -192,7 +194,8 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           <RiScissorsFill className="bg-amber-600 p-1 size-7 rounded-md" />
           <h1 className="text-neutral-50 font-semibold">{user.shop?.name}</h1>
         </div>
-        <div className="flex items-center mr-3">
+
+        <div className="flex items-center mr-3 gap-2">
           <button
             onClick={() => logout()}
             className="px-4 py-2 text-sm text-neutral-300 hover:text-neutral-50 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
@@ -212,11 +215,42 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         setViewBarberName={setViewBarberName}
         setMenu={setMenu}
         viewBarberId={viewBarberId}
-        onOpenUpgradeModal={() => setIsUpgradeModalOpen(true)}
         currentPlan={user.shop?.plan}
       />
 
       <main className="px-3.5 py-5 max-w-[900px] mx-auto">
+        {/* BANNER SUPERIOR DE GERENCIAMENTO DE PLANO (APENAS ADMIN) */}
+        {isAdmin && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 mb-5 flex items-center justify-between gap-3 shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 text-amber-500">
+                <RiVipCrown2Fill className="size-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-neutral-400">Plano Atual</p>
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <p className="text-sm font-bold text-neutral-100">
+                  {user.shop?.plan === "SILVER"
+                    ? "Plano Prata"
+                    : "Plano Bronze"}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsUpgradeModalOpen(true)}
+              className="bg-amber-600 hover:bg-amber-500 text-neutral-950 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-amber-600/10 cursor-pointer flex items-center gap-1.5"
+            >
+              Renovar / Alterar Plano
+            </button>
+          </div>
+        )}
+
         <section className="text-neutral-50">
           {isAdmin && viewBarberId !== user.id && (
             <div className="bg-amber-600/10 border border-amber-600/20 rounded-xl p-2 mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-300 gap-2">
@@ -290,6 +324,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         </section>
       </main>
 
+      {/* MODAIS */}
       {isSettingsOpen && (
         <SettingsModal
           key="settings-modal"
@@ -327,10 +362,13 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         />
       )}
 
-      {isUpgradeModalOpen && (
-        <UpgradePlanModal
-          currentPlan={user.shop?.plan}
+      {/* NOVO MODAL DE PAGAMENTO/ASSINATURA */}
+      {shopId && (
+        <SubscriptionModal
+          shopId={shopId}
+          isOpen={isUpgradeModalOpen}
           onClose={() => setIsUpgradeModalOpen(false)}
+          currentPlan={user.shop?.plan}
         />
       )}
     </div>

@@ -135,7 +135,6 @@ export interface MobileMenuProps {
   setViewBarberName: (name: string) => void;
   setMenu: Dispatch<SetStateAction<boolean>>;
   viewBarberId: number;
-  onOpenUpgradeModal: () => void;
   currentPlan: PlanType;
 }
 

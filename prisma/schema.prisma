@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,6 +5,10 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ==========================================
+// ENUMS
+// ==========================================
 
 enum Role {
   ADMIN
@@ -22,11 +20,28 @@ enum PlanType {
   SILVER
 }
 
+enum SubscriptionStatus {
+  TRIAL             // Período de teste inicial
+  PENDING_APPROVAL   // Clicou em "Já paguei", liberado por tolerância de 48h
+  ACTIVE             // Pagamento aprovado e em dia
+  EXPIRED            // Prazo venceu sem pagamento ou foi rejeitado
+}
+
+enum PaymentStatus {
+  PENDING   // Aguardando aprovação no Telegram
+  APPROVED  // Aprovado via Telegram
+  REJECTED  // Rejeitado
+}
+
 enum AppointmentStatus {
   CONFIRMED
   COMPLETED
   CANCELED
 }
+
+// ==========================================
+// MODELOS
+// ==========================================
 
 model Shop {
   id        Int      @id @default(autoincrement())
@@ -35,28 +50,33 @@ model Shop {
   slug      String   @unique @db.VarChar(100)
   createdAt DateTime @default(now()) @map("created_at")
 
-  plan       PlanType    @default(BRONZE)
+  // Plano e Controle de Assinatura
+  plan               PlanType           @default(BRONZE)
+  subscriptionStatus SubscriptionStatus @default(TRIAL) @map("subscription_status")
+  subscriptionEnd    DateTime?          @map("subscription_end")
+  paymentClaimedAt   DateTime?          @map("payment_claimed_at")
 
-  openingTime      String       @default("09:00") @map("opening_time")
-  closingTime      String       @default("19:00") @map("closing_time")
+  openingTime    String  @default("09:00") @map("opening_time")
+  closingTime    String  @default("19:00") @map("closing_time")
 
-  hasDayOff        Boolean      @default(false) @map("has_day_off")
-  dayOff           String?      @map("day_off")
+  hasDayOff      Boolean @default(false) @map("has_day_off")
+  dayOff         String? @map("day_off")
 
-  isClosedSunday   Boolean      @default(true) @map("is_closed_sunday")
-  openingSunday    String?      @map("opening_sunday")
-  closingSunday    String?      @map("closing_sunday")
+  isClosedSunday Boolean @default(true) @map("is_closed_sunday")
+  openingSunday  String? @map("opening_sunday")
+  closingSunday  String? @map("closing_sunday")
 
-  hasLunchBreak    Boolean      @default(false) @map("has_lunch_break")
-  lunchStart       String?      @map("lunch_start")
-  lunchEnd         String?      @map("lunch_end")
+  hasLunchBreak  Boolean @default(false) @map("has_lunch_break")
+  lunchStart     String? @map("lunch_start")
+  lunchEnd       String? @map("lunch_end")
 
-  closedDays ClosedDay[]
+  closedDays   ClosedDay[]
   barbers      Barber[]
   services     Service[]
   appointments Appointment[]
+  payments     Payment[]        // Relacionamento com o histórico de pagamentos
 
-  isProcessingChat  Boolean   @default(false) @map("is_processing_chat")
+  isProcessingChat Boolean @default(false) @map("is_processing_chat")
 
   chatMessages ChatMessage[]
 
@@ -65,6 +85,22 @@ model Shop {
   whatsappToken    String?
 
   @@map("shops")
+}
+
+model Payment {
+  id         Int           @id @default(autoincrement())
+  shopId     Int           @map("shop_id")
+  shop       Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  
+  plan       PlanType
+  amount     Decimal       @db.Decimal(10, 2)
+  status     PaymentStatus @default(PENDING)
+  
+  claimedAt  DateTime      @default(now()) @map("claimed_at")
+  approvedAt DateTime?     @map("approved_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  @@map("payments")
 }
 
 model ClosedDay {
@@ -96,14 +132,14 @@ model Barber {
 }
 
 model Service {
-  id              Int     @id @default(autoincrement())
-  name            String  @db.VarChar(100)
-  durationMinutes Int     @map("duration_minutes")
-  price           Decimal @db.Decimal(10, 2)
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(100)
+  durationMinutes Int       @map("duration_minutes")
+  price           Decimal   @db.Decimal(10, 2)
 
-  shopId    Int       @map("shop_id")
-  shop      Shop      @relation(fields: [shopId], references: [id])
-  active    Boolean   @default(true)
+  shopId   Int       @map("shop_id")
+  shop     Shop      @relation(fields: [shopId], references: [id])
+  active   Boolean   @default(true)
   disableAt DateTime?
 
   appointments Appointment[]
@@ -112,9 +148,9 @@ model Service {
 }
 
 model Appointment {
-  id          Int    @id @default(autoincrement())
-  clientName  String @map("client_name") @db.VarChar(255)
-  clientPhone String @map("client_phone") @db.VarChar(50)
+  id          Int     @id @default(autoincrement())
+  clientName  String  @map("client_name") @db.VarChar(255)
+  clientPhone String  @map("client_phone") @db.VarChar(50)
 
   shopId Int  @map("shop_id")
   shop   Shop @relation(fields: [shopId], references: [id])
@@ -139,10 +175,10 @@ model ChatMessage {
   content   String   @db.Text
   createdAt DateTime @default(now()) @map("created_at")
 
-  clientPhone String @map("client_phone")
-  processed    Boolean  @default(false)
-  shopId      Int    @map("shop_id")
-  shop        Shop   @relation(fields: [shopId], references: [id])
+  clientPhone String  @map("client_phone")
+  processed   Boolean @default(false)
+  shopId      Int     @map("shop_id")
+  shop        Shop    @relation(fields: [shopId], references: [id])
 
   @@index([clientPhone, shopId])
   @@map("chat_messages")
