@@ -10,8 +10,8 @@ import {
   BiCrown,
   BiQrScan,
   BiSpaceBar,
-} from "react-icons/bi"; // Se der erro no 'react-icons/x', mude para 'react-icons/bi'
-import { BiX as BiCloseIcon } from "react-icons/bi";
+  BiX as BiCloseIcon,
+} from "react-icons/bi";
 
 interface SubscriptionModalProps {
   shopId?: number;
@@ -34,6 +34,10 @@ export default function SubscriptionModal({
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
+
+  // Obtém a chave Pix configurada no .env (Next.js expõe variáveis NEXT_PUBLIC_ para o front-end)
+  const REAL_PIX_KEY =
+    process.env.NEXT_PUBLIC_PIX_KEY || "sua-chave-pix@exemplo.com";
 
   if (!isOpen) return null;
 
@@ -58,10 +62,8 @@ export default function SubscriptionModal({
         await onSelectPlan(planKey);
       }
 
-      // Gera o Pix Copia e Cola para exibição
-      const testPixPayload = `00020126580014BR.GOV.BCB.PIX0136barber-shop-${shopId || 1}-${planKey.toLowerCase()}-test5204000053039865405${PLAN_DETAILS[planKey]?.price || 0}5802BR5925Barbearia%20SaaS6009SAO%20PAULO62070503***6304E2CA`;
-
-      setPixCode(testPixPayload);
+      // Utiliza a chave Pix real do seu .env
+      setPixCode(REAL_PIX_KEY);
       setSelectedPlan(planKey);
       setCopied(false);
       setSubmittedSuccess(false);
@@ -83,7 +85,7 @@ export default function SubscriptionModal({
     }
 
     setIsSubmitting(true);
-    // Chama a Server Action que salva o Payment no banco e envia a notificação no Telegram
+    // Chama a Server Action que salva no banco e dispara o alerta no Telegram
     const result = await claimPaymentAction(shopId, selectedPlan);
     setIsSubmitting(false);
 
@@ -212,7 +214,7 @@ export default function SubscriptionModal({
             {/* Input Copia e Cola */}
             <div className="w-full max-w-md space-y-2">
               <label className="text-neutral-300 text-xs font-medium block text-left">
-                1. Copie o código Pix Copia e Cola:
+                1. Copie a Chave / Código Pix:
               </label>
               <div className="flex items-center gap-2">
                 <input

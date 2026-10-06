@@ -31,7 +31,7 @@ export async function sendPaymentNotification({
     ` Confira no app do seu banco se o Pix no valor de *R$ ${amount.toFixed(2)}* realmente caiu e escolha uma das opções abaixo:`;
 
   // URL do seu site para processar a aprovação (pode ser um Webhook/Route handler)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
   const payload = {
     chat_id: TELEGRAM_CHAT_ID,
