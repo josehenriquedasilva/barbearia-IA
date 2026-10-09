@@ -14,6 +14,7 @@ import {
   BiCopy,
   BiCheck,
   BiLockAlt,
+  BiCrown,
 } from "react-icons/bi";
 import { TbLoader2 } from "react-icons/tb";
 import { BsPhoneVibrate, BsWhatsapp } from "react-icons/bs";
@@ -27,7 +28,10 @@ import { WhatsAppStatusProps } from "@/types/types";
 export function WhatsAppStatus({
   slug,
   defaultPhoneNumber,
-  isAdmin = false,
+  isAdmin,
+  subscriptionStatus,
+  subscriptionEnd,
+  onOpenSubscriptionModal,
 }: WhatsAppStatusProps) {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
@@ -39,6 +43,14 @@ export function WhatsAppStatus({
   const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
 
   const formattedPhone = formatPhone(defaultPhoneNumber);
+
+  const isSubscriptionExpired = (() => {
+    if (subscriptionStatus === "EXPIRED") return true;
+    if (subscriptionEnd) {
+      return new Date(subscriptionEnd) < new Date();
+    }
+    return false;
+  })();
 
   useEffect(() => {
     async function checkStatus() {
@@ -61,6 +73,10 @@ export function WhatsAppStatus({
 
   async function handleGenerateCode() {
     if (!isAdmin) return;
+    if (isSubscriptionExpired) {
+      setError("Assinatura vencida. Faça o pagamento para liberar a conexão.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setCopied(false);
@@ -157,7 +173,7 @@ export function WhatsAppStatus({
           <div className="flex items-center gap-3 min-w-0">
             <div
               className={`p-2.5 rounded-xl shrink-0 border ${
-                isConnected
+                isConnected && !isSubscriptionExpired
                   ? "bg-green-500/10 text-green-400 border-green-500/20"
                   : "bg-amber-500/10 text-amber-400 border-amber-500/20"
               }`}
@@ -172,28 +188,32 @@ export function WhatsAppStatus({
                 </span>
                 <span
                   className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                    isConnected
+                    isConnected && !isSubscriptionExpired
                       ? "bg-green-500/10 text-green-400 border border-green-500/20"
                       : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                   }`}
                 >
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      isConnected
+                      isConnected && !isSubscriptionExpired
                         ? "bg-green-400 animate-pulse"
                         : "bg-amber-400"
                     }`}
                   />
-                  {isConnected ? "Online" : "Offline"}
+                  {isConnected && !isSubscriptionExpired
+                    ? "Online"
+                    : isSubscriptionExpired
+                    ? "Bloqueado"
+                    : "Offline"}
                 </span>
               </div>
 
-              {/* Número + Botão Trocar (Exibido apenas para Admin) */}
+              {/* Número + Botão Trocar */}
               <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
                 <span className="font-medium text-zinc-300">
                   {formattedPhone}
                 </span>
-                {isAdmin && (
+                {isAdmin && !isSubscriptionExpired && (
                   <button
                     onClick={() => setIsChangeModalOpen(true)}
                     className="text-amber-500 hover:text-amber-400 p-0.5 rounded transition-colors inline-flex items-center gap-0.5 font-medium text-[11px] cursor-pointer"
@@ -207,8 +227,8 @@ export function WhatsAppStatus({
             </div>
           </div>
 
-          {/* Botão de Desconectar (Exibido apenas se conectado e for Admin) */}
-          {isConnected && isAdmin && (
+          {/* Botão de Desconectar (Apenas Admin) */}
+          {isConnected && isAdmin && !isSubscriptionExpired && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
@@ -219,16 +239,42 @@ export function WhatsAppStatus({
           )}
         </div>
 
-        {/* Área de Conexão quando offline */}
-        {!isConnected && (
-          <div className="pt-3 border-t border-zinc-800/60">
-            {isAdmin ? (
-              /* ÁREA DE CONEXÃO / GERAR CÓDIGO (APENAS ADMIN) */
+        {/* ÁREA DE CONEXÃO E BLOQUEIOS */}
+        <div className="pt-3 border-t border-zinc-800/60">
+          {isSubscriptionExpired ? (
+            /* BLOQUEIO DE ASSINATURA VENCIDA */
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-center space-y-3">
+              <div className="flex justify-center">
+                <div className="bg-amber-500/20 p-2 rounded-full text-amber-500">
+                  <BiCrown className="w-6 h-6 animate-pulse" />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-zinc-100 font-bold text-xs">
+                  Recurso Bloqueado — Assinatura Vencida
+                </h4>
+                <p className="text-zinc-400 text-[11px] mt-1 leading-relaxed">
+                  A IA do WhatsApp está suspensa. Renove seu plano para continuar automatizando seus agendamentos.
+                </p>
+              </div>
+
+              {isAdmin && onOpenSubscriptionModal && (
+                <button
+                  type="button"
+                  onClick={onOpenSubscriptionModal}
+                  className="w-full bg-amber-500 hover:bg-amber-400 active:scale-95 text-zinc-950 font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer shadow-md"
+                >
+                  Renovar Assinatura
+                </button>
+              )}
+            </div>
+          ) : !isConnected ? (
+            /* CONEXÃO PARA ADMIN QUANDO OFFLINE */
+            isAdmin ? (
               !pairingCode ? (
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    Conecte a IA ao seu WhatsApp gerando um código de
-                    pareamento.
+                    Conecte a IA ao seu WhatsApp gerando um código de pareamento.
                   </p>
                   <button
                     onClick={handleGenerateCode}
@@ -304,21 +350,20 @@ export function WhatsAppStatus({
                 </div>
               )
             ) : (
-              /* AVISO PARA BARBEIROS NÃO-ADMINS QUANDO OFFLINE */
+              /* AVISO PARA BARBEIRO NÃO-ADMIN QUANDO OFFLINE */
               <div className="flex items-center gap-2 text-zinc-400 text-xs">
                 <BiLockAlt className="w-4 h-4 text-amber-500/80 shrink-0" />
                 <p className="leading-relaxed">
-                  A IA do WhatsApp está desconectada. Apenas o administrador da
-                  barbearia pode gerenciar a conexão.
+                  A IA do WhatsApp está desconectada. Apenas o administrador da barbearia pode gerenciar a conexão.
                 </p>
               </div>
-            )}
-          </div>
-        )}
+            )
+          ) : null}
+        </div>
       </div>
 
-      {/* Modais de Ação (Apenas para Admin) */}
-      {isAdmin && (
+      {/* Modais de Ação */}
+      {isAdmin && !isSubscriptionExpired && (
         <>
           <DisconnectModal
             isOpen={isModalOpen}

@@ -83,6 +83,29 @@ async function findPilotStatusNumber(
   return null;
 }
 
+// Helper interno para desconectar da API do Pilot Status
+async function logoutWhatsAppInstance(instanceId: string): Promise<boolean> {
+  try {
+    const baseUrl = getPilotStatusBaseUrl();
+    const apiKey = getWhatsAppApiKey();
+
+    if (!apiKey || !instanceId) return false;
+
+    const response = await fetch(`${baseUrl}/numbers/${instanceId}/logout`, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error("Erro ao desconectar no Pilot Status:", error);
+    return false;
+  }
+}
+
 // -----------------------------------------------------------------------------
 // ACTIONS DE GERENCIAMENTO DA EQUIPE E CONTA
 // -----------------------------------------------------------------------------
@@ -525,11 +548,33 @@ export async function getPairingCodeAction(phoneNumber: string) {
   try {
     const shop = await prisma.shop.findUnique({
       where: { id: shopId },
-      select: { name: true, slug: true, whatsappInstance: true },
+      select: {
+        name: true,
+        slug: true,
+        whatsappInstance: true,
+        subscriptionStatus: true,
+        subscriptionEnd: true,
+      },
     });
 
     if (!shop) {
       return { success: false, error: "Barbearia não encontrada." };
+    }
+
+    const isExpired =
+      shop.subscriptionStatus === "EXPIRED" ||
+      (shop.subscriptionEnd && new Date(shop.subscriptionEnd) < new Date());
+
+    if (isExpired) {
+      if (shop.whatsappInstance) {
+        await logoutWhatsAppInstance(shop.whatsappInstance);
+      }
+
+      return {
+        success: false,
+        error:
+          "Sua assinatura/período de teste expirou. Renove seu plano para conectar a IA.",
+      };
     }
 
     let cleanNumber = phoneNumber.replace(/\D/g, "");
@@ -668,13 +713,6 @@ export async function disconnectWhatsAppAction(instanceName: string) {
   }
 
   try {
-    const baseUrl = getPilotStatusBaseUrl();
-    const apiKey = getWhatsAppApiKey();
-
-    if (!apiKey) {
-      return { success: false, error: "Chave API não configurada." };
-    }
-
     let numberId = instanceName;
     const shop = await prisma.shop.findUnique({
       where: { id: user.shopId },
@@ -685,24 +723,12 @@ export async function disconnectWhatsAppAction(instanceName: string) {
       numberId = shop.whatsappInstance;
     }
 
-    const url = `${baseUrl}/numbers/${numberId}/logout`;
+    const success = await logoutWhatsAppInstance(numberId);
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+    if (!success) {
       return {
         success: false,
-        error:
-          errorData.message ||
-          errorData.error ||
-          `Falha ao desconectar no provedor (Status ${response.status}).`,
+        error: "Falha ao desconectar no provedor.",
       };
     }
 

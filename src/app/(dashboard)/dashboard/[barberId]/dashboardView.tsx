@@ -383,6 +383,9 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
               slug={user.shop?.slug}
               shopPhone={user.shop?.phone}
               isAdmin={isAdmin}
+              subscriptionStatus={user.shop?.subscriptionStatus}
+              subscriptionEnd={user.shop?.subscriptionEnd}
+              onOpenSubscriptionModal={() => setIsUpgradeModalOpen(true)}
             />
           )}
         </section>

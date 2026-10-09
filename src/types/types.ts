@@ -197,6 +197,9 @@ export interface InfoAppointmentsProps {
   slug: string;
   shopPhone: string;
   isAdmin: boolean;
+  subscriptionStatus?: SubscriptionStatus | string;
+  subscriptionEnd?: Date | string | null;
+  onOpenSubscriptionModal?: () => void;
 }
 
 export interface WhatsAppStatusProps {
@@ -204,6 +207,9 @@ export interface WhatsAppStatusProps {
   slug: string;
   defaultPhoneNumber: string;
   isAdmin: boolean;
+  subscriptionStatus?: SubscriptionStatus | string;
+  subscriptionEnd?: Date | string | null;
+  onOpenSubscriptionModal?: () => void;
 }
 
 export interface AppointmentsListProps {

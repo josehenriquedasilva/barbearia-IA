@@ -9,6 +9,9 @@ export default function Info({
   slug,
   shopPhone,
   isAdmin,
+  subscriptionStatus,
+  subscriptionEnd,
+  onOpenSubscriptionModal,
 }: InfoAppointmentsProps) {
   const list = appointments || [];
 
@@ -29,6 +32,9 @@ export default function Info({
         slug={slug}
         defaultPhoneNumber={shopPhone}
         isAdmin={isAdmin}
+        subscriptionStatus={subscriptionStatus}
+        subscriptionEnd={subscriptionEnd}
+        onOpenSubscriptionModal={onOpenSubscriptionModal}
       />
       <section className="flex flex-col gap-3 md:flex-row md:justify-between">
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 md:p-6 md:flex-1">
