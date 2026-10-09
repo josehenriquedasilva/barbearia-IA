@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/db";
 import { FormBarberProps } from "@/types/types";
-import { Prisma, PlanType, Role } from "@prisma/client";
+import { Prisma, PlanType, Role, SubscriptionStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 async function generateUniqueSlug(
@@ -73,6 +73,9 @@ export async function registerShop(formData: FormBarberProps) {
     const selectedPlan =
       plan?.toUpperCase() === "SILVER" ? PlanType.SILVER : PlanType.BRONZE;
 
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + 7);
+
     const result = await prisma.$transaction(async (tx) => {
       const uniqueSlug = await generateUniqueSlug(tx, barberName);
 
@@ -82,7 +85,8 @@ export async function registerShop(formData: FormBarberProps) {
           phone: rawPhone,
           slug: uniqueSlug,
           plan: selectedPlan,
-          whatsappInstance: uniqueSlug,
+          subscriptionStatus: SubscriptionStatus.TRIAL,
+          subscriptionEnd: trialEndDate,
           openingTime,
           closingTime,
           isClosedSunday,

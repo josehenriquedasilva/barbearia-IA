@@ -7,7 +7,7 @@ import CancelModal from "@/components/pop-up/cancelModal";
 import ClosedDaysModal from "@/components/pop-up/closedDaysModal";
 import ManageBarbersModal from "@/components/pop-up/manageBarbersModal";
 import SettingsModal from "@/components/pop-up/settingsModal";
-
+import SubscriptionModal from "@/components/pop-up/subscriptionModal";
 
 import Info from "@/components/ui/info";
 import User from "@/components/ui/user";
@@ -34,7 +34,6 @@ import {
   updateClosedDays,
   updateServicesAction,
 } from "../../actions";
-import SubscriptionModal from "@/components/pop-up/subscriptionModal";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -182,6 +181,84 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     }
   };
 
+  const subStatus = user.shop?.subscriptionStatus || "TRIAL";
+  const subEnd = user.shop?.subscriptionEnd
+    ? new Date(user.shop.subscriptionEnd)
+    : null;
+
+  const getSubscriptionInfo = () => {
+    const planName =
+      user.shop?.plan === "SILVER" ? "Plano Prata" : "Plano Bronze";
+
+    let daysRemaining: number | null = null;
+    let formattedDate = "";
+
+    if (subEnd) {
+      const now = new Date();
+      const diffTime = subEnd.getTime() - now.getTime();
+      daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      formattedDate = subEnd.toLocaleDateString("pt-BR");
+    }
+
+    if (subStatus === "PENDING_APPROVAL") {
+      return {
+        badgeColor: "bg-amber-500",
+        badgePing: "bg-amber-400",
+        statusText: "Pagamento em Análise",
+        description: "Acesso temporário liberado (Tolerância 48h)",
+        buttonText: "Ver Status",
+        planName,
+      };
+    }
+
+    if (
+      subStatus === "EXPIRED" ||
+      (daysRemaining !== null && daysRemaining <= 0)
+    ) {
+      return {
+        badgeColor: "bg-rose-500",
+        badgePing: "bg-rose-400",
+        statusText:
+          subStatus === "TRIAL"
+            ? "Período de Teste Vencido"
+            : "Assinatura Vencida",
+        description:
+          "Assine um plano para continuar utilizando o sistema sem interrupções",
+        buttonText: "Ativar Assinatura",
+        planName,
+      };
+    }
+
+    if (subStatus === "TRIAL") {
+      return {
+        badgeColor: "bg-sky-500",
+        badgePing: "bg-sky-400",
+        statusText: "Teste Grátis Ativo",
+        description:
+          daysRemaining !== null
+            ? `Você tem ${daysRemaining} ${daysRemaining === 1 ? "dia restante" : "dias restantes"} de teste grátis`
+            : "Período de 7 dias de teste grátis ativo",
+        buttonText: "Ativar Assinatura",
+        planName: `${planName}`,
+      };
+    }
+
+    const isNearExpiration = daysRemaining !== null && daysRemaining <= 10;
+
+    return {
+      badgeColor: isNearExpiration ? "bg-amber-500" : "bg-emerald-500",
+      badgePing: isNearExpiration ? "bg-amber-400" : "bg-emerald-400",
+      statusText: isNearExpiration ? "Vencendo em breve" : "Ativo",
+      description: formattedDate
+        ? `Vence em ${formattedDate} (${daysRemaining} dia${daysRemaining === 1 ? "" : "s"})`
+        : "Acesso ativo",
+      buttonText: isNearExpiration ? "Renovar Antecipado" : "Gerenciar Plano",
+      planName,
+    };
+  };
+
+  const subInfo = getSubscriptionInfo();
+
   return (
     <div className="min-h-screen bg-neutral-950">
       {/* CABEÇALHO */}
@@ -215,11 +292,11 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         setViewBarberName={setViewBarberName}
         setMenu={setMenu}
         viewBarberId={viewBarberId}
-        currentPlan={user.shop?.plan}
+        plan={user.shop?.plan}
+        onOpenSubscriptionModal={() => setIsUpgradeModalOpen(true)}
       />
 
       <main className="px-3.5 py-5 max-w-[900px] mx-auto">
-        {/* BANNER SUPERIOR DE GERENCIAMENTO DE PLANO (APENAS ADMIN) */}
         {isAdmin && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 mb-5 flex items-center justify-between gap-3 shadow-md">
             <div className="flex items-center gap-3">
@@ -228,25 +305,30 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="text-xs text-neutral-400">Plano Atual</p>
+                  <p className="text-xs text-neutral-400">{subInfo.planName}</p>
                   <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span
+                      className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${subInfo.badgePing}`}
+                    ></span>
+                    <span
+                      className={`relative inline-flex rounded-full h-2 w-2 ${subInfo.badgeColor}`}
+                    ></span>
+                  </span>
+                  <span className="text-xs font-semibold text-neutral-300">
+                    ({subInfo.statusText})
                   </span>
                 </div>
-                <p className="text-sm font-bold text-neutral-100">
-                  {user.shop?.plan === "SILVER"
-                    ? "Plano Prata"
-                    : "Plano Bronze"}
+                <p className="text-xs font-medium text-neutral-400 mt-0.5">
+                  {subInfo.description}
                 </p>
               </div>
             </div>
 
             <button
               onClick={() => setIsUpgradeModalOpen(true)}
-              className="bg-amber-600 hover:bg-amber-500 text-neutral-950 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-amber-600/10 cursor-pointer flex items-center gap-1.5"
+              className="bg-amber-600 hover:bg-amber-500 text-neutral-950 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-amber-600/10 cursor-pointer flex items-center gap-1.5 shrink-0"
             >
-              Renovar / Alterar Plano
+              {subInfo.buttonText}
             </button>
           </div>
         )}
@@ -300,6 +382,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
               shopId={shopId}
               slug={user.shop?.slug}
               shopPhone={user.shop?.phone}
+              isAdmin={isAdmin}
             />
           )}
         </section>
@@ -345,12 +428,14 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         />
       )}
 
+      {/* MODAL DE ADICIONAR BARBEIRO COM HANDLER DE UPGRADE */}
       {isBarberModal && (
         <ManageBarbersModal
           barberModalClose={() => setIsBarberModal(false)}
           onAddBarber={handleCreateBarber}
           currentBarbersCount={barbers.length}
           plan={user.shop?.plan}
+          onOpenSubscriptionModal={() => setIsUpgradeModalOpen(true)}
         />
       )}
 
@@ -362,13 +447,15 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         />
       )}
 
-      {/* NOVO MODAL DE PAGAMENTO/ASSINATURA */}
+      {/* MODAL DE ASSINATURA E RENOVAÇÃO */}
       {shopId && (
         <SubscriptionModal
           shopId={shopId}
           isOpen={isUpgradeModalOpen}
           onClose={() => setIsUpgradeModalOpen(false)}
           currentPlan={user.shop?.plan}
+          subscriptionStatus={user.shop?.subscriptionStatus}
+          subscriptionEnd={user.shop?.subscriptionEnd}
         />
       )}
     </div>

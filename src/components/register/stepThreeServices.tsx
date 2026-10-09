@@ -1,12 +1,6 @@
 import { StepThreeProps } from "@/types/types";
 import { BiCheck, BiPlus, BiX } from "react-icons/bi";
-import {
-  BsArrowLeft,
-  BsArrowRight,
-  BsClock,
-  BsScissors,
-  BsTrash2,
-} from "react-icons/bs";
+import { BsArrowLeft, BsClock, BsScissors, BsTrash2 } from "react-icons/bs";
 import { FiEdit2 } from "react-icons/fi";
 import { IoFastFood } from "react-icons/io5";
 
@@ -43,7 +37,8 @@ export default function StepThreeServices({
   lunchEnd,
   setLunchEnd,
   onBack,
-  handleGoToStepFour,
+  onConfirm,
+  isLoading,
   error,
 }: StepThreeProps) {
   const weekDays = [
@@ -201,7 +196,7 @@ export default function StepThreeServices({
             </div>
             <p className="text-neutral-400">Nenhum serviço cadastrado</p>
             <p className="text-neutral-500 text-sm mt-1">
-              Clique em &quot;Adicionar&ldquo; para começar
+              Clique em &quot;Adicionar&quot; para começar
             </p>
           </div>
         )
@@ -384,11 +379,13 @@ export default function StepThreeServices({
         </div>
       )}
 
+      {/* BOTÕES DE NAVEGAÇÃO E FINALIZAÇÃO */}
       <div className="flex gap-3 pt-4">
         <button
           type="button"
-          onClick={() => onBack()}
-          className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+          onClick={onBack}
+          disabled={isLoading}
+          className="flex-1 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-neutral-300 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
         >
           <BsArrowLeft className="w-5 h-5" />
           <span>Voltar</span>
@@ -396,11 +393,18 @@ export default function StepThreeServices({
 
         <button
           type="button"
-          onClick={handleGoToStepFour}
-          className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-neutral-950 rounded-lg px-2 transition-colors flex items-center justify-center font-medium gap-2 cursor-pointer"
+          onClick={onConfirm}
+          disabled={isLoading}
+          className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-neutral-950 rounded-lg px-4 py-3 transition-colors flex items-center justify-center font-bold gap-2 cursor-pointer"
         >
-          <span>Próxima Etapa</span>
-          <BsArrowRight className="w-5 h-5" />
+          {isLoading ? (
+            <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />
+          ) : (
+            <>
+              <span>Finalizar Cadastro</span>
+              <BiCheck className="w-5 h-5" />
+            </>
+          )}
         </button>
       </div>
     </div>

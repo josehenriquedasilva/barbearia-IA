@@ -1,4 +1,4 @@
-import { PlanType } from "@prisma/client";
+import { PlanType, SubscriptionStatus } from "@prisma/client";
 import { Dispatch, SetStateAction } from "react";
 
 export interface UserData {
@@ -103,19 +103,11 @@ export interface StepThreeProps {
   lunchEnd: string;
   setLunchEnd: Dispatch<SetStateAction<string>>;
   onBack: () => void;
-  handleGoToStepFour: (e: React.FormEvent) => void;
+  onConfirm: () => void;
+  isLoading?: boolean;
   error: string;
   setCurrentStep: Dispatch<SetStateAction<number>>;
   setError: Dispatch<SetStateAction<string>>;
-}
-
-export interface StepFourPricingProps {
-  selectedPlan: "BRONZE" | "SILVER";
-  setSelectedPlan: (plan: "BRONZE" | "SILVER") => void;
-  onBack: () => void;
-  onConfirm: () => void;
-  isLoading: boolean;
-  error: string;
 }
 
 export interface Service {
@@ -135,7 +127,9 @@ export interface MobileMenuProps {
   setViewBarberName: (name: string) => void;
   setMenu: Dispatch<SetStateAction<boolean>>;
   viewBarberId: number;
-  currentPlan: PlanType;
+  plan?: PlanType;
+  currentPlan?: PlanType;
+  onOpenSubscriptionModal?: () => void;
 }
 
 export interface ShopSettings {
@@ -202,6 +196,14 @@ export interface InfoAppointmentsProps {
   shopId: number;
   slug: string;
   shopPhone: string;
+  isAdmin: boolean;
+}
+
+export interface WhatsAppStatusProps {
+  shopId: number;
+  slug: string;
+  defaultPhoneNumber: string;
+  isAdmin: boolean;
 }
 
 export interface AppointmentsListProps {
@@ -251,6 +253,9 @@ export interface DashboardViewProps {
       phone: string;
       slug: string;
       plan: PlanType;
+      subscriptionStatus?: SubscriptionStatus | string;
+      subscriptionEnd?: Date | string | null;
+      paymentClaimedAt?: Date | string | null;
       whatsappInstance: string;
       closedDays: { date: string; reason: string }[];
       createdAt: Date;

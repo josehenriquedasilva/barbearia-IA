@@ -9,7 +9,6 @@ import StepOneShop from "@/components/register/stepOneShop";
 import StepTwoAdimin from "@/components/register/stepTwoAdmin";
 import StepThreeServices from "@/components/register/stepThreeServices";
 import { Service } from "@/types/types";
-import StepFourPricing from "@/components/register/stepFourPricing";
 
 export default function Register() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -28,6 +27,7 @@ export default function Register() {
   const [showPasswordOne, setShowPasswordOne] = useState(false);
   const [showPasswordTwo, setShowPasswordTwo] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhone(e.target.value);
     setPhone(formatted);
@@ -47,7 +47,7 @@ export default function Register() {
     price: "",
     duration: "",
   });
-  // No componente Register()
+
   const [openingTime, setOpeningTime] = useState("09:00");
   const [closingTime, setClosingTime] = useState("19:00");
   const [isClosedSunday, setIsClosedSunday] = useState(true);
@@ -121,26 +121,7 @@ export default function Register() {
     setError("");
   };
 
-  const handleGoToStepFour = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    if (services.length === 0) {
-      setError("Adicione pelo menos um serviço.");
-      return;
-    }
-    if (hasLunchBreak && lunchStart >= lunchEnd) {
-      setError("O horário de início do almoço deve ser antes do fim.");
-      return;
-    }
-    setError("");
-    setCurrentStep(4);
-  };
-
-  // Dados da Etapa 4
-  const [selectedPlan, setSelectedPlan] = useState<"BRONZE" | "SILVER">(
-    "BRONZE",
-  );
-
+  // ENVIO FINAL DO CADASTRO NO PASSO 3
   const handleFinalizeRegister = async () => {
     if (services.length === 0) {
       setError("Adicione pelo menos um serviço.");
@@ -161,7 +142,7 @@ export default function Register() {
         email,
         password,
         services,
-        plan: (selectedPlan as "BRONZE" | "SILVER") || "BRONZE",
+        plan: "BRONZE", // Define o plano Bronze por padrão na criação
         openingTime,
         closingTime,
         isClosedSunday,
@@ -197,25 +178,27 @@ export default function Register() {
             <span className="font-bold">BarberPro</span>
           </p>
         </div>
+
+        {/* INDICADOR DE PROGRESSO (3 ETAPAS) */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-neutral-400">
-              Etapa {currentStep} de 4
+              Etapa {currentStep} de 3
             </span>
-            <span className="text-sm text-amber-500">
+            <span className="text-sm text-amber-500 font-medium">
               {currentStep === 1 && "Dados da Barbearia"}
               {currentStep === 2 && "Dados do Responsável"}
-              {currentStep === 3 && "Serviços e horários"}
-              {currentStep === 4 && "Plano de Assinatura"}
+              {currentStep === 3 && "Serviços e Horários"}
             </span>
           </div>
           <div className="w-full bg-neutral-800 rounded-full h-2">
             <div
               className="bg-amber-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 4) * 100}%` }}
+              style={{ width: `${(currentStep / 3) * 100}%` }}
             />
           </div>
         </div>
+
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-5 md:p-8">
           {currentStep === 1 && (
             <StepOneShop
@@ -227,6 +210,7 @@ export default function Register() {
               error={error}
             />
           )}
+
           {currentStep === 2 && (
             <StepTwoAdimin
               adminName={adminName}
@@ -249,6 +233,7 @@ export default function Register() {
               }}
             />
           )}
+
           {currentStep === 3 && (
             <StepThreeServices
               services={services}
@@ -297,23 +282,15 @@ export default function Register() {
               lunchEnd={lunchEnd}
               setLunchEnd={setLunchEnd}
               onBack={() => setCurrentStep(2)}
-              handleGoToStepFour={handleGoToStepFour}
+              onConfirm={handleFinalizeRegister}
+              isLoading={isLoading}
               error={error}
               setCurrentStep={setCurrentStep}
               setError={setError}
             />
           )}
-          {currentStep === 4 && (
-            <StepFourPricing
-              selectedPlan={selectedPlan}
-              setSelectedPlan={setSelectedPlan}
-              onBack={() => setCurrentStep(3)}
-              onConfirm={handleFinalizeRegister}
-              isLoading={isLoading}
-              error={error}
-            />
-          )}
         </div>
+
         <p className="text-center text-neutral-500 text-sm mt-6">
           BarberPro © 2026 - Sistema de Gerenciamento
         </p>
