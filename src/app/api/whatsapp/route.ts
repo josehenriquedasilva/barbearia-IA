@@ -6,6 +6,29 @@ import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// Helper interno para desconectar da API do Pilot Status caso o plano expire
+async function logoutWhatsAppInstance(instanceId: string): Promise<boolean> {
+  try {
+    const baseUrl = process.env.PILOT_STATUS_NATIVE_URL;
+    const apiKey = process.env.EVOLUTION_TENANT_KEY;
+
+    if (!apiKey || !instanceId) return false;
+
+    const response = await fetch(`${baseUrl}/numbers/${instanceId}/logout`, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error("Erro ao desconectar no Pilot Status via webhook:", error);
+    return false;
+  }
+}
+
 async function transcreverAudioComGroq(
   mediaLink: string,
   filename: string = "audio.ogg",
@@ -158,10 +181,40 @@ export async function POST(request: Request) {
             : []),
         ],
       },
+      select: {
+        id: true,
+        whatsappInstance: true,
+        subscriptionStatus: true,
+        subscriptionEnd: true,
+      },
     });
+
+    console.log("🔍 [WEBHOOK] Loja encontrada:", shop);
 
     if (!shop) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+    }
+
+    // 🔴 VERIFICAÇÃO DE ASSINATURA EXPIRADA NO WEBHOOK
+    const isExpired =
+      shop.subscriptionStatus === "EXPIRED" ||
+      (shop.subscriptionEnd && new Date(shop.subscriptionEnd) < new Date());
+
+    console.log("🔍 [WEBHOOK] Status de Expiração:", {
+      status: shop.subscriptionStatus,
+      end: shop.subscriptionEnd,
+      isExpired: isExpired,
+    });
+
+    if (isExpired) {
+      console.log(
+        "🛑 [WEBHOOK] Plano expirado detectado! Desconectando e bloqueando...",
+      );
+      if (shop.whatsappInstance) {
+        await logoutWhatsAppInstance(shop.whatsappInstance);
+      }
+
+      return NextResponse.json({ ok: true, status: "subscription_expired" });
     }
 
     const isAudio = data?.type === "audio";

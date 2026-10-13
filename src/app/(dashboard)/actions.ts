@@ -442,7 +442,6 @@ export async function updateServicesAction(payload: SettingsPayload) {
       }
     });
 
-    // Envio do WhatsApp executado APÓS o commit da transação
     for (const notify of notificationsToSend) {
       const msg = `Olá *${notify.clientName}*, informamos que o serviço *${notify.serviceName}* não está mais disponível em nossa unidade. Por este motivo, seu agendamento para o dia ${notify.startTime.toLocaleDateString("pt-BR")} foi cancelado. Por favor, verifique nossos outros serviços disponíveis enviando uma mensagem por aqui.`;
       try {
