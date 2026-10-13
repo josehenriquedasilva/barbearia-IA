@@ -189,8 +189,6 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log("🔍 [WEBHOOK] Loja encontrada:", shop);
-
     if (!shop) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
@@ -200,20 +198,14 @@ export async function POST(request: Request) {
       shop.subscriptionStatus === "EXPIRED" ||
       (shop.subscriptionEnd && new Date(shop.subscriptionEnd) < new Date());
 
-    console.log("🔍 [WEBHOOK] Status de Expiração:", {
-      status: shop.subscriptionStatus,
-      end: shop.subscriptionEnd,
-      isExpired: isExpired,
-    });
-
     if (isExpired) {
-      console.log(
-        "🛑 [WEBHOOK] Plano expirado detectado! Desconectando e bloqueando...",
-      );
+      // Se a assinatura venceu, desloga automaticamente no provedor
       if (shop.whatsappInstance) {
         await logoutWhatsAppInstance(shop.whatsappInstance);
       }
 
+      // Retorna ok para o provedor do webhook não ficar re-tentando enviar,
+      // mas ignora a mensagem inteira e não chama a IA.
       return NextResponse.json({ ok: true, status: "subscription_expired" });
     }
 
