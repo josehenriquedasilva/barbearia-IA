@@ -47,20 +47,16 @@ export function getClosestSlots(
   const cleanRequestedTime = requestedTime.trim().slice(0, 5);
   const targetMins = timeToMinutes(cleanRequestedTime);
 
-  // Calcula score para cada slot disponível
   const scoredSlots = available.map((slot) => {
     const slotMins = timeToMinutes(slot.time);
     const diff = slotMins - targetMins;
 
-    // Se o horário for ANTES do solicitado, adiciona penalidade de 5 min no score
-    // Ex: Se pediu 15:15, o horário 15:20 (diff +5) vence de 15:10 (diff -5, score 5+5=10)
     const penalty = diff < 0 ? 5 : 0;
     const score = Math.abs(diff) + penalty;
 
     return { slot, slotMins, score };
   });
 
-  // Ordena pelo menor score (melhor opção para o cliente)
   scoredSlots.sort((a, b) => a.score - b.score);
 
   const selected: typeof scoredSlots = [];
@@ -68,7 +64,6 @@ export function getClosestSlots(
   for (const item of scoredSlots) {
     if (selected.length >= maxResults) break;
 
-    // Garante que não vamos sugerir opções coladas (ex: 15:20 e 15:25)
     const isFarEnough = selected.every(
       (sel) => Math.abs(sel.slotMins - item.slotMins) >= minSpacingMinutes,
     );
@@ -78,7 +73,6 @@ export function getClosestSlots(
     }
   }
 
-  // Retorna em ordem cronológica (ex: ["15:20", "15:40"])
   return selected
     .map((item) => item.slot.time)
     .sort((a, b) => timeToMinutes(a) - timeToMinutes(b));

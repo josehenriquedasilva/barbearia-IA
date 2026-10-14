@@ -44,7 +44,6 @@ export default function SettingsModal({
   const [lunchStart, setLunchStart] = useState(shop?.lunchStart || "12:00");
   const [lunchEnd, setLunchEnd] = useState(shop?.lunchEnd || "13:00");
 
-  // Controle de UI e Assincronismo
   const [isAddingService, setIsAddingService] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -71,7 +70,6 @@ export default function SettingsModal({
   });
   const [errors, setErrors] = useState({ name: "", price: "", duration: "" });
 
-  // Sincroniza props e limpa formulários/erros ao abrir
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";

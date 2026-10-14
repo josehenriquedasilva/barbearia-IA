@@ -6,7 +6,6 @@ import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Helper interno para desconectar da API do Pilot Status caso o plano expire
 async function logoutWhatsAppInstance(instanceId: string): Promise<boolean> {
   try {
     const baseUrl = process.env.PILOT_STATUS_NATIVE_URL;
@@ -193,19 +192,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
-    // 🔴 VERIFICAÇÃO DE ASSINATURA EXPIRADA NO WEBHOOK
     const isExpired =
       shop.subscriptionStatus === "EXPIRED" ||
       (shop.subscriptionEnd && new Date(shop.subscriptionEnd) < new Date());
 
     if (isExpired) {
-      // Se a assinatura venceu, desloga automaticamente no provedor
       if (shop.whatsappInstance) {
         await logoutWhatsAppInstance(shop.whatsappInstance);
       }
 
-      // Retorna ok para o provedor do webhook não ficar re-tentando enviar,
-      // mas ignora a mensagem inteira e não chama a IA.
       return NextResponse.json({ ok: true, status: "subscription_expired" });
     }
 

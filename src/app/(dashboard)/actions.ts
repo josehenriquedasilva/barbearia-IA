@@ -222,7 +222,24 @@ export async function cancelAppointmentAction(
     const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${formatTime(app.startTime)} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.\n\nVeja outro horário disponível enviando uma mensagem por aqui.`;
 
     const instanceName = app.shop.whatsappInstance || app.shop.slug;
+
+    // 1. Envia a mensagem pelo WhatsApp
     await sendWhatsAppMessage(instanceName, app.clientPhone, message);
+
+    // 2. Padroniza o telefone do cliente (removendo DDI 55 se houver, igual ao Webhook)
+    const clientPhoneClean = app.clientPhone
+      .replace(/\D/g, "")
+      .replace(/^55/, "");
+
+    // 3. Grava no banco como se a IA/Sistema tivesse mandado
+    await prisma.chatMessage.create({
+      data: {
+        role: "model",
+        content: message,
+        shopId: user.shopId,
+        clientPhone: clientPhoneClean,
+      },
+    });
 
     revalidatePath("/dashboard");
     return { success: true };
@@ -311,6 +328,21 @@ export async function updateClosedDays(
 
       try {
         await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
+
+        // Padroniza o telefone do cliente
+        const clientPhoneClean = notify.clientPhone
+          .replace(/\D/g, "")
+          .replace(/^55/, "");
+
+        // Salva no banco para a IA saber que esse aviso foi enviado
+        await prisma.chatMessage.create({
+          data: {
+            role: "model",
+            content: msg,
+            shopId: shopId,
+            clientPhone: clientPhoneClean,
+          },
+        });
       } catch (err) {
         console.error("Erro ao enviar WhatsApp nos dias fechados:", err);
       }
@@ -340,7 +372,6 @@ export async function updateServicesAction(payload: SettingsPayload) {
   const shopId = user.shopId;
 
   try {
-    // Acumula notificações para disparar fora do banco
     const notificationsToSend: Array<{
       clientName: string;
       clientPhone: string;
@@ -444,8 +475,24 @@ export async function updateServicesAction(payload: SettingsPayload) {
 
     for (const notify of notificationsToSend) {
       const msg = `Olá *${notify.clientName}*, informamos que o serviço *${notify.serviceName}* não está mais disponível em nossa unidade. Por este motivo, seu agendamento para o dia ${notify.startTime.toLocaleDateString("pt-BR")} foi cancelado. Por favor, verifique nossos outros serviços disponíveis enviando uma mensagem por aqui.`;
+
       try {
         await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
+
+        // Padroniza o telefone do cliente
+        const clientPhoneClean = notify.clientPhone
+          .replace(/\D/g, "")
+          .replace(/^55/, "");
+
+        // Salva no banco para a IA saber que esse aviso foi enviado
+        await prisma.chatMessage.create({
+          data: {
+            role: "model",
+            content: msg,
+            shopId: shopId,
+            clientPhone: clientPhoneClean,
+          },
+        });
       } catch (err) {
         console.error("Erro ao enviar notificação WhatsApp:", err);
       }

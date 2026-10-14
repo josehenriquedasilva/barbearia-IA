@@ -8,7 +8,6 @@ export async function GET(req: Request) {
   const paymentId = searchParams.get("paymentId");
   const secret = searchParams.get("secret");
 
-  // Validação de segurança básica com o token do .env
   if (secret !== process.env.TELEGRAM_BOT_TOKEN) {
     return NextResponse.json(
       { error: "Acesso não autorizado" },
@@ -36,17 +35,14 @@ export async function GET(req: Request) {
   }
 
   if (action === "approve") {
-    // Calcula 30 dias de acesso
     const nextExpiration = new Date();
     nextExpiration.setDate(nextExpiration.getDate() + 30);
 
     await prisma.$transaction([
-      // 1. Marca pagamento como aprovado
       prisma.payment.update({
         where: { id: payment.id },
         data: { status: "APPROVED", approvedAt: new Date() },
       }),
-      // 2. Ativa a loja e estende o acesso por 30 dias
       prisma.shop.update({
         where: { id: payment.shopId },
         data: {
@@ -68,12 +64,10 @@ export async function GET(req: Request) {
 
   if (action === "reject") {
     await prisma.$transaction([
-      // 1. Marca pagamento como rejeitado
       prisma.payment.update({
         where: { id: payment.id },
         data: { status: "REJECTED" },
       }),
-      // 2. Vence a assinatura da loja
       prisma.shop.update({
         where: { id: payment.shopId },
         data: {

@@ -29,7 +29,6 @@ export async function loginAction(formData: FormLoginProps) {
       return { success: false, error: "Senha incorreta." };
     }
 
-    // Declaração do ID dentro da payload principal do token
     const token = await new SignJWT({
       id: user.id,
       role: user.role,

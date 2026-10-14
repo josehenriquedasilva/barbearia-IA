@@ -61,12 +61,10 @@ export default function ClosedDaysModal({
     setReason("");
   };
 
-  // Função para remover apenas itens que ainda NÃO foram salvos no banco
   const handleRemoveDraftDay = (dateToRemove: string) => {
     setLocalClosedDays((prev) => prev.filter((d) => d.date !== dateToRemove));
   };
 
-  // Verifica se o dia é um rascunho (adicionado agora, ainda não salvo)
   const isDraftDay = (dateStr: string) => {
     return !closedDays.some((d) => d.date === dateStr);
   };
@@ -160,7 +158,6 @@ export default function ClosedDaysModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-          {/* Aviso Resumido e Profissional */}
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
             <FiAlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs md:text-sm text-amber-200/90 leading-relaxed">
@@ -280,7 +277,6 @@ export default function ClosedDaysModal({
                         </div>
                       </div>
 
-                      {/* Exibe o botão de lixeira APENAS para os itens que ainda não foram salvos */}
                       {isDraft && (
                         <button
                           type="button"

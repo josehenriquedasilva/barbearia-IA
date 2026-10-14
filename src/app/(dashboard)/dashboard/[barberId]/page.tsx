@@ -9,10 +9,8 @@ export default async function Page(props: {
   const params = await props.params;
   const idFromUrl = params.barberId;
 
-  // Obtém o usuário autenticado a partir do token JWT no cookie
   const sessionUser = await getSessionUser();
 
-  // Valida se há usuário logado e se o ID bate com a URL
   if (!sessionUser || String(sessionUser.id) !== idFromUrl) {
     console.log("🚫 Acesso negado: Sessão inválida ou ID não bate");
     redirect("/login");

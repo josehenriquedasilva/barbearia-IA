@@ -37,8 +37,6 @@ export default function ManageBarbersModal({
     label: plan,
   };
 
-  // CAPTURA O ESTADO DO LIMITE NO MOMENTO EM QUE O MODAL É ABERTO (MOUNT)
-  // Isso evita que a re-renderização do pai altere a tela para "Limite Atingido" durante o alerta de sucesso
   const [isLimitReached] = useState(
     () => currentBarbersCount >= limits.maxBarbers,
   );
@@ -107,7 +105,6 @@ export default function ManageBarbersModal({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {isLimitReached ? (
-            /* BLOQUEIO QUANDO O LIMITE É ALCANÇADO (SÓ APARECE SE JÁ ABRIU O MODAL COM O LIMITE ATINGIDO) */
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 text-center space-y-4">
               <div className="flex justify-center">
                 <div className="bg-amber-500/20 p-3 rounded-full text-amber-500">
@@ -139,7 +136,6 @@ export default function ManageBarbersModal({
               </button>
             </div>
           ) : (
-            /* FORMULÁRIO DE CADASTRO */
             <>
               <div>
                 <label

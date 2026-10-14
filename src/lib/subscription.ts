@@ -5,9 +5,7 @@ import { PlanType, SubscriptionStatus } from "@prisma/client";
 import { sendPaymentNotification } from "@/lib/telegram";
 import { PLAN_DETAILS } from "./plans";
 
-/**
- * 1. Função para verificar se a loja tem acesso ativo ou está na tolerância de 48h
- */
+
 export async function getShopSubscriptionStatus(shopId: number) {
   const shop = await prisma.shop.findUnique({
     where: { id: shopId },
@@ -25,7 +23,6 @@ export async function getShopSubscriptionStatus(shopId: number) {
 
   const now = new Date();
 
-  // Caso 1: Status ACTIVE e dentro da validade
   if (
     shop.subscriptionStatus === SubscriptionStatus.ACTIVE &&
     shop.subscriptionEnd &&
@@ -34,7 +31,6 @@ export async function getShopSubscriptionStatus(shopId: number) {
     return { hasAccess: true, status: SubscriptionStatus.ACTIVE, shop };
   }
 
-  // Caso 2: Em período de teste (TRIAL)
   if (
     shop.subscriptionStatus === SubscriptionStatus.TRIAL &&
     shop.subscriptionEnd &&
@@ -43,7 +39,6 @@ export async function getShopSubscriptionStatus(shopId: number) {
     return { hasAccess: true, status: SubscriptionStatus.TRIAL, shop };
   }
 
-  // Caso 3: PENDING_APPROVAL dentro das 48h de tolerância
   if (
     shop.subscriptionStatus === SubscriptionStatus.PENDING_APPROVAL &&
     shop.paymentClaimedAt
@@ -62,19 +57,15 @@ export async function getShopSubscriptionStatus(shopId: number) {
     }
   }
 
-  // Se passou de tudo, o acesso é negado
   return { hasAccess: false, status: SubscriptionStatus.EXPIRED, shop };
 }
 
-/**
- * 2. Server Action acionada quando o barbeiro clica em "Já paguei"
- */
+
 export async function claimPaymentAction(shopId: number, planType: PlanType) {
   try {
     const planInfo = PLAN_DETAILS[planType];
     const now = new Date();
 
-    // Busca dados da barbearia para incluir na notificação
     const shop = await prisma.shop.findUnique({
       where: { id: shopId },
       select: { name: true, phone: true },
@@ -82,7 +73,6 @@ export async function claimPaymentAction(shopId: number, planType: PlanType) {
 
     if (!shop) throw new Error("Barbearia não encontrada.");
 
-    // 1. Cria o registro do pagamento pendente
     const payment = await prisma.payment.create({
       data: {
         shopId,
@@ -93,7 +83,6 @@ export async function claimPaymentAction(shopId: number, planType: PlanType) {
       },
     });
 
-    // 2. Atualiza a loja para PENDING_APPROVAL
     await prisma.shop.update({
       where: { id: shopId },
       data: {
@@ -103,7 +92,6 @@ export async function claimPaymentAction(shopId: number, planType: PlanType) {
       },
     });
 
-    // 3. Envia a notificação instantânea para o seu Telegram!
     await sendPaymentNotification({
       paymentId: payment.id,
       shopName: shop.name,

@@ -50,23 +50,18 @@ export default function SubscriptionModal({
 
   const availablePlans = Object.keys(PLAN_DETAILS) as PlanType[];
 
-  // Filtra para exibir nos cards apenas os planos QUE NÃO SÃO o atual
   const otherPlans = availablePlans.filter((plan) => plan !== currentPlan);
 
-  // Detalhes do plano atual do usuário
   const currentPlanDetails: PlanDetail | undefined = PLAN_DETAILS[currentPlan];
 
-  // --- IDENTIFICAÇÃO DO TESTE GRÁTIS ---
   const isTrial = subscriptionStatus === "TRIAL";
 
-  // --- CÁLCULO DE DIAS PARA O VENCIMENTO ---
   const endDate = subscriptionEnd ? new Date(subscriptionEnd) : null;
   const now = new Date();
   const daysRemaining = endDate
     ? Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  // A liberação para contratar/renovar o plano atual ocorre se for TRIAL, EXPIRED, PENDING_APPROVAL ou faltar <= 10 dias
   const canRenewCurrentPlan =
     isTrial ||
     subscriptionStatus === "EXPIRED" ||
@@ -235,7 +230,6 @@ export default function SubscriptionModal({
               </div>
             </div>
           ) : selectedPlan ? (
-            /* TELA DE COBRANÇA PIX ULTRA-CLEAN E COMPACTA */
             <div className="flex flex-col space-y-3.5 py-1 max-w-md mx-auto">
               {/* Banner de Resumo */}
               <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 flex items-center justify-between">

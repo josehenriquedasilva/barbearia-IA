@@ -19,7 +19,7 @@ export default function ChangePhoneModal({
   isOpen,
   onClose,
   onConfirm,
-  currentPhone, // <-- 1. Adicionado aqui no destructuring
+  currentPhone,
   isConnected,
   loading,
 }: ChangePhoneModalProps) {
@@ -35,19 +35,16 @@ export default function ChangePhoneModal({
     const cleanNew = newPhone.replace(/\D/g, "");
     const cleanCurrent = (currentPhone || "").replace(/\D/g, "");
 
-    // Validação de tamanho mínimo
     if (cleanNew.length < 10) {
       setValidationError("Digite um número válido com DDD (ex: 11999999999)");
       return;
     }
 
-    // Normalização com DDI 55 para comparação precisa
     const newWith55 = cleanNew.startsWith("55") ? cleanNew : `55${cleanNew}`;
     const currentWith55 = cleanCurrent.startsWith("55")
       ? cleanCurrent
       : `55${cleanCurrent}`;
 
-    // 2. Trava se for o mesmo número
     if (cleanNew === cleanCurrent || newWith55 === currentWith55) {
       setValidationError("O novo número é igual ao número atual cadastrado.");
       return;

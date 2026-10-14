@@ -35,7 +35,7 @@ function getFormattedCurrentDate() {
 async function sendMessageWithRetry(
   chat: ChatSession,
   content: string | (string | Part)[],
-  maxRetries = 2,
+  maxRetries = 4,
 ) {
   let retryCount = 0;
   while (retryCount <= maxRetries) {
@@ -46,14 +46,17 @@ async function sendMessageWithRetry(
       const isOverloaded =
         errorMessage.includes("503") ||
         errorMessage.includes("429") ||
-        errorMessage.includes("high demand");
+        errorMessage.includes("high demand") ||
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("deadline");
 
       if (isOverloaded && retryCount < maxRetries) {
         retryCount++;
+        const delay = retryCount * 3000;
         console.log(
-          `Gemini ocupado (503/429). Tentativa ${retryCount} de ${maxRetries}...`,
+          `Gemini ocupado/lento. Tentativa ${retryCount} de ${maxRetries}. Aguardando ${delay / 1000}s...`,
         );
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
       throw error;
@@ -95,7 +98,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Busca o último agendamento confirmado do cliente
     const now = new Date();
     const latestAppointment = await prisma.appointment.findFirst({
       where: {
@@ -111,7 +113,6 @@ export async function POST(request: Request) {
     let upcomingAppointment = null;
 
     if (latestAppointment) {
-      // Verifica se o horário de término já passou
       const isPassed = latestAppointment.endTime <= now;
 
       const dateStr = latestAppointment.startTime.toLocaleDateString("pt-BR", {
@@ -547,7 +548,6 @@ ${servicosInfo}`;
               throw new Error("TIME_SLOT_TAKEN");
             }
 
-            // Se o cliente tem um agendamento ATIVO no futuro, atualiza ele. Caso contrário, cria um novo!
             if (upcomingAppointment) {
               return await tx.appointment.update({
                 where: { id: upcomingAppointment.id },
