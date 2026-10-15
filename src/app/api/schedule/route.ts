@@ -177,10 +177,26 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
   - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
   - Se precisar perguntar o nome do cliente, peça apenas o "nome".
-  - SEMPRE faça apenas uma pergunta por mensagem.
+  - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem.
+
+FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
+  1. SERVIÇO:
+     ${
+       unicoServico
+         ? `- A barbearia possui serviço único: "${unicoServico}". Assuma este serviço automaticamente sem perguntar.`
+         : `- Se o cliente ainda não informou o serviço, pergunte PRIMEIRO qual serviço ele deseja agendar.`
+     }
+  2. BARBEIRO / PREFERÊNCIA:
+     ${
+       unicoBarbeiro
+         ? `- Barbeiro único: "${unicoBarbeiro}". Assuma este barbeiro automaticamente.`
+         : `- Após o cliente informar o serviço (e apenas depois disso), se ele NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
+     }
+  3. DATA E HORÁRIO:
+     - Somente após definir o serviço e o barbeiro (ou preferência), consulte os horários disponíveis.
 
 INTERPRETAÇÃO DE FRASES INFORMAIS E SERVIÇOS:
-  - Se o cliente usar termos informais como "cortar o cabelo", "fazer a barba", relacione IMEDIATAMENTE ao serviço correspondente listado acima em "SERVIÇOS DISPONÍVEIS". Não fique pedindo para repetir se o serviço for óbvio pela lista.
+  - Se o cliente usar termos informais como "cortar o cabelo", "fazer a barba", relacione IMEDIATAMENTE ao serviço correspondente listado acima em "SERVIÇOS DISPONÍVEIS".
   - Se o cliente perguntar quem são os barbeiros, cite apenas os nomes reais cadastrados na barbearia (${barbeiroNames.join(", ")}). NUNCA invente nomes.
 
 REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
@@ -188,14 +204,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
     * Se ele só mandou um "Oi", avise-o do agendamento: "Olá! Lembrete: você tem agendamento dia [DATA] às [HORA]. Deseja alterar ou precisa de algo mais?"
     * Se ele quiser remarcar, altere o agendamento ativo dele.
     * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza informando a data e horário. NUNCA execute o cancelamento sem que o cliente responda 'Sim' explicitamente.
-  - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento.
-
-REGRA ABSOLUTA DE COLETA DO SERVIÇO:
-  ${
-    unicoServico
-      ? `A barbearia possui serviço único: ${unicoServico}. Assuma este serviço automaticamente sem perguntar.`
-      : `Se o cliente perguntar por vagas/horários sem citar o serviço, relacione pelo contexto informal ou pergunte qual serviço ele deseja.`
-  }`;
+  - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento.`;
 
     const tools: Tool[] = [
       {
@@ -211,7 +220,7 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
                   type: SchemaType.STRING,
                   description: unicoBarbeiro
                     ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
-                    : `Nome do barbeiro selecionado dentre os disponíveis: ${barbeiroNames.join(", ")}`,
+                    : `Nome do barbeiro escolhido dentre: ${barbeiroNames.join(", ")}. Se o cliente disser 'qualquer um', use '${barbeiroNames[0]}'.`,
                 },
                 date: {
                   type: SchemaType.STRING,
@@ -272,7 +281,7 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
                   type: SchemaType.STRING,
                   description: unicoBarbeiro
                     ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
-                    : `Nome do barbeiro escolhido dentre: ${barbeiroNames.join(", ")}`,
+                    : `Nome do barbeiro escolhido dentre: ${barbeiroNames.join(", ")}. Se o cliente disser 'qualquer um', use '${barbeiroNames[0]}'.`,
                 },
                 serviceName: {
                   type: SchemaType.STRING,
@@ -306,9 +315,11 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
         const { date, barberName, serviceName, requestedTime } =
           call.args as unknown as CheckArgs;
 
-        const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === barberName.toLowerCase(),
-        );
+        const targetBarber =
+          shopData.barbers.find(
+            (b) => b.name.toLowerCase() === (barberName || "").toLowerCase(),
+          ) || shopData.barbers[0];
+
         const targetService = shopData.services.find(
           (s) => s.name.toLowerCase() === serviceName.toLowerCase(),
         );
@@ -385,7 +396,7 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
             functionResponse = {
               isClosed: false,
               date,
-              barberName,
+              barberName: targetBarber.name,
               serviceName,
               horarioSolicitado: formattedRequestedTime,
               horarioSolicitadoDisponivel: formattedRequestedTime
@@ -432,9 +443,11 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
         const targetService = shopData.services.find(
           (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
         );
-        const targetBarber = shopData.barbers.find(
-          (b) => b.name.toLowerCase() === args.barberName.toLowerCase(),
-        );
+        const targetBarber =
+          shopData.barbers.find(
+            (b) =>
+              b.name.toLowerCase() === (args.barberName || "").toLowerCase(),
+          ) || shopData.barbers[0];
 
         if (!targetService || !targetBarber) {
           return NextResponse.json({
@@ -632,7 +645,6 @@ REGRA ABSOLUTA DE COLETA DO SERVIÇO:
       error instanceof Error ? error.message : "Erro desconhecido";
     console.error("Erro no processamento:", error, errorMessage);
 
-    // 🔴 MELHORIA: Agora QUALQUER erro inesperado (500, timeout, etc) avisa o cliente para repetir
     return NextResponse.json({
       status: "TEXT_RESPONSE",
       ai_response: [
