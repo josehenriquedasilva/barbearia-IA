@@ -195,6 +195,9 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
   3. DATA E HORÁRIO:
      - Somente após definir o serviço e o barbeiro (ou preferência), consulte os horários disponíveis.
 
+VERIFICAÇÃO CRUZADA DE HORÁRIOS ENTRE BARBEIROS:
+  - Se o cliente perguntar por um horário específico com um barbeiro e a ferramenta indicar que esse horário está ocupado COM ELE, mas disponível COM OUTRO barbeiro da equipe, informe o cliente sobre a disponibilidade com o outro profissional (ex: "Com o João às 15:00 está ocupado, mas com o Pedro tem vaga! Ppde ser com o Pedro ou quer verificar outro horário com o João?").
+
 INTERPRETAÇÃO DE FRASES INFORMAIS E SERVIÇOS:
   - Se o cliente usar termos informais como "cortar o cabelo", "fazer a barba", relacione IMEDIATAMENTE ao serviço correspondente listado acima em "SERVIÇOS DISPONÍVEIS".
   - Se o cliente perguntar quem são os barbeiros, cite apenas os nomes reais cadastrados na barbearia (${barbeiroNames.join(", ")}). NUNCA invente nomes.
@@ -347,6 +350,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
             let sugestoesProximas: string[] = [];
             let isRequestedAvailable = false;
             let formattedRequestedTime: string | null = null;
+            let outroBarbeiroDisponivel: string | null = null;
 
             if (requestedTime) {
               formattedRequestedTime = requestedTime.trim().slice(0, 5);
@@ -358,6 +362,35 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
               isRequestedAvailable =
                 requestedSlot?.status === "DISPONIVEL" ||
                 requestedSlot?.status === "RECOMENDADO";
+
+              // 🔴 VERIFICAÇÃO CRUZADA: Se o horário pedido NÃO está livre com o barbeiro escolhido,
+              // verifica se algum outro barbeiro da equipe tem esse exato horário livre!
+              if (!isRequestedAvailable && shopData.barbers.length > 1) {
+                const outrosBarbeiros = shopData.barbers.filter(
+                  (b) => b.id !== targetBarber.id,
+                );
+
+                for (const outro of outrosBarbeiros) {
+                  const slotsOutro = await getAvailableSlotsForDay(
+                    Number(shopId),
+                    date,
+                    outro.id,
+                    targetService.durationMinutes,
+                  );
+
+                  const slotOutro = slotsOutro.slots.find(
+                    (s) => s.time === formattedRequestedTime,
+                  );
+
+                  if (
+                    slotOutro?.status === "DISPONIVEL" ||
+                    slotOutro?.status === "RECOMENDADO"
+                  ) {
+                    outroBarbeiroDisponivel = outro.name;
+                    break; // Encontrou o primeiro outro barbeiro livre nesse horário
+                  }
+                }
+              }
 
               sugestoesProximas = getClosestSlots(
                 slotsResult.slots,
@@ -402,6 +435,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
               horarioSolicitadoDisponivel: formattedRequestedTime
                 ? isRequestedAvailable
                 : null,
+              outroBarbeiroComHorarioLivre: outroBarbeiroDisponivel,
               sugestoesHorariosMaisProximos: sugestoesProximas,
               sugestoesRecomendadasGerais: sugestoesGerais,
               totalSlotsDisponiveis: slotsResult.slots.length,
