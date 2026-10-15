@@ -165,57 +165,37 @@ export async function POST(request: Request) {
 ${appointmentInfo}
 Hoje: ${currentDate}.
 
+EQUIPE DE BARBEIROS DISPONÍVEIS (NUNCA INVENTE OUTROS NOMES):
+${barbeiroNames.join(", ")}
+
+SERVIÇOS DISPONÍVEIS:
+${servicosInfo}
+
 REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Responda SEMPRE em UMA ÚNICA mensagem super objetiva e resumida (máximo 1 ou 2 frases curtas).
-  - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?" ou "Em que posso ser útil?".
-  - A primeira pergunta junto com a saudação SEMPRE deve ser perguntando para qual serviço ele deseja agendar (ex: (saudação). Para qual serviço deseja agendar?)
-  - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele na mesma mensagem (se a primeira mensagem dele for uma pergunta).
-  - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações ("Olá", "Tudo bem?").
-  - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o "nome completo" ou "primeiro nome".
+  - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?".
+  - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
+  - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
+  - Se precisar perguntar o nome do cliente, peça apenas o "nome".
   - SEMPRE faça apenas uma pergunta por mensagem.
+
+INTERPRETAÇÃO DE FRASES INFORMAIS E SERVIÇOS:
+  - Se o cliente usar termos informais como "cortar o cabelo", "fazer a barba", relacione IMEDIATAMENTE ao serviço correspondente listado acima em "SERVIÇOS DISPONÍVEIS". Não fique pedindo para repetir se o serviço for óbvio pela lista.
+  - Se o cliente perguntar quem são os barbeiros, cite apenas os nomes reais cadastrados na barbearia (${barbeiroNames.join(", ")}). NUNCA invente nomes.
 
 REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
   - Se o cliente tiver AGENDAMENTO ATIVO no futuro:
     * Se ele só mandou um "Oi", avise-o do agendamento: "Olá! Lembrete: você tem agendamento dia [DATA] às [HORA]. Deseja alterar ou precisa de algo mais?"
     * Se ele quiser remarcar, altere o agendamento ativo dele.
-    * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza que deseja cancelar o agendamento informando a data e horário. NUNCA execute a ação de cancelamento sem que o cliente responda 'Sim' ou confirme explicitamente.
-  - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento. Agende normalmente um novo horário sem mencionar o antigo.
+    * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza informando a data e horário. NUNCA execute o cancelamento sem que o cliente responda 'Sim' explicitamente.
+  - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento.
 
 REGRA ABSOLUTA DE COLETA DO SERVIÇO:
   ${
     unicoServico
       ? `A barbearia possui serviço único: ${unicoServico}. Assuma este serviço automaticamente sem perguntar.`
-      : `NUNCA chame 'getAvailableSlots' sem saber o serviço desejado. Se o cliente perguntar por horários, pergunte PRIMEIRO qual serviço ele deseja.`
-  }
-
-CONSULTA DE HORÁRIOS E RETORNO:
-  - Ao consultar disponibilidade ('getAvailableSlots'):
-    * Se fechado: Informe o motivo brevemente.
-    * Se o horário solicitado estiver livre: Confirme e peça o primeiro nome.
-    * Se o horário solicitado estiver ocupado: Diga que está ocupado e sugira no máximo 2 opções próximas em uma frase curta.
-    * Se perguntar horários gerais: Diga 2 ou 3 opções disponíveis de forma bem resumida.
-
-REGRAS GERAIS:
-  - ${
-    unicoBarbeiro
-      ? `Barbeiro único: ${unicoBarbeiro}. Não mencione o nome do barbeiro nas respostas.`
-      : ""
-  }
-  - Funcionamento: Seg-Sáb ${shopData.openingTime}-${
-    shopData.closingTime
-  }. Dom: ${
-    shopData.isClosedSunday
-      ? "Fechado"
-      : `${shopData.openingSunday}-${shopData.closingSunday}`
-  }.
-  - Almoço: ${
-    shopData.hasLunchBreak
-      ? `${shopData.lunchStart}-${shopData.lunchEnd}`
-      : "Sem intervalo"
-  }.
-
-SERVIÇOS DISPONÍVEIS:
-${servicosInfo}`;
+      : `Se o cliente perguntar por vagas/horários sem citar o serviço, relacione pelo contexto informal ou pergunte qual serviço ele deseja.`
+  }`;
 
     const tools: Tool[] = [
       {
@@ -231,7 +211,7 @@ ${servicosInfo}`;
                   type: SchemaType.STRING,
                   description: unicoBarbeiro
                     ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
-                    : "Nome do barbeiro selecionado.",
+                    : `Nome do barbeiro selecionado dentre os disponíveis: ${barbeiroNames.join(", ")}`,
                 },
                 date: {
                   type: SchemaType.STRING,
@@ -264,14 +244,14 @@ ${servicosInfo}`;
           {
             name: "cancelAppointment",
             description:
-              "Cancela definitivamente o agendamento ativo. SÓ chame esta função se o cliente CONFIRMOU EXPLICITAMENTE (ex: disse 'Sim' ou 'Pode cancelar') após ser perguntado.",
+              "Cancela definitivamente o agendamento ativo. SÓ chame se o cliente confirmou explicitamente.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
                 confirm: {
                   type: SchemaType.BOOLEAN,
                   description:
-                    "Deve ser true quando o cliente confirmou explicitamente o cancelamento.",
+                    "Deve ser true quando o cliente confirmou explicitamente.",
                 },
               },
               required: ["confirm"],
@@ -292,18 +272,18 @@ ${servicosInfo}`;
                   type: SchemaType.STRING,
                   description: unicoBarbeiro
                     ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
-                    : "Nome do barbeiro.",
+                    : `Nome do barbeiro escolhido dentre: ${barbeiroNames.join(", ")}`,
                 },
                 serviceName: {
                   type: SchemaType.STRING,
                   description: unicoServico
                     ? `Nome do serviço. Use '${unicoServico}' automaticamente.`
-                    : "Nome do serviço explicitamente informado pelo cliente.",
+                    : "Nome do serviço informado pelo cliente.",
                 },
                 requestedTime: {
                   type: SchemaType.STRING,
                   description:
-                    "Horário específico perguntado pelo cliente no formato HH:MM (ex: 15:00), se houver.",
+                    "Horário específico perguntado no formato HH:MM, se houver.",
                 },
               },
               required: ["date", "barberName", "serviceName"],
@@ -650,24 +630,14 @@ ${servicosInfo}`;
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Erro desconhecido";
-    console.error("Erro no processamento:", error);
+    console.error("Erro no processamento:", error, errorMessage);
 
-    if (
-      errorMessage.includes("503") ||
-      errorMessage.includes("429") ||
-      errorMessage.includes("high demand")
-    ) {
-      return NextResponse.json({
-        status: "TEXT_RESPONSE",
-        ai_response: [
-          "Tive um pequeno problema. Por favor, repita sua mensagem.",
-        ],
-      });
-    }
-
-    return NextResponse.json(
-      { status: "Error", message: errorMessage },
-      { status: 500 },
-    );
+    // 🔴 MELHORIA: Agora QUALQUER erro inesperado (500, timeout, etc) avisa o cliente para repetir
+    return NextResponse.json({
+      status: "TEXT_RESPONSE",
+      ai_response: [
+        "Tive um pequeno problema de conexão. Por favor, repita sua última mensagem.",
+      ],
+    });
   }
 }
