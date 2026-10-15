@@ -119,8 +119,8 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       const result = await updateServicesAction(payload);
 
       if (result?.success) {
-        if (payload.services) {
-          setServices(payload.services);
+        if (result.services) {
+          setServices(result.services);
         }
         setIsSettingsOpen(false);
         router.refresh();

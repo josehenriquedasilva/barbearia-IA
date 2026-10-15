@@ -223,15 +223,12 @@ export async function cancelAppointmentAction(
 
     const instanceName = app.shop.whatsappInstance || app.shop.slug;
 
-    // 1. Envia a mensagem pelo WhatsApp
     await sendWhatsAppMessage(instanceName, app.clientPhone, message);
 
-    // 2. Padroniza o telefone do cliente (removendo DDI 55 se houver, igual ao Webhook)
     const clientPhoneClean = app.clientPhone
       .replace(/\D/g, "")
       .replace(/^55/, "");
 
-    // 3. Grava no banco como se a IA/Sistema tivesse mandado
     await prisma.chatMessage.create({
       data: {
         role: "model",
@@ -329,12 +326,10 @@ export async function updateClosedDays(
       try {
         await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
 
-        // Padroniza o telefone do cliente
         const clientPhoneClean = notify.clientPhone
           .replace(/\D/g, "")
           .replace(/^55/, "");
 
-        // Salva no banco para a IA saber que esse aviso foi enviado
         await prisma.chatMessage.create({
           data: {
             role: "model",
@@ -408,7 +403,10 @@ export async function updateServicesAction(payload: SettingsPayload) {
         where: { shopId, active: true },
       });
 
-      const incomingIds = payload.services.map((s) => s.id);
+      const incomingIds = payload.services
+        .map((s) => s.id)
+        .filter((id) => id < 1700000000000); // Apenas IDs reais do banco
+
       const toDeactivate = currentServices.filter(
         (s) => !incomingIds.includes(s.id),
       );
@@ -459,16 +457,29 @@ export async function updateServicesAction(payload: SettingsPayload) {
             },
           });
         } else {
-          await tx.service.update({
-            where: { id: s.id },
-            data: {
-              name: s.name,
-              price: s.price,
-              durationMinutes: s.duration,
-              active: true,
-              disableAt: null,
-            },
-          });
+          const exists = await tx.service.findUnique({ where: { id: s.id } });
+          if (exists) {
+            await tx.service.update({
+              where: { id: s.id },
+              data: {
+                name: s.name,
+                price: s.price,
+                durationMinutes: s.duration,
+                active: true,
+                disableAt: null,
+              },
+            });
+          } else {
+            await tx.service.create({
+              data: {
+                name: s.name,
+                price: s.price,
+                durationMinutes: s.duration,
+                shopId: shopId,
+                active: true,
+              },
+            });
+          }
         }
       }
     });
@@ -479,12 +490,10 @@ export async function updateServicesAction(payload: SettingsPayload) {
       try {
         await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
 
-        // Padroniza o telefone do cliente
         const clientPhoneClean = notify.clientPhone
           .replace(/\D/g, "")
           .replace(/^55/, "");
 
-        // Salva no banco para a IA saber que esse aviso foi enviado
         await prisma.chatMessage.create({
           data: {
             role: "model",
@@ -498,8 +507,19 @@ export async function updateServicesAction(payload: SettingsPayload) {
       }
     }
 
+    const freshServices = await prisma.service.findMany({
+      where: { shopId, active: true },
+    });
+
+    const mappedServices = freshServices.map((s) => ({
+      id: s.id,
+      name: s.name,
+      price: Number(s.price),
+      duration: s.durationMinutes,
+    }));
+
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, services: mappedServices };
   } catch (error) {
     console.error("Erro ao atualizar serviços:", error);
     return { success: false, error: "Erro ao salvar configurações." };

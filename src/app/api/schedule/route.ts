@@ -86,7 +86,10 @@ export async function POST(request: Request) {
       where: { id: Number(shopId) },
       include: {
         barbers: { select: { id: true, name: true } },
-        services: { select: { id: true, name: true, durationMinutes: true } },
+        services: {
+          where: { active: true },
+          select: { id: true, name: true, durationMinutes: true },
+        },
         closedDays: true,
       },
     });

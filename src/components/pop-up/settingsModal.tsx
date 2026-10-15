@@ -659,10 +659,19 @@ export default function SettingsModal({
 
               <h4 className="text-neutral-50 text-lg mb-2">Excluir Serviço</h4>
 
-              <p className="text-neutral-400 text-sm">
+              <p className="text-neutral-400 text-sm mb-4">
                 Tem certeza que deseja excluir este serviço? Esta ação não pode
                 ser desfeita.
               </p>
+
+              <div className="bg-amber-600/10 border border-amber-600/20 rounded-lg p-3 text-xs text-amber-400 flex items-start gap-2 text-left">
+                <BiInfoCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                <span>
+                  Atenção: Se houver agendamentos confirmados com este serviço,
+                  eles serão cancelados automaticamente e os clientes serão
+                  notificados.
+                </span>
+              </div>
             </div>
 
             <div className="flex gap-3">
