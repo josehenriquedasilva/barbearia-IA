@@ -8,6 +8,7 @@ import ClosedDaysModal from "@/components/pop-up/closedDaysModal";
 import ManageBarbersModal from "@/components/pop-up/manageBarbersModal";
 import SettingsModal from "@/components/pop-up/settingsModal";
 import SubscriptionModal from "@/components/pop-up/subscriptionModal";
+import Link from "next/link";
 
 import Info from "@/components/ui/info";
 import User from "@/components/ui/user";
@@ -408,6 +409,27 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             }
           />
         </section>
+
+        <footer className="mt-8 pt-6 border-t border-neutral-900 text-center text-xs text-neutral-500 flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+          <p>BarberPro © 2026 - Todos os direitos reservados.</p>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/terms"
+              target="_blank"
+              className="hover:text-amber-500 transition-colors"
+            >
+              Termos de Uso
+            </Link>
+            <span>•</span>
+            <Link
+              href="/privacy"
+              target="_blank"
+              className="hover:text-amber-500 transition-colors"
+            >
+              Política de Privacidade
+            </Link>
+          </div>
+        </footer>
       </main>
 
       {/* MODAIS */}

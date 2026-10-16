@@ -130,6 +130,17 @@ export default function Login() {
               </span>
             </div>
           </form>
+
+          <div className="mt-6 pt-4 border-t border-neutral-800 text-center text-xs text-neutral-500">
+            Ao entrar, você concorda com nossos{" "}
+            <Link href="/terms" target="_blank" className="text-amber-500 hover:underline">
+              Termos de Uso
+            </Link>{" "}
+            e{" "}
+            <Link href="/privacy" target="_blank" className="text-amber-500 hover:underline">
+              Política de Privacidade
+            </Link>.
+          </div>
         </div>
         <p className="text-center text-neutral-500 text-sm mt-6">
           BarberPro © 2026 - Sistema de Gerenciamento

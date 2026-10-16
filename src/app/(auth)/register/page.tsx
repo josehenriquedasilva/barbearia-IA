@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { RiScissorsFill } from "react-icons/ri";
+import { FiArrowRight } from "react-icons/fi";
+import Link from "next/link";
 import { registerShop } from "./actions";
 import { useRouter } from "next/navigation";
 import { formatPhone } from "@/utils/formatters";
@@ -14,6 +16,8 @@ export default function Register() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [highlightTerms, setHighlightTerms] = useState(false);
   const router = useRouter();
 
   // Dados da Etapa 1
@@ -123,6 +127,14 @@ export default function Register() {
 
   // ENVIO FINAL DO CADASTRO NO PASSO 3
   const handleFinalizeRegister = async () => {
+    if (!acceptedTerms) {
+      setHighlightTerms(true);
+      setError(
+        "Marque a caixinha abaixo concordando com os Termos para prosseguir.",
+      );
+      return;
+    }
+
     if (services.length === 0) {
       setError("Adicione pelo menos um serviço.");
       return;
@@ -142,7 +154,7 @@ export default function Register() {
         email,
         password,
         services,
-        plan: "BRONZE", // Define o plano Bronze por padrão na criação
+        plan: "BRONZE",
         openingTime,
         closingTime,
         isClosedSunday,
@@ -289,6 +301,54 @@ export default function Register() {
               setError={setError}
             />
           )}
+
+          {/* Checkbox de Aceite Legal com Animação e Destaque Visual */}
+          <div
+            className={`mt-6 pt-4 border-t border-neutral-800 p-3 rounded-lg transition-all duration-300 flex items-start gap-3 ${
+              highlightTerms
+                ? "bg-amber-500/10 border-2 border-amber-500/80 animate-pulse"
+                : ""
+            }`}
+          >
+            {highlightTerms && (
+              <FiArrowRight className="text-amber-500 w-5 h-5 mt-0.5 animate-bounce shrink-0" />
+            )}
+            <input
+              type="checkbox"
+              id="terms"
+              checked={acceptedTerms}
+              onChange={(e) => {
+                setAcceptedTerms(e.target.checked);
+                if (e.target.checked) {
+                  setHighlightTerms(false);
+                  setError("");
+                }
+              }}
+              className="mt-0.5 h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-600 focus:ring-amber-600 focus:ring-offset-neutral-900 cursor-pointer shrink-0"
+            />
+            <label
+              htmlFor="terms"
+              className="text-xs text-neutral-400 cursor-pointer leading-relaxed"
+            >
+              Li e concordo com os{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="text-amber-500 hover:underline font-medium"
+              >
+                Termos de Uso
+              </Link>{" "}
+              e a{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                className="text-amber-500 hover:underline font-medium"
+              >
+                Política de Privacidade
+              </Link>
+              .
+            </label>
+          </div>
         </div>
 
         <p className="text-center text-neutral-500 text-sm mt-6">

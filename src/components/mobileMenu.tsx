@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { BiCrown, BiHelpCircle, BiUser, BiUserPlus } from "react-icons/bi";
 import { CgClose, CgMail } from "react-icons/cg";
 import { FaUsers, FaWhatsapp } from "react-icons/fa";
+import Link from "next/link";
 
 const SUPPORT_WHATSAPP = "5581981923574";
 const SUPPORT_EMAIL = "josehenrique60t@gmail.com";
@@ -167,6 +168,24 @@ export default function MobileMenu({
                   <span>Suporte via E-mail</span>
                 </a>
               )}
+            </div>
+
+            <div className="pt-3 border-t border-neutral-800/80 flex items-center justify-between text-[11px] text-neutral-400 px-1">
+              <Link
+                href="/terms"
+                target="_blank"
+                className="hover:text-amber-500 transition-colors"
+              >
+                Termos de Uso
+              </Link>
+              <span>•</span>
+              <Link
+                href="/privacy"
+                target="_blank"
+                className="hover:text-amber-500 transition-colors"
+              >
+                Privacidade
+              </Link>
             </div>
           </div>
         </div>
