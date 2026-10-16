@@ -177,7 +177,7 @@ ${servicosInfo}
 REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Responda SEMPRE em UMA ÚNICA mensagem super objetiva e resumida (máximo 1 ou 2 frases curtas).
   - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?".
-  - Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
+  - "OBRIGATORIA" Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
   - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
   - Se precisar perguntar o nome do cliente, peça apenas o "nome".
   - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem.

@@ -26,7 +26,6 @@ export default function User({
       <div className="flex items-center gap-4">
         <div className="relative flex items-center justify-center w-14 h-14 rounded-xl bg-linear-to-br from-amber-500 to-amber-700 text-neutral-950 font-bold text-xl shadow-lg shadow-amber-900/20">
           {getInitials(user?.name || "U")}
-
           <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-neutral-900 rounded-full shadow-sm"></div>
         </div>
       </div>

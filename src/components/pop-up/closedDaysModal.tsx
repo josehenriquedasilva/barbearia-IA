@@ -7,7 +7,8 @@ import {
   BiTrash,
   BiX,
 } from "react-icons/bi";
-import { FiAlertCircle } from "react-icons/fi";
+import { FiAlertCircle, FiWifiOff } from "react-icons/fi";
+import { checkWhatsAppStatusAction } from "@/app/(dashboard)/actions";
 
 export default function ClosedDaysModal({
   isOpen,
@@ -21,6 +22,25 @@ export default function ClosedDaysModal({
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+
+  const [isWhatsAppConnected, setIsWhatsAppConnected] = useState<
+    boolean | null
+  >(null);
+
+  useEffect(() => {
+    async function checkStatus() {
+      if (!isOpen) return;
+      try {
+        const res = await checkWhatsAppStatusAction();
+        setIsWhatsAppConnected(res.connected);
+      } catch (err) {
+        console.error("Erro ao verificar status do WhatsApp:", err);
+        setIsWhatsAppConnected(false);
+      }
+    }
+    checkStatus();
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -35,6 +55,7 @@ export default function ClosedDaysModal({
       document.body.style.overflow = "unset";
       setShowSuccess(false);
       setIsSaving(false);
+      setError("");
     }
     return () => {
       document.body.style.overflow = "unset";
@@ -70,7 +91,14 @@ export default function ClosedDaysModal({
   };
 
   const handleSave = async () => {
+    if (!isWhatsAppConnected) {
+      setError("WhatsApp desconectado. Não é possível salvar dias fechados.");
+      return;
+    }
+
     setIsSaving(true);
+    setError("");
+
     try {
       await onSave(localClosedDays);
       setShowSuccess(true);
@@ -78,8 +106,9 @@ export default function ClosedDaysModal({
         onClose();
         setShowSuccess(false);
       }, 1500);
-    } catch (error) {
-      console.error("Erro ao salvar dias fechados:", error);
+    } catch (err) {
+      console.error("Erro ao salvar dias fechados:", err);
+      setError("Ocorreu um erro ao salvar as alterações.");
     } finally {
       setIsSaving(false);
     }
@@ -89,6 +118,7 @@ export default function ClosedDaysModal({
     setLocalClosedDays(closedDays);
     setSelectedDate("");
     setReason("");
+    setError("");
     onClose();
   };
 
@@ -123,7 +153,7 @@ export default function ClosedDaysModal({
       onClick={handleCancel}
     >
       <div
-        className="bg-neutral-900 rounded-xl border border-neutral-800 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-neutral-900 rounded-xl border border-neutral-800 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col relative"
         onClick={(e) => e.stopPropagation()}
       >
         {showSuccess && (
@@ -158,6 +188,20 @@ export default function ClosedDaysModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+          {/* Status WhatsApp Desconectado */}
+          {isWhatsAppConnected === false && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-3 text-xs md:text-sm">
+              <FiWifiOff className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="text-red-300">
+                <span className="font-semibold block text-red-400">
+                  WhatsApp Desconectado
+                </span>
+                Reconecte a IA para permitir o bloqueio de dias e o envio de
+                avisos aos clientes afetados.
+              </div>
+            </div>
+          )}
+
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
             <FiAlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs md:text-sm text-amber-200/90 leading-relaxed">
@@ -233,35 +277,45 @@ export default function ClosedDaysModal({
               </h4>
 
               <div className="space-y-2">
-                {futureClosedDays.map((date) => {
-                  const isDraft = isDraftDay(date.date);
+                {futureClosedDays.map((item) => {
+                  const isDraft = isDraftDay(item.date);
+                  const isToday = item.date === today;
+
                   return (
                     <div
-                      key={date.date}
+                      key={item.date}
                       className="group bg-neutral-800/40 border border-neutral-700/50 rounded-xl p-4 flex items-center gap-4 hover:border-amber-500/50 hover:bg-neutral-800 transition-all duration-300"
                     >
                       <div className="flex flex-col items-center justify-center min-w-[65px] h-[65px] bg-neutral-900 border border-neutral-700 rounded-lg group-hover:border-amber-500/30 transition-colors">
                         <span className="text-[10px] uppercase tracking-widest text-amber-500 font-bold">
-                          {getDayOfWeek(date.date).substring(0, 3)}
+                          {isToday
+                            ? "HOJE"
+                            : getDayOfWeek(item.date).substring(0, 3)}
                         </span>
                         <span className="text-xl font-bold text-neutral-50 leading-none">
-                          {date.date.split("-")[2]}
+                          {item.date.split("-")[2]}
                         </span>
                         <span className="text-[10px] text-neutral-400">
                           {new Intl.DateTimeFormat("pt-BR", { month: "short" })
-                            .format(new Date(date.date + "T00:00:00"))
+                            .format(new Date(item.date + "T00:00:00"))
                             .replace(".", "")}
                         </span>
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-neutral-200 font-medium truncate">
-                            {formatDateBR(date.date)}
+                            {formatDateBR(item.date)}
                           </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-700 text-neutral-400 uppercase font-semibold">
-                            {getDayOfWeek(date.date)}
-                          </span>
+                          {isToday ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 uppercase font-bold">
+                              Hoje
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-700 text-neutral-400 uppercase font-semibold">
+                              {getDayOfWeek(item.date)}
+                            </span>
+                          )}
                           {isDraft && (
                             <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-medium">
                               Novo (Não salvo)
@@ -272,7 +326,7 @@ export default function ClosedDaysModal({
                         <div className="flex items-center gap-1.5 mt-1">
                           <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50" />
                           <p className="text-neutral-400 text-sm italic truncate">
-                            {date.reason || "Sem motivo informado"}
+                            {item.reason || "Sem motivo informado"}
                           </p>
                         </div>
                       </div>
@@ -280,7 +334,7 @@ export default function ClosedDaysModal({
                       {isDraft && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveDraftDay(date.date)}
+                          onClick={() => handleRemoveDraftDay(item.date)}
                           className="p-2 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
                           title="Remover este dia antes de salvar"
                         >
@@ -301,27 +355,38 @@ export default function ClosedDaysModal({
               </h4>
 
               <div className="space-y-2">
-                {pastClosedDays.map((date) => (
-                  <div
-                    key={date.date}
-                    className="bg-neutral-800/30 border border-neutral-800 rounded-lg p-3 flex items-center justify-between opacity-60"
-                  >
-                    <div>
-                      <div className="text-neutral-400 text-sm">
-                        {formatDateBR(date.date)}
+                {pastClosedDays.map((item) => {
+                  const isToday = item.date === today;
+                  return (
+                    <div
+                      key={item.date}
+                      className="bg-neutral-800/30 border border-neutral-800 rounded-lg p-3 flex items-center justify-between opacity-60"
+                    >
+                      <div>
+                        <div className="text-neutral-400 text-sm flex items-center gap-2">
+                          {formatDateBR(item.date)}
+                          {isToday && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-red-500/20 text-red-400 uppercase font-bold">
+                              Hoje
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-neutral-500 text-xs mt-0.5">
+                          {isToday ? "Hoje" : getDayOfWeek(item.date)}
+                        </div>
                       </div>
-                      <div className="text-neutral-500 text-xs mt-0.5">
-                        {getDayOfWeek(date.date)}
+                      <div className="text-neutral-500 text-xs italic truncate max-w-[200px]">
+                        {item.reason}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
           {localClosedDays.length === 0 && (
-            <div className="text-center">
+            <div className="text-center py-6">
               <div className="inline-flex items-center justify-center bg-neutral-800/50 p-2 rounded-full mb-4">
                 <BiCalendar className="w-8 h-8 text-neutral-600" />
               </div>
@@ -333,21 +398,34 @@ export default function ClosedDaysModal({
               </p>
             </div>
           )}
+
+          {error && (
+            <p className="text-red-400 text-xs font-medium text-center">
+              {error}
+            </p>
+          )}
         </div>
 
-        <div className="flex items-center gap-3 p-4 md:p-6 border-t border-neutral-800">
+        <div className="flex items-center gap-3 p-4 md:p-6 border-t border-neutral-800 bg-neutral-900/50">
           <button
             onClick={handleCancel}
-            className="flex-1 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg transition-colors cursor-pointer"
+            disabled={isSaving}
+            className="flex-1 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
-            disabled={isSaving}
-            className="flex-1 px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-neutral-950 font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            disabled={
+              isSaving ||
+              isWhatsAppConnected === false ||
+              isWhatsAppConnected === null
+            }
+            className="flex-1 px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-800 text-neutral-950 disabled:text-neutral-500 font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
           >
-            {isSaving ? (
+            {isWhatsAppConnected === null ? (
+              <div className="w-5 h-5 border-2 border-neutral-500/30 border-t-neutral-500 rounded-full animate-spin" />
+            ) : isSaving ? (
               <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin" />
             ) : (
               "Salvar Alterações"
