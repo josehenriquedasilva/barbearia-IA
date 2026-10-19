@@ -302,7 +302,6 @@ export default function Register() {
             />
           )}
 
-          {/* Checkbox de Aceite Legal com Animação e Destaque Visual */}
           <div
             className={`mt-6 pt-4 border-t border-neutral-800 p-3 rounded-lg transition-all duration-300 flex items-start gap-3 ${
               highlightTerms

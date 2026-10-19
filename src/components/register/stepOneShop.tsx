@@ -19,6 +19,7 @@ export default function StepOneShop({
           type="text"
           id="barberName"
           value={barberName}
+          maxLength={80}
           onChange={(e) => setBarberName(e.target.value)}
           placeholder="Ex: Barber Shop"
         />
@@ -30,6 +31,7 @@ export default function StepOneShop({
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
           type="tel"
           id="phone"
+          maxLength={15}
           value={phone}
           onChange={handlePhoneChange}
           placeholder="(81) 98765-4321"

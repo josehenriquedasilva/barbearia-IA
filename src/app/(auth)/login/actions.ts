@@ -14,19 +14,33 @@ function getJwtSecretKey(): Uint8Array {
 export async function loginAction(formData: FormLoginProps) {
   const { email, password } = formData;
 
+  if (!email || !password) {
+    return { success: false, error: "Preencha todos os campos." };
+  }
+
+  const trimmedEmail = email.trim().toLowerCase();
+
+  if (
+    trimmedEmail.length > 100 ||
+    password.length > 72 ||
+    password.length < 6
+  ) {
+    return { success: false, error: "E-mail ou senha inválidos." };
+  }
+
   try {
     const user = await prisma.barber.findUnique({
-      where: { email },
+      where: { email: trimmedEmail },
     });
 
     if (!user) {
-      return { success: false, error: "E-mail inválido." };
+      return { success: false, error: "E-mail ou senha incorretos." };
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      return { success: false, error: "Senha incorreta." };
+      return { success: false, error: "E-mail ou senha incorretos." };
     }
 
     const token = await new SignJWT({

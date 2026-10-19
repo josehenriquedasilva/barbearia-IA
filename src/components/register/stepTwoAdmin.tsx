@@ -28,6 +28,7 @@ export default function StepTwoAdimin({
         <input
           id="adminName"
           type="text"
+          maxLength={80}
           value={adminName}
           onChange={(e) => setAdminName(e.target.value)}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
@@ -43,6 +44,7 @@ export default function StepTwoAdimin({
           id="email"
           type="email"
           value={email}
+          maxLength={100}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
           placeholder="seu@email.com"
@@ -57,6 +59,7 @@ export default function StepTwoAdimin({
           id="password"
           type={showPasswordOne ? "text" : "password"}
           value={password}
+          maxLength={72}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
           placeholder="Mínimo 6 caracteres"
