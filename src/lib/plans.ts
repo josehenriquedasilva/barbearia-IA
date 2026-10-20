@@ -12,7 +12,7 @@ export interface PlanDetail {
 export const PLAN_DETAILS: Record<PlanType, PlanDetail> = {
   BRONZE: {
     name: "Plano Bronze",
-    price: 50.0,
+    price: 80.0,
     maxBarbers: 2,
     description: "Ideal para barbearias pequenas e autônomos",
     features: [
@@ -22,7 +22,7 @@ export const PLAN_DETAILS: Record<PlanType, PlanDetail> = {
   },
   SILVER: {
     name: "Plano Prata",
-    price: 80.0,
+    price: 120.0,
     maxBarbers: 4,
     description: "Para barbearias em expansão",
     features: [
