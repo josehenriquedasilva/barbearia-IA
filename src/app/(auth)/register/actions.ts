@@ -4,6 +4,13 @@ import prisma from "@/lib/db";
 import { FormBarberProps } from "@/types/types";
 import { Prisma, PlanType, Role, SubscriptionStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
+import { SignJWT } from "jose";
+
+function getJwtSecretKey(): Uint8Array {
+  const secret = process.env.JWT_SECRET || "chave_secreta_fallback_dev";
+  return new TextEncoder().encode(secret);
+}
 
 async function generateUniqueSlug(
   tx: Prisma.TransactionClient,
@@ -44,7 +51,9 @@ async function generateUniqueSlug(
   return finalSlug;
 }
 
-export async function registerShop(formData: FormBarberProps) {
+export async function registerShop(
+  formData: FormBarberProps & { acceptedTerms?: boolean },
+) {
   const {
     barberName,
     phone,
@@ -63,13 +72,20 @@ export async function registerShop(formData: FormBarberProps) {
     hasLunchBreak,
     lunchStart,
     lunchEnd,
+    acceptedTerms,
   } = formData;
+
+  if (!acceptedTerms) {
+    return {
+      success: false,
+      error:
+        "Você precisa aceitar os Termos de Uso e a Política de Privacidade para se cadastrar.",
+    };
+  }
 
   try {
     const rawPhone = phone.replace(/\D/g, "");
-
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const selectedPlan =
       plan?.toUpperCase() === "SILVER" ? PlanType.SILVER : PlanType.BRONZE;
 
@@ -103,7 +119,7 @@ export async function registerShop(formData: FormBarberProps) {
       const admin = await tx.barber.create({
         data: {
           name: adminName,
-          email: email,
+          email: email.trim().toLowerCase(),
           password: hashedPassword,
           role: Role.ADMIN,
           shopId: shop.id,
@@ -122,6 +138,27 @@ export async function registerShop(formData: FormBarberProps) {
       }
 
       return { admin };
+    });
+
+    // AUTO-LOGIN: Gerar o token JWT e definir o cookie de sessão automaticamente
+    const token = await new SignJWT({
+      id: result.admin.id,
+      role: result.admin.role,
+      shopId: result.admin.shopId,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setSubject(String(result.admin.id))
+      .setIssuedAt()
+      .setExpirationTime("1d")
+      .sign(getJwtSecretKey());
+
+    const cookieStore = await cookies();
+    cookieStore.set("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24,
     });
 
     return { success: true, user: result.admin };

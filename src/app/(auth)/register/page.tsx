@@ -165,10 +165,11 @@ export default function Register() {
         hasLunchBreak,
         lunchStart: hasLunchBreak ? lunchStart : null,
         lunchEnd: hasLunchBreak ? lunchEnd : null,
+        acceptedTerms,
       });
 
-      if (result.success) {
-        router.push("/login?register=true");
+      if (result.success && result.user) {
+        router.push(`/dashboard/${result.user.id}`);
       } else {
         setError(result.error || "Erro ao cadastrar.");
       }
