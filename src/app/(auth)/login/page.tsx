@@ -91,7 +91,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-5">
           <RiScissorsFill className="bg-amber-600 text-black p-3 rounded-xl size-20 mb-4" />
-          <h1 className="text-neutral-50 text-3xl mb-2">BarberPro Dashboard</h1>
+          <h1 className="text-neutral-50 text-3xl mb-2">BarberPro</h1>
           <p className="text-neutral-400">
             Entre com suas credenciais de barbeiro
           </p>

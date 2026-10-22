@@ -70,6 +70,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentData | null>(null);
 
+  // SWR para os agendamentos (já existente)
   const {
     data: appointments,
     error,
@@ -83,6 +84,19 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       revalidateOnFocus: true,
     },
   );
+
+  // NOVO: SWR para buscar os dados atualizados da barbearia/assinatura em tempo real a cada 10 segundos
+  const { data: shopData } = useSWR(
+    shopId ? `/api/shop/status?shopId=${shopId}` : null,
+    fetcher,
+    {
+      refreshInterval: 10000, // Atualiza a cada 10 segundos automaticamente
+      revalidateOnFocus: true,
+    },
+  );
+
+  // Usa os dados atualizados da API se existirem, senão usa o fallback das props iniciais
+  const currentShop = shopData?.shop || user.shop;
 
   useEffect(() => {
     async function loadBarbers() {
@@ -182,14 +196,14 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     }
   };
 
-  const subStatus = user.shop?.subscriptionStatus || "TRIAL";
-  const subEnd = user.shop?.subscriptionEnd
-    ? new Date(user.shop.subscriptionEnd)
+  const subStatus = currentShop?.subscriptionStatus || "TRIAL";
+  const subEnd = currentShop?.subscriptionEnd
+    ? new Date(currentShop.subscriptionEnd)
     : null;
 
   const getSubscriptionInfo = () => {
     const planName =
-      user.shop?.plan === "SILVER" ? "Plano Prata" : "Plano Bronze";
+      currentShop?.plan === "SILVER" ? "Plano Prata" : "Plano Bronze";
 
     let daysRemaining: number | null = null;
     let formattedDate = "";
@@ -270,7 +284,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             className="size-8.5 text-neutral-50 mr-1.5 cursor-pointer p-1 rounded-md hover:bg-neutral-800 duration-150"
           />
           <RiScissorsFill className="bg-amber-600 p-1 size-7 rounded-md" />
-          <h1 className="text-neutral-50 font-semibold">{user.shop?.name}</h1>
+          <h1 className="text-neutral-50 font-semibold">{currentShop?.name}</h1>
         </div>
 
         <div className="flex items-center mr-3 gap-2">
@@ -293,7 +307,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         setViewBarberName={setViewBarberName}
         setMenu={setMenu}
         viewBarberId={viewBarberId}
-        plan={user.shop?.plan}
+        plan={currentShop?.plan}
         onOpenSubscriptionModal={() => setIsUpgradeModalOpen(true)}
       />
 
@@ -381,11 +395,11 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             <Info
               appointments={Array.isArray(appointments) ? appointments : []}
               shopId={shopId}
-              slug={user.shop?.slug}
-              shopPhone={user.shop?.phone}
+              slug={currentShop?.slug}
+              shopPhone={currentShop?.phone}
               isAdmin={isAdmin}
-              subscriptionStatus={user.shop?.subscriptionStatus}
-              subscriptionEnd={user.shop?.subscriptionEnd}
+              subscriptionStatus={currentShop?.subscriptionStatus}
+              subscriptionEnd={currentShop?.subscriptionEnd}
               onOpenSubscriptionModal={() => setIsUpgradeModalOpen(true)}
             />
           )}
@@ -438,7 +452,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           key="settings-modal"
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
-          shop={user.shop}
+          shop={currentShop}
           services={services}
           onSave={handleSaveSettings}
         />
@@ -459,7 +473,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           barberModalClose={() => setIsBarberModal(false)}
           onAddBarber={handleCreateBarber}
           currentBarbersCount={barbers.length}
-          plan={user.shop?.plan}
+          plan={currentShop?.plan}
           onOpenSubscriptionModal={() => setIsUpgradeModalOpen(true)}
         />
       )}
@@ -478,9 +492,9 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
           shopId={shopId}
           isOpen={isUpgradeModalOpen}
           onClose={() => setIsUpgradeModalOpen(false)}
-          currentPlan={user.shop?.plan}
-          subscriptionStatus={user.shop?.subscriptionStatus}
-          subscriptionEnd={user.shop?.subscriptionEnd}
+          currentPlan={currentShop?.plan}
+          subscriptionStatus={currentShop?.subscriptionStatus}
+          subscriptionEnd={currentShop?.subscriptionEnd}
         />
       )}
     </div>

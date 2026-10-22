@@ -149,7 +149,6 @@ export function WhatsAppStatus({
 
   return (
     <div className="mb-4 w-full">
-      {/* Banner de Erro */}
       {error && (
         <div className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-center justify-between gap-2 mb-3 animate-in fade-in duration-200">
           <div className="flex items-center gap-2 min-w-0">
@@ -166,9 +165,7 @@ export function WhatsAppStatus({
         </div>
       )}
 
-      {/* Card Principal */}
       <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-        {/* Topo: Status & Número */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div
@@ -203,12 +200,11 @@ export function WhatsAppStatus({
                   {isConnected && !isSubscriptionExpired
                     ? "Online"
                     : isSubscriptionExpired
-                    ? "Bloqueado"
-                    : "Offline"}
+                      ? "Bloqueado"
+                      : "Offline"}
                 </span>
               </div>
 
-              {/* Número + Botão Trocar */}
               <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
                 <span className="font-medium text-zinc-300">
                   {formattedPhone}
@@ -227,22 +223,24 @@ export function WhatsAppStatus({
             </div>
           </div>
 
-          {/* Botão de Desconectar (Apenas Admin) */}
           {isConnected && isAdmin && !isSubscriptionExpired && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
-            >
-              <VscDebugDisconnect size={14} />
-              <span className="hidden sm:inline">Desconectar</span>
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
+              >
+                <VscDebugDisconnect size={14} />
+                <span>Desconectar</span>
+              </button>
+              <span className="text-[10px] text-zinc-500 font-medium">
+                Desconectar
+              </span>
+            </div>
           )}
         </div>
 
-        {/* ÁREA DE CONEXÃO E BLOQUEIOS */}
         <div className="pt-3 border-t border-zinc-800/60">
           {isSubscriptionExpired ? (
-            /* BLOQUEIO DE ASSINATURA VENCIDA */
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-center space-y-3">
               <div className="flex justify-center">
                 <div className="bg-amber-500/20 p-2 rounded-full text-amber-500">
@@ -254,7 +252,8 @@ export function WhatsAppStatus({
                   Recurso Bloqueado — Assinatura Vencida
                 </h4>
                 <p className="text-zinc-400 text-[11px] mt-1 leading-relaxed">
-                  A IA do WhatsApp está suspensa. Renove seu plano para continuar automatizando seus agendamentos.
+                  A IA do WhatsApp está suspensa. Renove seu plano para
+                  continuar automatizando seus agendamentos.
                 </p>
               </div>
 
@@ -269,12 +268,12 @@ export function WhatsAppStatus({
               )}
             </div>
           ) : !isConnected ? (
-            /* CONEXÃO PARA ADMIN QUANDO OFFLINE */
             isAdmin ? (
               !pairingCode ? (
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    Conecte a IA ao seu WhatsApp gerando um código de pareamento.
+                    Conecte a IA ao seu WhatsApp gerando um código de
+                    pareamento.
                   </p>
                   <button
                     onClick={handleGenerateCode}
@@ -290,7 +289,6 @@ export function WhatsAppStatus({
                   </button>
                 </div>
               ) : (
-                /* Display do Código + Ações */
                 <div className="space-y-3 animate-in fade-in zoom-in-95 duration-200">
                   <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
                     <div className="text-center sm:text-left space-y-0.5">
@@ -350,11 +348,11 @@ export function WhatsAppStatus({
                 </div>
               )
             ) : (
-              /* AVISO PARA BARBEIRO NÃO-ADMIN QUANDO OFFLINE */
               <div className="flex items-center gap-2 text-zinc-400 text-xs">
                 <BiLockAlt className="w-4 h-4 text-amber-500/80 shrink-0" />
                 <p className="leading-relaxed">
-                  A IA do WhatsApp está desconectada. Apenas o administrador da barbearia pode gerenciar a conexão.
+                  A IA do WhatsApp está desconectada. Apenas o administrador da
+                  barbearia pode gerenciar a conexão.
                 </p>
               </div>
             )
