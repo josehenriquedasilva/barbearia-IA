@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import { FiEye, FiEyeOff } from "react-icons/fi";
-import { RiScissorsFill } from "react-icons/ri";
 
 import { loginAction } from "./actions";
 import { useRouter } from "next/navigation";
@@ -27,7 +27,7 @@ export default function Login() {
         setLockoutTime((prev) => prev - 1);
       }, 1000);
     } else if (lockoutTime === 0 && failedAttempts >= 5) {
-      setFailedAttempts(0); 
+      setFailedAttempts(0);
       setError("");
     }
     return () => clearInterval(timer);
@@ -64,7 +64,7 @@ export default function Login() {
         setFailedAttempts(nextAttempts);
 
         if (nextAttempts >= 5) {
-          setLockoutTime(60); 
+          setLockoutTime(60);
           setError(
             "Muitas tentativas incorretas. Aguarde 60 segundos para tentar novamente.",
           );
@@ -90,7 +90,16 @@ export default function Login() {
     <div className="bg-neutral-950 min-h-screen flex items-center justify-center p-4 text-gray-50">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-5">
-          <RiScissorsFill className="bg-amber-600 text-black p-3 rounded-xl size-20 mb-4" />
+          <div className="relative w-20 h-20 mb-4 flex items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt="BarberPro Logo"
+              width={80}
+              height={80}
+              className="object-contain w-full h-full drop-shadow-md rounded-2xl"
+              priority
+            />
+          </div>
           <h1 className="text-neutral-50 text-3xl mb-2">BarberPro</h1>
           <p className="text-neutral-400">
             Entre com suas credenciais de barbeiro

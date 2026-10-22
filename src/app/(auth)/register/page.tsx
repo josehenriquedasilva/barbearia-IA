@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RiScissorsFill } from "react-icons/ri";
+import Image from "next/image";
 import { FiArrowRight } from "react-icons/fi";
 import Link from "next/link";
 import { registerShop } from "./actions";
@@ -184,7 +184,16 @@ export default function Register() {
     <div className="bg-neutral-950 min-h-screen flex items-center justify-center p-4 text-gray-50">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-5">
-          <RiScissorsFill className="bg-amber-600 text-black p-3 rounded-xl size-20 mb-4" />
+          <div className="relative w-20 h-20 mb-4 flex items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt="BarberPro Logo"
+              width={80}
+              height={80}
+              className="object-contain w-full h-full drop-shadow-md rounded-2xl"
+              priority
+            />
+          </div>
           <h1 className="text-neutral-50 text-3xl mb-2">BarberPro</h1>
           <p className="text-neutral-400">
             Cadastre Sua Barbearia no{" "}
