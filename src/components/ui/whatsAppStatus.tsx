@@ -232,9 +232,6 @@ export function WhatsAppStatus({
                 <VscDebugDisconnect size={14} />
                 <span>Desconectar</span>
               </button>
-              <span className="text-[10px] text-zinc-500 font-medium">
-                Desconectar
-              </span>
             </div>
           )}
         </div>
