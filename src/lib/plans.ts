@@ -23,7 +23,7 @@ export const PLAN_DETAILS: Record<PlanType, PlanDetail> = {
   SILVER: {
     name: "Plano Prata",
     price: 120.0,
-    maxBarbers: 4,
+    maxBarbers: 5,
     description: "Para barbearias em expansão",
     features: [
       "Até 5 barbeiros cadastrados",
