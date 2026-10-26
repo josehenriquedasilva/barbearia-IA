@@ -54,18 +54,27 @@ export function WhatsAppStatus({
 
   useEffect(() => {
     async function checkStatus() {
-      const res = await checkWhatsAppStatusAction();
-      setIsConnected(res.connected);
+      try {
+        const res = await checkWhatsAppStatusAction();
+        setIsConnected(res.connected);
+      } catch (err) {
+        console.error("Erro ao checar status do WhatsApp:", err);
+        setIsConnected(false);
+      }
     }
     checkStatus();
     const interval = setInterval(async () => {
-      const res = await checkWhatsAppStatusAction();
-      if (res.connected !== isConnected) {
-        setIsConnected(res.connected);
-        if (res.connected) {
-          setPairingCode(null);
-          setError(null);
+      try {
+        const res = await checkWhatsAppStatusAction();
+        if (res.connected !== isConnected) {
+          setIsConnected(res.connected);
+          if (res.connected) {
+            setPairingCode(null);
+            setError(null);
+          }
         }
+      } catch (err) {
+        console.error("Erro no intervalo de status do WhatsApp:", err);
       }
     }, 10000);
     return () => clearInterval(interval);
@@ -145,7 +154,22 @@ export function WhatsAppStatus({
     setLoading(false);
   }
 
-  if (isConnected === null) return null;
+  if (isConnected === null) {
+    return (
+      <div className="mb-4 w-full">
+        <div className="bg-neutral-900/40 border border-neutral-800/60 rounded-2xl p-4 sm:p-5 h-24 animate-pulse flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-neutral-800 rounded-xl" />
+            <div className="space-y-2">
+              <div className="w-28 h-4 bg-neutral-800 rounded-md" />
+              <div className="w-36 h-3 bg-neutral-800/70 rounded-md" />
+            </div>
+          </div>
+          <div className="w-24 h-8 bg-neutral-800 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-4 w-full">
@@ -166,7 +190,7 @@ export function WhatsAppStatus({
       )}
 
       <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div
               className={`p-2.5 rounded-xl shrink-0 border ${
@@ -205,33 +229,31 @@ export function WhatsAppStatus({
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
-                <span className="font-medium text-zinc-300">
-                  {formattedPhone}
-                </span>
-                {isAdmin && !isSubscriptionExpired && (
-                  <button
-                    onClick={() => setIsChangeModalOpen(true)}
-                    className="text-amber-500 hover:text-amber-400 p-0.5 rounded transition-colors inline-flex items-center gap-0.5 font-medium text-[11px] cursor-pointer"
-                    title="Alterar número"
-                  >
-                    <BiEdit size={13} />
-                    <span>Trocar</span>
-                  </button>
-                )}
+              <div className="mt-1 text-xs text-zinc-300 font-medium">
+                {formattedPhone}
               </div>
             </div>
           </div>
 
-          {isConnected && isAdmin && !isSubscriptionExpired && (
-            <div className="flex flex-col items-end gap-1">
+          {isAdmin && !isSubscriptionExpired && (
+            <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
               <button
-                onClick={() => setIsModalOpen(true)}
-                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 cursor-pointer"
+                onClick={() => setIsChangeModalOpen(true)}
+                className="flex-1 sm:flex-none px-3.5 py-2.5 bg-zinc-800/80 hover:bg-zinc-800 active:scale-95 text-zinc-200 border border-zinc-700/60 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
               >
-                <VscDebugDisconnect size={14} />
-                <span>Desconectar</span>
+                <BiEdit size={15} className="text-amber-500 shrink-0" />
+                <span>Trocar Número</span>
               </button>
+
+              {isConnected && (
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex-1 sm:flex-none px-3.5 py-2.5 bg-red-500/10 hover:bg-red-500/20 active:scale-95 text-red-400 border border-red-500/20 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <VscDebugDisconnect size={15} className="shrink-0" />
+                  <span>Desconectar</span>
+                </button>
+              )}
             </div>
           )}
         </div>
