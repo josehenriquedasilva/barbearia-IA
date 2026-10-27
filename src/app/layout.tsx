@@ -22,16 +22,16 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "pt_BR",
-    url: "https://barbearia-ia.vercel.app",
+    url: "https://barberpro-ia.vercel.app/logo.png",
     title: "Sistema de Agendamento Inteligente",
     description: "Automatize seus agendamentos e atendimento via WhatsApp.",
     siteName: "Barbearia App",
     images: [
       {
-        url: "https://barbearia-ia.vercel.app/logo.png",
+        url: "https://barberpro-ia.vercel.app/logo.png",
         width: 1200,
         height: 630,
-        alt: "Prévia do Sistema de Agendamento",
+        alt: "Logo do Sistema",
       },
     ],
   },

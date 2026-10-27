@@ -55,7 +55,7 @@ export default function StepOneShop({
           Já tem uma conta?
           <Link
             href={"/login"}
-            className="text-amber-500 hover:text-amber-600 transition-colors"
+            className="text-amber-400 hover:text-amber-600 transition-colors"
           >
             Faça login
           </Link>

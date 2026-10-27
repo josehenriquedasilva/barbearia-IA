@@ -89,28 +89,42 @@ export default function Login() {
   return (
     <div className="bg-neutral-950 min-h-screen flex items-center justify-center p-4 text-gray-50">
       <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-5">
+        <div className="flex flex-col items-center mb-6">
           <div className="relative w-20 h-20 mb-4 flex items-center justify-center">
             <Image
               src="/logo.png"
-              alt="BarberPro Logo"
+              alt="BarberPro IA Logo"
               width={80}
               height={80}
               className="object-contain w-full h-full drop-shadow-md rounded-2xl"
               priority
             />
           </div>
-          <h1 className="text-neutral-50 text-3xl mb-2">BarberPro</h1>
-          <p className="text-neutral-400">
+
+          {/* Título Moderno com Estilização IA */}
+          <h1 className="text-neutral-50 text-3xl font-bold tracking-tight flex items-center gap-2 mb-2">
+            BarberPro{" "}
+            <span className="text-xs uppercase font-extrabold tracking-widest px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 shadow-sm">
+              IA
+            </span>
+          </h1>
+
+          <p className="text-neutral-400 text-sm">
             Entre com suas credenciais de barbeiro
           </p>
         </div>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 md:p-8">
+
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 md:p-8 shadow-xl">
           <form onSubmit={handleLogin} className="flex flex-col gap-5">
             <div>
-              <label htmlFor="username">Email</label>
+              <label
+                htmlFor="username"
+                className="text-xs font-semibold uppercase tracking-wider text-neutral-400"
+              >
+                Email
+              </label>
               <input
-                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500 disabled:opacity-50"
+                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all placeholder:text-neutral-500 disabled:opacity-50 text-sm"
                 type="email"
                 id="username"
                 value={email}
@@ -122,9 +136,14 @@ export default function Login() {
             </div>
 
             <div className="relative">
-              <label htmlFor="password">Senha</label>
+              <label
+                htmlFor="password"
+                className="text-xs font-semibold uppercase tracking-wider text-neutral-400"
+              >
+                Senha
+              </label>
               <input
-                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500 disabled:opacity-50"
+                className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all placeholder:text-neutral-500 disabled:opacity-50 text-sm"
                 type={showPassword ? "text" : "password"}
                 id="password"
                 value={password}
@@ -136,7 +155,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 bottom-4 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer"
+                className="absolute right-4 bottom-3.5 text-neutral-400 hover:text-neutral-300 transition-colors cursor-pointer"
               >
                 {showPassword ? (
                   <FiEye className="w-5 h-5" />
@@ -147,7 +166,7 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="bg-red-900/20 border border-red-800 text-red-400 rounded-lg px-4 py-3 text-sm">
+              <div className="bg-red-900/20 border border-red-800/80 text-red-400 rounded-lg px-4 py-3 text-xs leading-relaxed">
                 {error}
               </div>
             )}
@@ -155,13 +174,13 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading || lockoutTime > 0}
-              className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800/50 disabled:cursor-not-allowed text-neutral-950 rounded-lg px-4 py-3 transition-colors flex items-center justify-center gap-2 font-semibold cursor-pointer"
+              className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-amber-800/50 disabled:cursor-not-allowed text-zinc-950 rounded-lg px-4 py-3 transition-all flex items-center justify-center gap-2 font-bold text-sm cursor-pointer shadow-sm active:scale-95"
             >
               {lockoutTime > 0 ? (
                 <span>Aguarde {lockoutTime}s...</span>
               ) : isLoading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-neutral-950/30 border-t-neutral-950 rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin"></div>
                   <span>Entrando...</span>
                 </>
               ) : (
@@ -171,12 +190,13 @@ export default function Login() {
                 </>
               )}
             </button>
+
             <div className="text-center">
-              <span className="w-full text-neutral-400 text-sm transition-colors flex justify-center gap-1">
+              <span className="w-full text-neutral-400 text-xs transition-colors flex justify-center gap-1">
                 Não tem uma conta?
                 <Link
                   href={"/register"}
-                  className="text-amber-500 hover:text-amber-600 transition-colors"
+                  className="text-amber-400 hover:text-amber-300 font-medium transition-colors"
                 >
                   Cadastre sua barbearia
                 </Link>
@@ -189,7 +209,7 @@ export default function Login() {
             <Link
               href="/terms"
               target="_blank"
-              className="text-amber-500 hover:underline"
+              className="text-amber-400 hover:underline"
             >
               Termos de Uso
             </Link>{" "}
@@ -197,15 +217,16 @@ export default function Login() {
             <Link
               href="/privacy"
               target="_blank"
-              className="text-amber-500 hover:underline"
+              className="text-amber-400 hover:underline"
             >
               Política de Privacidade
             </Link>
             .
           </div>
         </div>
-        <p className="text-center text-neutral-500 text-sm mt-6">
-          BarberPro © 2026 - Sistema de Gerenciamento
+
+        <p className="text-center text-neutral-500 text-xs mt-6">
+          BarberPro IA © 2026 - Sistema de Gerenciamento Inteligente
         </p>
       </div>
     </div>

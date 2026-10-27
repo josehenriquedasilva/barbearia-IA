@@ -183,31 +183,38 @@ export default function Register() {
   return (
     <div className="bg-neutral-950 min-h-screen flex items-center justify-center p-4 text-gray-50">
       <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-5">
+        <div className="flex flex-col items-center mb-6">
           <div className="relative w-20 h-20 mb-4 flex items-center justify-center">
             <Image
               src="/logo.png"
-              alt="BarberPro Logo"
+              alt="BarberPro IA Logo"
               width={80}
               height={80}
               className="object-contain w-full h-full drop-shadow-md rounded-2xl"
               priority
             />
           </div>
-          <h1 className="text-neutral-50 text-3xl mb-2">BarberPro</h1>
-          <p className="text-neutral-400">
-            Cadastre Sua Barbearia no{" "}
-            <span className="font-bold">BarberPro</span>
+
+          <h1 className="text-neutral-50 text-3xl font-bold tracking-tight flex items-center gap-2 mb-2">
+            BarberPro{" "}
+            <span className="text-xs uppercase font-extrabold tracking-widest px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 shadow-sm">
+              IA
+            </span>
+          </h1>
+
+          <p className="text-neutral-400 text-sm">
+            Cadastre sua barbearia no{" "}
+            <span className="text-neutral-200 font-semibold">BarberPro IA</span>
           </p>
         </div>
 
         {/* INDICADOR DE PROGRESSO (3 ETAPAS) */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-neutral-400">
+            <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
               Etapa {currentStep} de 3
             </span>
-            <span className="text-sm text-amber-500 font-medium">
+            <span className="text-xs font-medium text-amber-400">
               {currentStep === 1 && "Dados da Barbearia"}
               {currentStep === 2 && "Dados do Responsável"}
               {currentStep === 3 && "Serviços e Horários"}
@@ -215,13 +222,13 @@ export default function Register() {
           </div>
           <div className="w-full bg-neutral-800 rounded-full h-2">
             <div
-              className="bg-amber-600 h-2 rounded-full transition-all duration-300"
+              className="bg-amber-500 h-2 rounded-full transition-all duration-300"
               style={{ width: `${(currentStep / 3) * 100}%` }}
             />
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-5 md:p-8">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-5 md:p-8 shadow-xl">
           {currentStep === 1 && (
             <StepOneShop
               barberName={barberName}
@@ -333,7 +340,7 @@ export default function Register() {
                   setError("");
                 }
               }}
-              className="mt-0.5 h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-600 focus:ring-amber-600 focus:ring-offset-neutral-900 cursor-pointer shrink-0"
+              className="mt-0.5 h-4 w-4 rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-neutral-900 cursor-pointer shrink-0"
             />
             <label
               htmlFor="terms"
@@ -343,7 +350,7 @@ export default function Register() {
               <Link
                 href="/terms"
                 target="_blank"
-                className="text-amber-500 hover:underline font-medium"
+                className="text-amber-400 hover:underline font-medium"
               >
                 Termos de Uso
               </Link>{" "}
@@ -351,7 +358,7 @@ export default function Register() {
               <Link
                 href="/privacy"
                 target="_blank"
-                className="text-amber-500 hover:underline font-medium"
+                className="text-amber-400 hover:underline font-medium"
               >
                 Política de Privacidade
               </Link>
@@ -360,8 +367,8 @@ export default function Register() {
           </div>
         </div>
 
-        <p className="text-center text-neutral-500 text-sm mt-6">
-          BarberPro © 2026 - Sistema de Gerenciamento
+        <p className="text-center text-neutral-500 text-xs mt-6">
+          BarberPro IA © 2026 - Sistema de Gerenciamento Inteligente
         </p>
       </div>
     </div>
