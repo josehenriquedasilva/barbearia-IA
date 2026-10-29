@@ -7,17 +7,17 @@ import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 export const dynamic = "force-dynamic";
 
 interface ScheduleArgs {
-  barberName: string;
+  barberName?: string;
   date: string;
   time: string;
-  serviceName: string;
-  clientName: string;
+  serviceName?: string;
+  clientName?: string;
 }
 
 interface CheckArgs {
-  barberName: string;
+  barberName?: string;
   date: string;
-  serviceName: string;
+  serviceName?: string;
   requestedTime?: string;
 }
 
@@ -193,7 +193,7 @@ EQUIPE DE BARBEIROS DISPONÍVEIS:
 ${barbeiroNames.join(", ")}
 ${
   unicoBarbeiro
-    ? `- REGRA DE BARBEIRO ÚNICO: Há apenas UM barbeiro cadastrado (${unicoBarbeiro}). VOCÊ NUNCA DEVE citar ou mencionar o nome dele nas perguntas ou respostas (ex: pergunte apenas "Para qual data você deseja agendar?" e NUNCA "com o ${unicoBarbeiro}"), A NÃO SER QUE O CLIENTE pergunte explicitamente sobre o profissional.`
+    ? `- REGRA DE BARBEIRO ÚNICO: Há apenas UM barbeiro cadastrado (${unicoBarbeiro}). VOCÊ NUNCA DEVE citar ou mencionar o nome dele nas perguntas ou respostas, A NÃO SER QUE O CLIENTE pergunte explicitamente.`
     : `- Se o cliente NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
 }
 
@@ -222,16 +222,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
          : `- Após o cliente informar o serviço, se ele NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
      }
   3. DATA E HORÁRIO:
-     - ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "${getAvailableSlotsForDay}" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!
-
-VERIFICAÇÃO CRUZADA DE HORÁRIOS ENTRE BARBEIROS:
-  - Se houver mais de um barbeiro e o cliente perguntar por um horário ocupado com um, verifique com os outros e informe caso haja vaga.
-
-REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
-  - Se o cliente tiver AGENDAMENTO ATIVO no futuro:
-    * Se ele só mandou um "Oi", avise-o do agendamento.
-    * Se ele quiser remarcar, altere o agendamento ativo dele.
-    * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza informando a data e horário.`;
+     - ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "getAvailableSlots" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!`;
 
     const tools: Tool[] = [
       {
@@ -245,9 +236,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
               properties: {
                 barberName: {
                   type: SchemaType.STRING,
-                  description: unicoBarbeiro
-                    ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
-                    : `Nome do barbeiro escolhido dentre: ${barbeiroNames.join(", ")}. Se o cliente disser 'qualquer um', use '${barbeiroNames[0]}'.`,
+                  description: "Nome do barbeiro.",
                 },
                 date: {
                   type: SchemaType.STRING,
@@ -259,35 +248,25 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: unicoServico
-                    ? `Nome do serviço. Use '${unicoServico}' automaticamente.`
-                    : "Nome exato do serviço escolhido pelo cliente.",
+                  description: "Nome do serviço.",
                 },
                 clientName: {
                   type: SchemaType.STRING,
                   description: "Nome do cliente",
                 },
               },
-              required: [
-                "barberName",
-                "date",
-                "time",
-                "serviceName",
-                "clientName",
-              ],
+              required: ["date", "time"],
             },
           },
           {
             name: "cancelAppointment",
-            description:
-              "Cancela definitivamente o agendamento ativo. SÓ chame se o cliente confirmou explicitamente.",
+            description: "Cancela definitivamente o agendamento ativo.",
             parameters: {
               type: SchemaType.OBJECT,
               properties: {
                 confirm: {
                   type: SchemaType.BOOLEAN,
-                  description:
-                    "Deve ser true quando o cliente confirmou explicitamente.",
+                  description: "Confirmação explícita.",
                 },
               },
               required: ["confirm"],
@@ -306,23 +285,19 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
                 },
                 barberName: {
                   type: SchemaType.STRING,
-                  description: unicoBarbeiro
-                    ? `Nome do barbeiro. Use '${unicoBarbeiro}' automaticamente.`
-                    : `Nome do barbeiro escolhido dentre: ${barbeiroNames.join(", ")}. Se o cliente disser 'qualquer um', use '${barbeiroNames[0]}'.`,
+                  description: "Nome do barbeiro (opcional).",
                 },
                 serviceName: {
                   type: SchemaType.STRING,
-                  description: unicoServico
-                    ? `Nome do serviço. Use '${unicoServico}' automaticamente.`
-                    : "Nome do serviço informado pelo cliente.",
+                  description: "Nome do serviço (opcional).",
                 },
                 requestedTime: {
                   type: SchemaType.STRING,
                   description:
-                    "Horário específico perguntado no formato HH:MM (ex: 16:00 para 4 da tarde), se houver.",
+                    "Horário específico no formato HH:MM, se houver.",
                 },
               },
-              required: ["date", "barberName", "serviceName"],
+              required: ["date"], 
             },
           },
         ],
@@ -342,14 +317,24 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
         const { date, barberName, serviceName, requestedTime } =
           call.args as unknown as CheckArgs;
 
+        // BUSCA FLEXÍVEL (FALLBACK SEGURO)
         const targetBarber =
           shopData.barbers.find(
             (b) => b.name.toLowerCase() === (barberName || "").toLowerCase(),
-          ) || shopData.barbers[0];
+          ) ||
+          shopData.barbers.find((b) =>
+            b.name.toLowerCase().includes((barberName || "").toLowerCase()),
+          ) ||
+          shopData.barbers[0];
 
-        const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === serviceName.toLowerCase(),
-        );
+        const targetService =
+          shopData.services.find(
+            (s) => s.name.toLowerCase() === (serviceName || "").toLowerCase(),
+          ) ||
+          shopData.services.find((s) =>
+            s.name.toLowerCase().includes((serviceName || "").toLowerCase()),
+          ) ||
+          shopData.services[0];
 
         if (!targetBarber || !targetService) {
           functionResponse = {
@@ -452,7 +437,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
               isClosed: false,
               date,
               barberName: targetBarber.name,
-              serviceName,
+              serviceName: targetService.name,
               horarioSolicitado: formattedRequestedTime,
               horarioSolicitadoDisponivel: formattedRequestedTime
                 ? isRequestedAvailable
@@ -461,6 +446,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
               sugestoesHorariosMaisProximos: sugestoesProximas,
               sugestoesRecomendadasGerais: sugestoesGerais,
               totalSlotsDisponiveis: slotsResult.slots.length,
+              horariosDisponiveis: slotsResult.slots.map((s) => s.time), // Ajuda a IA a ler todos os horários se solicitado
             };
           }
         }
@@ -496,14 +482,29 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
           });
         }
 
-        const targetService = shopData.services.find(
-          (s) => s.name.toLowerCase() === args.serviceName.toLowerCase(),
-        );
+        const targetService =
+          shopData.services.find(
+            (s) =>
+              s.name.toLowerCase() === (args.serviceName || "").toLowerCase(),
+          ) ||
+          shopData.services.find((s) =>
+            s.name
+              .toLowerCase()
+              .includes((args.serviceName || "").toLowerCase()),
+          ) ||
+          shopData.services[0];
+
         const targetBarber =
           shopData.barbers.find(
             (b) =>
               b.name.toLowerCase() === (args.barberName || "").toLowerCase(),
-          ) || shopData.barbers[0];
+          ) ||
+          shopData.barbers.find((b) =>
+            b.name
+              .toLowerCase()
+              .includes((args.barberName || "").toLowerCase()),
+          ) ||
+          shopData.barbers[0];
 
         if (!targetService || !targetBarber) {
           return NextResponse.json({
@@ -611,7 +612,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
             } else {
               return await tx.appointment.create({
                 data: {
-                  clientName: args.clientName,
+                  clientName: args.clientName || "Cliente",
                   clientPhone,
                   shopId: shopData.id,
                   barberId: targetBarber.id,
