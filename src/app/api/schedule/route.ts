@@ -222,7 +222,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
          : `- Após o cliente informar o serviço, se ele NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
      }
   3. DATA E HORÁRIO:
-     - ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "getAvailableSlots" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!
+     - ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "${getAvailableSlotsForDay}" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!
 
 VERIFICAÇÃO CRUZADA DE HORÁRIOS ENTRE BARBEIROS:
   - Se houver mais de um barbeiro e o cliente perguntar por um horário ocupado com um, verifique com os outros e informe caso haja vaga.
