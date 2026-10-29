@@ -32,6 +32,22 @@ function getFormattedCurrentDate() {
   return new Date().toLocaleDateString("pt-BR", options);
 }
 
+function getDatesContext() {
+  const tz = "America/Sao_Paulo";
+  const now = new Date();
+
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
+    now,
+  );
+
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
+    tomorrow,
+  );
+
+  return { todayStr, tomorrowStr };
+}
+
 async function sendMessageWithRetry(
   chat: ChatSession,
   content: string | (string | Part)[],
@@ -137,6 +153,8 @@ export async function POST(request: Request) {
 
     const barbeiroNames = shopData.barbers.map((b) => b.name);
     const currentDate = getFormattedCurrentDate();
+    const { todayStr, tomorrowStr } = getDatesContext();
+
     const unicoBarbeiro = barbeiroNames.length === 1 ? barbeiroNames[0] : null;
     const unicoServico =
       shopData.services.length === 1 ? shopData.services[0].name : null;
@@ -166,10 +184,18 @@ export async function POST(request: Request) {
 
     const systemInstruction = `Você é o assistente virtual da "${shopData.name}".
 ${appointmentInfo}
-Hoje: ${currentDate}.
+Hoje é ${currentDate}.
+REFERÊNCIA DE DATAS PARA OS ARGUMENTOS DA FUNÇÃO:
+- Hoje = "${todayStr}"
+- Amanhã = "${tomorrowStr}"
 
-EQUIPE DE BARBEIROS DISPONÍVEIS (NUNCA INVENTE OUTROS NOMES):
+EQUIPE DE BARBEIROS DISPONÍVEIS:
 ${barbeiroNames.join(", ")}
+${
+  unicoBarbeiro
+    ? `- REGRA DE BARBEIRO ÚNICO: Há apenas UM barbeiro cadastrado (${unicoBarbeiro}). VOCÊ NUNCA DEVE citar ou mencionar o nome dele nas perguntas ou respostas (ex: pergunte apenas "Para qual data você deseja agendar?" e NUNCA "com o ${unicoBarbeiro}"), A NÃO SER QUE O CLIENTE pergunte explicitamente sobre o profissional.`
+    : `- Se o cliente NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
+}
 
 SERVIÇOS DISPONÍVEIS:
 ${servicosInfo}
@@ -192,25 +218,20 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
   2. BARBEIRO / PREFERÊNCIA:
      ${
        unicoBarbeiro
-         ? `- Barbeiro único: "${unicoBarbeiro}". Assuma este barbeiro automaticamente.`
-         : `- Após o cliente informar o serviço (e apenas depois disso), se ele NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
+         ? `- Barbeiro único: "${unicoBarbeiro}". Assuma este barbeiro automaticamente nos bastidores sem citar o nome dele.`
+         : `- Após o cliente informar o serviço, se ele NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
      }
   3. DATA E HORÁRIO:
-     - Somente após definir o serviço e o barbeiro (ou preferência), consulte os horários disponíveis.
+     - ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "getAvailableSlots" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!
 
 VERIFICAÇÃO CRUZADA DE HORÁRIOS ENTRE BARBEIROS:
-  - Se o cliente perguntar por um horário específico com um barbeiro e a ferramenta indicar que esse horário está ocupado COM ELE, mas disponível COM OUTRO barbeiro da equipe, informe o cliente sobre a disponibilidade com o outro profissional (ex: "Com o João às 15:00 está ocupado, mas com o Pedro tem vaga! Pode ser com o Pedro as 15:00 ou quer verificar outro horário com o João?").
-
-INTERPRETAÇÃO DE FRASES INFORMAIS E SERVIÇOS:
-  - Se o cliente usar termos informais como "cortar o cabelo", "fazer a barba", relacione IMEDIATAMENTE ao serviço correspondente listado acima em "SERVIÇOS DISPONÍVEIS".
-  - Se o cliente perguntar quem são os barbeiros, cite apenas os nomes reais cadastrados na barbearia (${barbeiroNames.join(", ")}). NUNCA invente nomes.
+  - Se houver mais de um barbeiro e o cliente perguntar por um horário ocupado com um, verifique com os outros e informe caso haja vaga.
 
 REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
   - Se o cliente tiver AGENDAMENTO ATIVO no futuro:
-    * Se ele só mandou um "Oi", avise-o do agendamento: "Olá! Lembrete: você tem agendamento dia [DATA] às [HORA]. Deseja alterar ou precisa de algo mais?"
+    * Se ele só mandou um "Oi", avise-o do agendamento.
     * Se ele quiser remarcar, altere o agendamento ativo dele.
-    * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza informando a data e horário. NUNCA execute o cancelamento sem que o cliente responda 'Sim' explicitamente.
-  - Se o histórico disser que o agendamento JÁ PASSOU/FOI CONCLUÍDO: Trate como um cliente sem agendamento.`;
+    * SE ELE PEDIR PARA CANCELAR: Pergunte primeiro se ele tem certeza informando a data e horário.`;
 
     const tools: Tool[] = [
       {
@@ -281,7 +302,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
               properties: {
                 date: {
                   type: SchemaType.STRING,
-                  description: "Data no formato YYYY-MM-DD",
+                  description: `Data no formato YYYY-MM-DD. (Amanhã é ${tomorrowStr}, Hoje é ${todayStr})`,
                 },
                 barberName: {
                   type: SchemaType.STRING,
@@ -298,7 +319,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
                 requestedTime: {
                   type: SchemaType.STRING,
                   description:
-                    "Horário específico perguntado no formato HH:MM, se houver.",
+                    "Horário específico perguntado no formato HH:MM (ex: 16:00 para 4 da tarde), se houver.",
                 },
               },
               required: ["date", "barberName", "serviceName"],
@@ -366,8 +387,6 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
                 requestedSlot?.status === "DISPONIVEL" ||
                 requestedSlot?.status === "RECOMENDADO";
 
-              // 🔴 VERIFICAÇÃO CRUZADA: Se o horário pedido NÃO está livre com o barbeiro escolhido,
-              // verifica se algum outro barbeiro da equipe tem esse exato horário livre!
               if (!isRequestedAvailable && shopData.barbers.length > 1) {
                 const outrosBarbeiros = shopData.barbers.filter(
                   (b) => b.id !== targetBarber.id,
@@ -390,7 +409,7 @@ REGRAS PARA AGENDAMENTOS EXISTENTES E CANCELAMENTO:
                     slotOutro?.status === "RECOMENDADO"
                   ) {
                     outroBarbeiroDisponivel = outro.name;
-                    break; // Encontrou o primeiro outro barbeiro livre nesse horário
+                    break;
                   }
                 }
               }

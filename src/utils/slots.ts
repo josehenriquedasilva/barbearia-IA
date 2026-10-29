@@ -26,12 +26,6 @@ function minutesToTime(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/**
- * Retorna os horários disponíveis mais próximos do horário solicitado pelo cliente.
- * - Prioriza horários no mesmo momento ou logo APÓS o solicitado (horários anteriores recebem pequena penalidade).
- * - Evita opções coladas demais entre si.
- * - Retorna no máximo `maxResults` opções (padrão: 2).
- */
 export function getClosestSlots(
   slots: Slot[],
   requestedTime: string,
