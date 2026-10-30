@@ -24,6 +24,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { IoMenu } from "react-icons/io5";
+import { FiLogOut } from "react-icons/fi";
 import { RiScissorsFill, RiVipCrown2Fill } from "react-icons/ri";
 
 import useSWR from "swr";
@@ -70,7 +71,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentData | null>(null);
 
-  // SWR para os agendamentos (já existente)
+  // SWR para os agendamentos
   const {
     data: appointments,
     error,
@@ -85,17 +86,16 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     },
   );
 
-  // NOVO: SWR para buscar os dados atualizados da barbearia/assinatura em tempo real a cada 10 segundos
+  // SWR para buscar os dados atualizados da barbearia/assinatura em tempo real
   const { data: shopData } = useSWR(
     shopId ? `/api/shop/status?shopId=${shopId}` : null,
     fetcher,
     {
-      refreshInterval: 10000, // Atualiza a cada 10 segundos automaticamente
+      refreshInterval: 10000,
       revalidateOnFocus: true,
     },
   );
 
-  // Usa os dados atualizados da API se existirem, senão usa o fallback das props iniciais
   const currentShop = shopData?.shop || user.shop;
 
   useEffect(() => {
@@ -276,23 +276,30 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
   return (
     <div className="min-h-screen bg-neutral-950">
-      {/* CABEÇALHO */}
-      <header className="flex bg-neutral-900 border-b border-neutral-800 h-18">
-        <div className="flex w-full items-center px-3 py-2 gap-2 max-w-[900px] mx-auto">
+      {/* CABEÇALHO REORGANIZADO E MAIS CLEAN */}
+      <header className="flex bg-neutral-900 border-b border-neutral-800 h-16 items-center justify-between px-4">
+        <div className="flex items-center gap-2 max-w-[900px] mx-auto w-full">
           <IoMenu
             onClick={() => setMenu(true)}
-            className="size-8.5 text-neutral-50 mr-1.5 cursor-pointer p-1 rounded-md hover:bg-neutral-800 duration-150"
+            className="size-8 text-neutral-50 cursor-pointer p-1 rounded-md hover:bg-neutral-800 transition-colors"
           />
-          <RiScissorsFill className="bg-amber-600 p-1 size-7 rounded-md" />
-          <h1 className="text-neutral-50 font-semibold">{currentShop?.name}</h1>
+          <div className="flex items-center gap-2">
+            <RiScissorsFill className="bg-amber-600 p-1 size-7 rounded-md text-neutral-950" />
+            <h1 className="text-neutral-50 font-semibold text-sm sm:text-base tracking-tight">
+              {currentShop?.name}
+            </h1>
+          </div>
         </div>
 
-        <div className="flex items-center mr-3 gap-2">
+        {/* Botão de Sair mais clean com ícone ou discreto no header */}
+        <div className="flex items-center">
           <button
             onClick={() => logout()}
-            className="px-4 py-2 text-sm text-neutral-300 hover:text-neutral-50 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+            title="Sair da conta"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-50 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer border border-neutral-800"
           >
-            Sair
+            <FiLogOut className="size-4" />
+            <span className="hidden sm:inline">Sair</span>
           </button>
         </div>
       </header>
@@ -312,15 +319,18 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       />
 
       <main className="px-3.5 py-5 max-w-[900px] mx-auto">
+        {/* CARD DE PLANO REFINADO E CLEAN */}
         {isAdmin && (
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 mb-5 flex items-center justify-between gap-3 shadow-md">
+          <div className="bg-gradient-to-r from-neutral-900 via-neutral-900 to-neutral-900/90 border border-neutral-800 rounded-xl p-4 mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
             <div className="flex items-center gap-3">
-              <div className="bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 text-amber-500">
+              <div className="bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 text-amber-500 shrink-0">
                 <RiVipCrown2Fill className="size-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-xs text-neutral-400">{subInfo.planName}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                    {subInfo.planName}
+                  </span>
                   <span className="flex h-2 w-2 relative">
                     <span
                       className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${subInfo.badgePing}`}
@@ -330,10 +340,10 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
                     ></span>
                   </span>
                   <span className="text-xs font-semibold text-neutral-300">
-                    ({subInfo.statusText})
+                    {subInfo.statusText}
                   </span>
                 </div>
-                <p className="text-xs font-medium text-neutral-400 mt-0.5">
+                <p className="text-xs text-neutral-400 mt-1">
                   {subInfo.description}
                 </p>
               </div>
@@ -341,7 +351,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
             <button
               onClick={() => setIsUpgradeModalOpen(true)}
-              className="bg-amber-600 hover:bg-amber-500 text-neutral-950 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-amber-600/10 cursor-pointer flex items-center gap-1.5 shrink-0"
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-neutral-950 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
             >
               {subInfo.buttonText}
             </button>
@@ -350,7 +360,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
 
         <section className="text-neutral-50">
           {isAdmin && viewBarberId !== user.id && (
-            <div className="bg-amber-600/10 border border-amber-600/20 rounded-xl p-2 mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-300 gap-2">
+            <div className="bg-amber-600/10 border border-amber-600/20 rounded-xl p-3 mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-300 gap-2">
               <div className="flex items-center gap-3">
                 <div className="bg-amber-600 p-2 rounded-full text-neutral-900">
                   <RiScissorsFill className="size-4" />
@@ -369,7 +379,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
                   setViewBarberId(user.id);
                   setViewBarberName(user.name);
                 }}
-                className="bg-amber-600 hover:bg-amber-700 text-neutral-950 px-1.5 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                className="bg-amber-600 hover:bg-amber-700 text-neutral-950 px-3 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 Voltar para mim
               </button>
@@ -467,7 +477,6 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         />
       )}
 
-      {/* MODAL DE ADICIONAR BARBEIRO COM HANDLER DE UPGRADE */}
       {isBarberModal && (
         <ManageBarbersModal
           barberModalClose={() => setIsBarberModal(false)}
@@ -486,7 +495,6 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         />
       )}
 
-      {/* MODAL DE ASSINATURA E RENOVAÇÃO */}
       {shopId && (
         <SubscriptionModal
           shopId={shopId}

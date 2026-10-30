@@ -6,6 +6,7 @@ import { Prisma, PlanType, Role, SubscriptionStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { SignJWT } from "jose";
+import { sendCredentialsEmail } from "@/lib/mail"; 
 
 function getJwtSecretKey(): Uint8Array {
   const secret = process.env.JWT_SECRET || "chave_secreta_fallback_dev";
@@ -137,10 +138,18 @@ export async function registerShop(
         });
       }
 
-      return { admin };
+      return { admin, shop };
     });
 
-    // AUTO-LOGIN: Gerar o token JWT e definir o cookie de sessão automaticamente
+    await sendCredentialsEmail({
+      to: email.trim().toLowerCase(),
+      name: adminName,
+      email: email.trim().toLowerCase(),
+      password: password, 
+      shopName: barberName,
+      isNewBarber: false,
+    });
+
     const token = await new SignJWT({
       id: result.admin.id,
       role: result.admin.role,

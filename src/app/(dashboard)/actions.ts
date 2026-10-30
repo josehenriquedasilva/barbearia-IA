@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { formatTime } from "@/utils/formatters";
+import { sendCredentialsEmail } from "@/lib/mail";
 
 // -----------------------------------------------------------------------------
 // TIPOS E HELPER DE INTEGRAÇÃO
@@ -144,15 +145,30 @@ export async function createBarberAction(data: {
 
   try {
     const hashedPassword = await bcrypt.hash(data.password, 10);
+    const trimmedEmail = data.email.trim().toLowerCase();
 
-    await prisma.barber.create({
+    const newBarber = await prisma.barber.create({
       data: {
         name: data.name,
-        email: data.email,
+        email: trimmedEmail,
         password: hashedPassword,
         role: "BARBER",
         shopId: user.shopId,
       },
+    });
+
+    const shop = await prisma.shop.findUnique({
+      where: { id: user.shopId },
+      select: { name: true },
+    });
+
+    await sendCredentialsEmail({
+      to: trimmedEmail,
+      name: newBarber.name,
+      email: trimmedEmail,
+      password: data.password,
+      shopName: shop?.name || "Barbearia",
+      isNewBarber: true,
     });
 
     revalidatePath("/dashboard");

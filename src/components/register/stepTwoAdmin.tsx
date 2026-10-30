@@ -32,7 +32,7 @@ export default function StepTwoAdimin({
           value={adminName}
           onChange={(e) => setAdminName(e.target.value)}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-          placeholder="Digite seu nome completo"
+          placeholder="Digite seu nome"
         />
       </div>
 
