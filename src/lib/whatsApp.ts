@@ -266,6 +266,7 @@ export async function setInstanceSettings(
           ignoreNewsletters: true,
           alwaysOnline: false,
           readMessages: true,
+          historyImportEnabled: false,
         },
       }),
     });
