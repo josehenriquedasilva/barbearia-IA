@@ -455,7 +455,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
               sugestoesHorariosMaisProximos: sugestoesProximas,
               sugestoesRecomendadasGerais: sugestoesGerais,
               totalSlotsDisponiveis: slotsResult.slots.length,
-              horariosDisponiveis: slotsResult.slots.map((s) => s.time), // Ajuda a IA a ler todos os horários se solicitado
+              horariosDisponiveis: slotsResult.slots.map((s) => s.time), 
             };
           }
         }
@@ -468,6 +468,27 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
             ai_response: ["Você não tem nenhum agendamento ativo no momento."],
           });
         }
+
+        const args = call.args as unknown as { confirm?: boolean };
+
+        if (!args.confirm) {
+          const ai_response = `Você tem um agendamento em ${upcomingAppointment.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às ${upcomingAppointment.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}. Tem certeza que deseja cancelar? (Responda sim ou não)`;
+
+          await prisma.chatMessage.create({
+            data: {
+              role: "model",
+              content: ai_response,
+              shopId: Number(shopId),
+              clientPhone,
+            },
+          });
+
+          return NextResponse.json({
+            status: "AWAITING_CONFIRMATION",
+            ai_response: [ai_response],
+          });
+        }
+
         await prisma.appointment.update({
           where: { id: upcomingAppointment.id },
           data: { status: "CANCELED" },
