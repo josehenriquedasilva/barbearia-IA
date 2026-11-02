@@ -188,7 +188,7 @@ ${
   upcomingAppointment
     ? `REGRA OBRIGATÓRIA PARA CLIENTE COM AGENDAMENTO ATIVO:
 - O cliente JÁ POSSUI um agendamento ativo confirmado (detalhado acima).
-- Se o cliente enviar uma mensagem genérica (como "olá", "boa tarde") ou tentar iniciar uma conversa, informe-o imediatamente sobre o horário que ele já tem agendado.
+- Se o cliente enviar uma mensagem genérica (como "olá", "boa tarde") ou tentar iniciar uma conversa, faça uma saudação simples como ("Olá") e informe-o imediatamente sobre o horário que ele já tem agendado.
 - Pergunte claramente se ele deseja MANTER o horário atual, se quer CANCELAR (usando a ferramenta cancelAppointment) ou se deseja REMARCAR para outra data/horário. NUNCA comece a pedir o serviço do zero sem antes lembrá-lo do agendamento ativo!`
     : ""
 }
