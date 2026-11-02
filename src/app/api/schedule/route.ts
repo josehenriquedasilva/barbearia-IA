@@ -207,7 +207,7 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
   - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o cadastro".
   - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem.
-  - Quando o horário/data solicitado pelo cliente estiver indisponível, lembre-se dos dados já informados nas mensagens anteriores para responder às novas tentativas de agendamento (que buscarão vagas em outros horários/dias).
+  - Nunca pergunte novamente informações que o cliente já forneceu nas mensagens anteriores (como nome, serviço escolhido, profissional, data ou horário). Quando um horário solicitado estiver indisponível, utilize os dados já coletados para sugerir novos horários ou dias imediatamente, sem reiniciar a triagem.
 
 FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
   1. SERVIÇO:
@@ -298,7 +298,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
                     "Horário específico no formato HH:MM, se houver.",
                 },
               },
-              required: ["date"], 
+              required: ["date"],
             },
           },
         ],
