@@ -217,6 +217,9 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem.
   - Nunca pergunte novamente informações que o cliente já forneceu nas mensagens anteriores (como nome, serviço escolhido, profissional, data ou horário). Quando um horário solicitado estiver indisponível, utilize os dados já coletados para sugerir novos horários ou dias imediatamente, sem reiniciar a triagem.
 
+- REGRA DE CANCELAMENTO:
+  Quando o cliente pedir para cancelar o agendamento, nunca execute a ferramenta com confirm como true de primeira. Responda perguntando se ele tem certeza do cancelamento e aguarde a resposta dele.
+
 FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
   1. SERVIÇO:
      ${
@@ -468,27 +471,6 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
             ai_response: ["Você não tem nenhum agendamento ativo no momento."],
           });
         }
-
-        const args = call.args as unknown as { confirm?: boolean };
-
-        if (!args.confirm) {
-          const ai_response = `Você tem um agendamento em ${upcomingAppointment.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às ${upcomingAppointment.startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}. Tem certeza que deseja cancelar? (Responda sim ou não)`;
-
-          await prisma.chatMessage.create({
-            data: {
-              role: "model",
-              content: ai_response,
-              shopId: Number(shopId),
-              clientPhone,
-            },
-          });
-
-          return NextResponse.json({
-            status: "AWAITING_CONFIRMATION",
-            ai_response: [ai_response],
-          });
-        }
-
         await prisma.appointment.update({
           where: { id: upcomingAppointment.id },
           data: { status: "CANCELED" },
