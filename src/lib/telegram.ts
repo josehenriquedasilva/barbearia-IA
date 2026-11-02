@@ -1,4 +1,5 @@
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 export async function sendPaymentNotification({
   paymentId,
@@ -13,6 +14,10 @@ export async function sendPaymentNotification({
   amount: number;
   phone: string;
 }) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    console.warn("⚠️ Telegram Bot não configurado no .env");
+    return;
+  }
 
   const message =
     `🚨 *NOVO PAGAMENTO INFORMADO!* 🚨\n\n` +
@@ -25,7 +30,7 @@ export async function sendPaymentNotification({
   const appUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
   const payload = {
-    chat_id: TELEGRAM_BOT_TOKEN,
+    chat_id: TELEGRAM_CHAT_ID,
     text: message,
     parse_mode: "Markdown",
     reply_markup: {
