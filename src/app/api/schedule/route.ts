@@ -458,7 +458,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
               sugestoesHorariosMaisProximos: sugestoesProximas,
               sugestoesRecomendadasGerais: sugestoesGerais,
               totalSlotsDisponiveis: slotsResult.slots.length,
-              horariosDisponiveis: slotsResult.slots.map((s) => s.time), 
+              horariosDisponiveis: slotsResult.slots.map((s) => s.time),
             };
           }
         }

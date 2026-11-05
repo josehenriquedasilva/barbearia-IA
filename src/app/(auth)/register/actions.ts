@@ -6,7 +6,7 @@ import { Prisma, PlanType, Role, SubscriptionStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { SignJWT } from "jose";
-import { sendCredentialsEmail } from "@/lib/mail"; 
+import { sendCredentialsEmail } from "@/lib/mail";
 
 function getJwtSecretKey(): Uint8Array {
   const secret = process.env.JWT_SECRET || "chave_secreta_fallback_dev";
@@ -52,6 +52,21 @@ async function generateUniqueSlug(
   return finalSlug;
 }
 
+function isValidNumericPin(password: string): boolean {
+  if (!/^\d{6,}$/.test(password)) return false;
+  const ascending = "01234567890123456789";
+  const descending = "98765432109876543210";
+  const repeated = /(.)\1{5,}/;
+  if (
+    ascending.includes(password) ||
+    descending.includes(password) ||
+    repeated.test(password)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export async function registerShop(
   formData: FormBarberProps & { acceptedTerms?: boolean },
 ) {
@@ -81,6 +96,14 @@ export async function registerShop(
       success: false,
       error:
         "Você precisa aceitar os Termos de Uso e a Política de Privacidade para se cadastrar.",
+    };
+  }
+
+  if (!isValidNumericPin(password)) {
+    return {
+      success: false,
+      error:
+        "A senha deve conter apenas números (mínimo de 6 dígitos) e evitar sequências óbvias.",
     };
   }
 
@@ -145,7 +168,7 @@ export async function registerShop(
       to: email.trim().toLowerCase(),
       name: adminName,
       email: email.trim().toLowerCase(),
-      password: password, 
+      password: password,
       shopName: barberName,
       isNewBarber: false,
     });

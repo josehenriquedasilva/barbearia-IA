@@ -47,7 +47,7 @@ export default function Login() {
     }
 
     if (password.length < 6) {
-      setError("A senha deve ter no mínimo 6 caracteres");
+      setError("A senha deve ter no mínimo 6 dígitos");
       return;
     }
 
@@ -101,7 +101,6 @@ export default function Login() {
             />
           </div>
 
-          {/* Título Moderno com Estilização IA */}
           <h1 className="text-neutral-50 text-3xl font-bold tracking-tight flex items-center gap-2 mb-2">
             BarberPro{" "}
             <span className="text-xs uppercase font-extrabold tracking-widest px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 shadow-sm">
@@ -146,11 +145,16 @@ export default function Login() {
                 className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg mt-1.5 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all placeholder:text-neutral-500 disabled:opacity-50 text-sm"
                 type={showPassword ? "text" : "password"}
                 id="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={password}
-                maxLength={72}
+                maxLength={10}
                 disabled={lockoutTime > 0}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Digite sua senha"
+                onChange={(e) => {
+                  const numericValue = e.target.value.replace(/\D/g, "");
+                  setPassword(numericValue);
+                }}
+                placeholder="Digite sua senha numérica"
               />
               <button
                 type="button"

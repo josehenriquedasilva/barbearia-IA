@@ -75,15 +75,42 @@ export default function Register() {
     }
   };
 
+  function isValidNumericPin(password: string): boolean {
+    if (!/^\d{6,}$/.test(password)) return false;
+
+    const ascending = "01234567890123456789";
+    const descending = "98765432109876543210";
+    const repeated = /(.)\1{5,}/;
+
+    if (
+      ascending.includes(password) ||
+      descending.includes(password) ||
+      repeated.test(password)
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   const handleGoToStepThree = (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !adminName ||
-      !email.includes("@") ||
-      password.length < 6 ||
-      password !== confirmPassword
-    ) {
-      setError("Verifique os dados do responsável.");
+    if (!adminName.trim()) {
+      setError("Preencha o nome do responsável.");
+      return;
+    }
+    if (!email.includes("@")) {
+      setError("Informe um e-mail válido.");
+      return;
+    }
+    if (!isValidNumericPin(password)) {
+      setError(
+        "A senha deve conter apenas números (mínimo de 6 dígitos) e não pode ser uma sequência óbvia (ex: 123456).",
+      );
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem.");
       return;
     }
     setError("");

@@ -53,16 +53,21 @@ export default function StepTwoAdimin({
 
       <div className="relative">
         <label htmlFor="password" className="block text-neutral-300 mb-2">
-          Senha
+          Senha <span className="text-gray-500">(apenas números)</span>
         </label>
         <input
           id="password"
           type={showPasswordOne ? "text" : "password"}
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={password}
-          maxLength={72}
-          onChange={(e) => setPassword(e.target.value)}
+          maxLength={10}
+          onChange={(e) => {
+            const numericValue = e.target.value.replace(/\D/g, "");
+            setPassword(numericValue);
+          }}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
-          placeholder="Mínimo 6 caracteres"
+          placeholder="Mínimo de 6 números"
         />
         <button
           type="button"
@@ -87,8 +92,14 @@ export default function StepTwoAdimin({
         <input
           id="confirmPassword"
           type={showPasswordTwo ? "text" : "password"}
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
+          maxLength={10}
+          onChange={(e) => {
+            const numericValue = e.target.value.replace(/\D/g, "");
+            setConfirmPassword(numericValue);
+          }}
           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:border-transparent transition-all placeholder:text-neutral-500"
           placeholder="Digite a senha novamente"
         />
