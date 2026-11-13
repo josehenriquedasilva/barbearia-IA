@@ -163,6 +163,16 @@ export async function POST(request: Request) {
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
       .join("\n");
 
+
+    const funcionamentoInfo = `
+- Dias úteis/geral: Abre às ${shopData.openingTime} e fecha às ${shopData.closingTime}.
+- Domingo: ${
+      shopData.isClosedSunday.toString().toLowerCase() === "true" ||
+      shopData.isClosedSunday
+        ? "FECHADO aos domingos."
+        : `ABERTO aos domingos das ${shopData.openingSunday || "09:00"} às ${shopData.closingSunday || "13:00"}.`
+    }`;
+
     const lastMessages = await prisma.chatMessage.findMany({
       where: {
         shopId: Number(shopId),
@@ -197,6 +207,9 @@ REFERÊNCIA DE DATAS PARA OS ARGUMENTOS DA FUNÇÃO:
 - Hoje = "${todayStr}"
 - Amanhã = "${tomorrowStr}"
 
+HORÁRIOS DE FUNCIONAMENTO DA LOJA:
+${funcionamentoInfo}
+
 EQUIPE DE BARBEIROS DISPONÍVEIS:
 ${barbeiroNames.join(", ")}
 ${
@@ -216,6 +229,12 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o cadastro".
   - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem.
   - Nunca pergunte novamente informações que o cliente já forneceu nas mensagens anteriores (como nome, serviço escolhido, profissional, data ou horário). Quando um horário solicitado estiver indisponível, utilize os dados já coletados para sugerir novos horários ou dias imediatamente, sem reiniciar a triagem.
+
+- REGRA DE CONFIRMAÇÃO DO AGENDAMENTO:
+  - Antes de efetivar o agendamento final, pergunte de forma clara, resumida e direta ao cliente confirmando os dados coletados (Ex: "Posso confirmar o [Serviço] para [Data] às [Horário]?").
+
+- REGRA DE DOMINGOS:
+  - Verifique sempre as regras de funcionamento da loja fornecidas acima antes de responder sobre domingos. Se estiver configurado como aberto aos domingos, utilize os horários de abertura e fechamento específicos de domingo para checar vagas ou orientar o cliente.
 
 - REGRA DE CANCELAMENTO:
   Quando o cliente pedir para cancelar o agendamento, nunca execute a ferramenta com confirm como true de primeira. Responda perguntando se ele tem certeza do cancelamento e aguarde a resposta dele.
@@ -329,7 +348,6 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         const { date, barberName, serviceName, requestedTime } =
           call.args as unknown as CheckArgs;
 
-        // BUSCA FLEXÍVEL (FALLBACK SEGURO)
         const targetBarber =
           shopData.barbers.find(
             (b) => b.name.toLowerCase() === (barberName || "").toLowerCase(),
