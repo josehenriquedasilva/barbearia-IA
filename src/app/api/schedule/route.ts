@@ -163,7 +163,6 @@ export async function POST(request: Request) {
       .map((s) => `- ${s.name}: ${s.durationMinutes} min`)
       .join("\n");
 
-
     const funcionamentoInfo = `
 - Dias úteis/geral: Abre às ${shopData.openingTime} e fecha às ${shopData.closingTime}.
 - Domingo: ${
@@ -225,13 +224,12 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Responda SEMPRE em UMA ÚNICA mensagem super objetiva e resumida (máximo 1 ou 2 frases curtas).
   - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?".
   - "OBRIGATORIA" Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
+  - Se a primeira pergunta do cliente for perguntando a disponibilidade de um dia/horário, se estiver disponível informe a ele junto com a próxima pergunta para concluir o cadastro.
+  - Se um dia ou horário estiver indisponível (por exemplo, fechado ou sem vagas), responda de forma clara informando que o dia/horário não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
   - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
   - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o cadastro".
-  - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem.
+  - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem (exceto na instrução padronizada acima de reagendamento/serviço caso o dia esteja fechado).
   - Nunca pergunte novamente informações que o cliente já forneceu nas mensagens anteriores (como nome, serviço escolhido, profissional, data ou horário). Quando um horário solicitado estiver indisponível, utilize os dados já coletados para sugerir novos horários ou dias imediatamente, sem reiniciar a triagem.
-
-- REGRA DE CONFIRMAÇÃO DO AGENDAMENTO:
-  - Antes de efetivar o agendamento final, pergunte de forma clara, resumida e direta ao cliente confirmando os dados coletados (Ex: "Posso confirmar o [Serviço] para [Data] às [Horário]?").
 
 - REGRA DE DOMINGOS:
   - Verifique sempre as regras de funcionamento da loja fornecidas acima antes de responder sobre domingos. Se estiver configurado como aberto aos domingos, utilize os horários de abertura e fechamento específicos de domingo para checar vagas ou orientar o cliente.
