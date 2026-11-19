@@ -225,7 +225,7 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
 - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?".
 - "OBRIGATORIA" Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
 - Se a primeira pergunta do cliente for perguntando a disponibilidade de um dia/horário, se estiver disponível informe a ele junto com a próxima pergunta para concluir o agendamento.
-- Quando o cliente perguntar por um horário específico que NÃO estiver disponível e houver horário(s) sugerido(s), informe que o horário solicitado não está disponível, sugira o(s) horário(s) livre(s) e pergunte claramente se ele confirma o agendamento para o horário sugerido (ex: "O horário das 09:20 não está disponível, mas tenho às 09:40. Confirma o agendamento para esse horário?").
+- Quando o cliente perguntar por um horário específico que NÃO estiver disponível e houver horário(s) sugerido(s), informe que o horário solicitado não está disponível e sugira o(s) horário(s) livre(s): se sugerir 2 horários, termine perguntando "Qual prefere?"; se sugerir 1 horário, termine perguntando "Pode ser?".
 - Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado ou lotado), responda de forma clara informando que o dia não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
 - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
 - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o agendamento" (NUNCA diga "para concluir o cadastro").
@@ -571,7 +571,9 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
           );
 
           if (sugestoes.length > 0) {
-            const ai_response = `O horário das ${args.time} não está disponível. Temos às ${sugestoes.join(" ou ")}. Confirma o agendamento para esse horário?`;
+            const perguntaSugestao =
+              sugestoes.length >= 2 ? "Qual prefere?" : "Pode ser?";
+            const ai_response = `O horário das ${args.time} não está disponível. Temos às ${sugestoes.join(" ou ")}. ${perguntaSugestao}`;
             await prisma.chatMessage.create({
               data: {
                 role: "model",
