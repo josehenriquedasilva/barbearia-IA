@@ -226,6 +226,10 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
 - "OBRIGATORIA" Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
 - Se a primeira pergunta do cliente for perguntando a disponibilidade de um dia/horário, se estiver disponível informe a ele junto com a próxima pergunta para concluir o agendamento.
 - Quando o cliente perguntar por um horário específico que NÃO estiver disponível e houver horário(s) sugerido(s), informe que o horário solicitado não está disponível e sugira o(s) horário(s) livre(s): se sugerir 2 horários, termine perguntando "Qual prefere?"; se sugerir 1 horário, termine perguntando "Pode ser?".
+- FLUXO DE HORÁRIO SUGERIDO OU NOVO HORÁRIO SEM SERVIÇO DEFINIDO:
+  - Quando o cliente perguntar por um horário e ele estiver indisponível, NÃO pergunte o serviço antes: informe que não está disponível e sugira outro(s) horário(s).
+  - Se o cliente escolher um dos horários sugeridos (ou perguntar por outro horário e você verificar que está disponível) e o serviço ainda não tiver sido informado (e a loja tiver mais de um serviço), pergunte qual serviço ele deseja para verificar se encaixa na agenda de acordo com a duração do serviço, ANTES de pedir o nome do cliente para concluir o agendamento.
+  - Assim que o cliente informar o serviço para um horário escolhido/disponível, chame "getAvailableSlots" passando o "serviceName" e o horário para validar se a duração do serviço cabe sem invadir outro horário, intervalo ou fechamento da barbearia; se couber, peça apenas o nome do cliente para concluir o agendamento.
 - Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado ou lotado), responda de forma clara informando que o dia não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
 - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
 - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o agendamento" (NUNCA diga "para concluir o cadastro").
@@ -244,7 +248,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
      ${
        unicoServico
          ? `- A barbearia possui serviço único: "${unicoServico}". Assuma este serviço automaticamente sem perguntar.`
-         : `- Se o cliente ainda não informou o serviço, pergunte PRIMEIRO qual serviço ele deseja agendar.`
+         : `- Se o cliente ainda não informou o serviço, pergunte qual serviço ele deseja agendar (respeitando a regra de horário indisponível: primeiro informe que não está disponível e sugira horários; após ele escolher um sugerido ou perguntar outro horário disponível, pergunte o serviço para validar a duração antes de pedir o nome).`
      }
 2. BARBEIRO / PREFERÊNCIA:
      ${
