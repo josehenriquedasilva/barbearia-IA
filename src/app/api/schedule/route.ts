@@ -224,12 +224,13 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
 - Responda SEMPRE em UMA ÚNICA mensagem super objetiva e resumida (máximo 1 ou 2 frases curtas).
 - NUNCA envie mensagens separadas e NUNCA use saudações longas ou frases genéricas como "Como posso ajudar?".
 - "OBRIGATORIA" Se for a primeira mensagem do cliente, faça uma saudação bem curta (ex: "Olá! Bem-vindo à ${shopData.name}.") e já responda à pergunta dele.
-- Se a primeira pergunta do cliente for perguntando a disponibilidade de um dia/horário, se estiver disponível informe a ele junto com a próxima pergunta para concluir o cadastro.
-- Se um dia ou horário estiver indisponível (por exemplo, fechado ou sem vagas), responda de forma clara informando que o dia/horário não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
+- Se a primeira pergunta do cliente for perguntando a disponibilidade de um dia/horário, se estiver disponível informe a ele junto com a próxima pergunta para concluir o agendamento.
+- Quando o cliente perguntar por um horário específico que NÃO estiver disponível e houver horário(s) sugerido(s), informe que o horário solicitado não está disponível, sugira o(s) horário(s) livre(s) e pergunte claramente se ele confirma o agendamento para o horário sugerido (ex: "O horário das 09:20 não está disponível, mas tenho às 09:40. Confirma o agendamento para esse horário?").
+- Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado ou lotado), responda de forma clara informando que o dia não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
 - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
-- Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o cadastro".
+- Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o agendamento" (NUNCA diga "para concluir o cadastro").
 - OBRIGATÓRIO: Antes de chamar a ferramenta "scheduleAppointment", você DEVE ter obtido o nome do cliente. Você DEVE passar o argumento "clientName" obrigatoriamente com o nome fornecido pelo usuário. NUNCA execute o agendamento sem o nome do cliente.
-- SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem (exceto na instrução padronizada acima de reagendamento/serviço caso o dia esteja fechado).
+- SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem (exceto na instrução padronizada acima de reagendamento/serviço caso o dia esteja indisponível).
 - Nunca pergunte novamente informações que o cliente já forneceu nas mensagens anteriores (como nome, serviço escolhido, profissional, data ou horário). Quando um horário solicitado estiver indisponível, utilize os dados já coletados para sugerir novos horários ou dias imediatamente, sem reiniciar a triagem.
 
 - REGRA DE DOMINGOS:
@@ -570,7 +571,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
           );
 
           if (sugestoes.length > 0) {
-            const ai_response = `O horário das ${args.time} não está disponível. Temos às ${sugestoes.join(" ou ")}. Qual prefere?`;
+            const ai_response = `O horário das ${args.time} não está disponível. Temos às ${sugestoes.join(" ou ")}. Confirma o agendamento para esse horário?`;
             await prisma.chatMessage.create({
               data: {
                 role: "model",
