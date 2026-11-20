@@ -238,6 +238,12 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
 - SEMPRE faça apenas uma pergunta por mensagem. NUNCA faça duas perguntas na mesma mensagem (exceto na instrução padronizada acima de reagendamento/serviço caso o dia esteja indisponível).
 - Nunca pergunte novamente informações que o cliente já forneceu nas mensagens anteriores (como nome, serviço escolhido, profissional, data ou horário). Quando um horário solicitado estiver indisponível, utilize os dados já coletados para sugerir novos horários ou dias imediatamente, sem reiniciar a triagem.
 
+- NOÇÃO DE HORÁRIOS (12H / 24H / COLOQUIAL):
+  - Clientes frequentemente falam horários no formato de 12 horas ou coloquial sem dizer "da manhã" ou "da tarde" (ex: "1 hora", "2 horas", "3 horas", "4 horas", "5 horas", "6 horas", "3 e meia") ou no formato de 24 horas ("13 horas", "15 horas", "15:30").
+  - Sempre interprete o horário considerando o horário de funcionamento da loja (${funcionamentoInfo.trim()}).
+  - Se o cliente disser um número de 1 a 6 (ex: "3 horas") sem dizer "da manhã" ou "madrugada" e a loja funcionar à tarde (ex: abre às 09:00 e fecha às 18:00/19:00/20:00), entenda como o horário da tarde correspondente ("15:00") para consultar disponibilidade e agendar — NUNCA assuma automaticamente que é 03:00 da madrugada só porque ele disse "3 horas", a menos que ele diga explicitamente "3 da manhã" / "3h da manhã" / "madrugada" / "03:00".
+  - Se o horário de 12h puder corresponder tanto à manhã quanto à tarde dentro do funcionamento da loja (ex: "9 horas" ou "10 horas"), verifique o contexto da conversa e o horário comercial; se houver dúvida real entre manhã e tarde, consulte a disponibilidade e deixe claro o horário no formato HH:MM.
+
 - REGRA DE DOMINGOS:
   - Verifique sempre as regras de funcionamento da loja fornecidas acima antes de responder sobre domingos. Se estiver configurado como aberto aos domingos, utilize os horários de abertura e fechamento específicos de domingo para checar vagas ou orientar o cliente.
 
@@ -258,7 +264,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
          : `- Após o cliente informar o serviço, se ele NÃO especificou o barbeiro, pergunte se ele tem preferência por algum profissional (${barbeiroNames.join(", ")}) ou se pode ser com qualquer um.`
      }
 3. DATA E HORÁRIO:
-- ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "getAvailableSlots" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!`;
+- ATENÇÃO: Assim que o cliente citar uma data (ex: amanhã, hoje ou data específica) e um horário, CHAME IMEDIATAMENTE a ferramenta "getAvailableSlots" passando a data correta no formato YYYY-MM-DD (use "${tomorrowStr}" para amanhã ou "${todayStr}" para hoje) e o horário convertido no formato HH:MM (ex: "15:00" para "3 horas" ou "15 horas" à tarde). NUNCA diga que o horário está ocupado sem antes consultar a ferramenta!`;
 
     const tools: Tool[] = [
       {
