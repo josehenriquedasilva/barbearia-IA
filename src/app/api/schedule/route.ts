@@ -13,8 +13,8 @@ import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 export const dynamic = "force-dynamic";
 
 const MODELS_TO_TRY: GeminiModelName[] = [
-  "gemini-3.1-flash-lite",
   "gemini-2.5-flash-lite",
+  "gemini-3.1-flash-lite",
 ];
 
 interface GeminiHttpError extends Error {
@@ -94,7 +94,7 @@ async function sendMessageAcrossModels(params: {
   currentModel: GeminiModelName | null;
   systemInstruction: string;
   tools: Tool[];
-  sessionHistory: Content[];
+  fallbackHistory: Content[];
   content: string | (string | Part)[];
   maxRetriesPerModel?: number;
 }) {
@@ -103,9 +103,9 @@ async function sendMessageAcrossModels(params: {
     currentModel,
     systemInstruction,
     tools,
-    sessionHistory,
+    fallbackHistory,
     content,
-    maxRetriesPerModel = 4,
+    maxRetriesPerModel = 2,
   } = params;
 
   const startIndex = currentModel
@@ -123,7 +123,7 @@ async function sendMessageAcrossModels(params: {
     const activeChat =
       mIndex === 0 && chat && currentModel === modelName
         ? chat
-        : startNewChat(systemInstruction, tools, sessionHistory, modelName);
+        : startNewChat(systemInstruction, tools, fallbackHistory, modelName);
 
     let retryCount = 0;
 
@@ -145,9 +145,9 @@ async function sendMessageAcrossModels(params: {
 
         if (retryCount < maxRetriesPerModel) {
           retryCount++;
-          const delay = retryCount * 3000;
+          const delay = retryCount * 1000 + Math.floor(Math.random() * 400);
           console.log(
-            `Gemini ocupado/lento no modelo ${modelName}. Tentativa ${retryCount} de ${maxRetriesPerModel}. Aguardando ${delay / 1000}s...`,
+            `Gemini ocupado/lento no modelo ${modelName}. Tentativa ${retryCount} de ${maxRetriesPerModel}. Aguardando ${(delay / 1000).toFixed(1)}s...`,
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
@@ -318,7 +318,7 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Quando o cliente perguntar por um horário e ele estiver indisponível, NÃO pergunte o serviço antes: informe que não está disponível e sugira outro(s) horário(s).
   - Se o cliente escolher um dos horários sugeridos (ou perguntar por outro horário e você verificar que está disponível) e o serviço ainda não tiver sido informado (e a loja tiver mais de um serviço), pergunte qual serviço ele deseja para verificar se encaixa na agenda de acordo com a duração do serviço, ANTES de pedir o nome do cliente para concluir o agendamento.
   - Assim que o cliente informar o serviço para um horário escolhido/disponível, chame "getAvailableSlots" passando o "serviceName" e o horário para validar se a duração do serviço cabe sem invadir outro horário, intervalo ou fechamento da barbearia; se couber, peça apenas o nome do cliente para concluir o agendamento.
-- Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado ou lotado), responda de forma clara informando que o dia não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
+- Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado, lotado ou "totalSlotsDisponiveis": 0), NUNCA sugira horários: responda de forma clara informando que o dia não está disponível para o serviço, e pergunte diretamente: "Deseja agendar para outro dia?".
 - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
 - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o agendamento" (NUNCA diga "para concluir o cadastro").
 - OBRIGATÓRIO: Antes de chamar a ferramenta "scheduleAppointment", você DEVE ter obtido o nome do cliente. Você DEVE passar o argumento "clientName" obrigatoriamente com o nome fornecido pelo usuário. NUNCA execute o agendamento sem o nome do cliente.
@@ -433,10 +433,8 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
       },
     ];
 
-    const sessionHistory: Content[] = [
-      ...history,
-      { role: "user", parts: toContentParts(message ?? "") },
-    ];
+    const fallbackHistory: Content[] = [...history];
+    const userMessageText = String(message ?? "");
 
     let currentChat: ChatSession | null = null;
     let currentModel: GeminiModelName | null = MODELS_TO_TRY[0];
@@ -446,9 +444,14 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
       currentModel,
       systemInstruction,
       tools,
-      sessionHistory: history,
+      fallbackHistory,
       content: message,
-      maxRetriesPerModel: 4,
+      maxRetriesPerModel: 2,
+    });
+
+    fallbackHistory.push({
+      role: "user",
+      parts: toContentParts(userMessageText),
     });
 
     currentChat = step.chat;
@@ -498,8 +501,10 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
           if (slotsResult.isClosed) {
             functionResponse = {
               isClosed: true,
+              semVagasNoDia: true,
               reason: slotsResult.closedReason,
               message: slotsResult.closedReason,
+              horariosDisponiveis: [],
             };
           } else {
             let sugestoesProximas: string[] = [];
@@ -581,6 +586,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
 
             functionResponse = {
               isClosed: false,
+              semVagasNoDia: slotsResult.slots.length === 0,
               date,
               barberName: targetBarber.name,
               serviceName: targetService.name,
@@ -813,11 +819,6 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         }
       }
 
-      sessionHistory.push({
-        role: "model",
-        parts: [{ functionCall: call }],
-      });
-
       const toolResponsePart: Part = {
         functionResponse: {
           name: call.name,
@@ -825,19 +826,29 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         },
       };
 
-      sessionHistory.push({
-        role: "user",
-        parts: [toolResponsePart],
-      });
-
       step = await sendMessageAcrossModels({
         chat: currentChat,
         currentModel,
         systemInstruction,
         tools,
-        sessionHistory,
+        fallbackHistory,
         content: [toolResponsePart],
-        maxRetriesPerModel: 4,
+        maxRetriesPerModel: 2,
+      });
+
+      fallbackHistory.push({
+        role: "model",
+        parts: [
+          { text: JSON.stringify({ toolCall: call.name, args: call.args }) },
+        ],
+      });
+      fallbackHistory.push({
+        role: "user",
+        parts: [
+          {
+            text: `Resultado de ${call.name}: ${JSON.stringify(functionResponse)}`,
+          },
+        ],
       });
 
       currentChat = step.chat;
