@@ -1,10 +1,25 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { startNewChat } from "@/lib/gemini";
-import { ChatSession, Part, SchemaType, Tool } from "@google/generative-ai";
+import { startNewChat, GeminiModelName } from "@/lib/gemini";
+import {
+  ChatSession,
+  Content,
+  Part,
+  SchemaType,
+  Tool,
+} from "@google/generative-ai";
 import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 
 export const dynamic = "force-dynamic";
+
+const MODELS_TO_TRY: GeminiModelName[] = [
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash-lite",
+];
+
+interface GeminiHttpError extends Error {
+  status?: number;
+}
 
 interface ScheduleArgs {
   barberName?: string;
@@ -48,36 +63,108 @@ function getDatesContext() {
   return { todayStr, tomorrowStr };
 }
 
-async function sendMessageWithRetry(
-  chat: ChatSession,
-  content: string | (string | Part)[],
-  maxRetries = 4,
-) {
-  let retryCount = 0;
-  while (retryCount <= maxRetries) {
-    try {
-      return await chat.sendMessage(content);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "";
-      const isOverloaded =
-        errorMessage.includes("503") ||
-        errorMessage.includes("429") ||
-        errorMessage.includes("high demand") ||
-        errorMessage.includes("timeout") ||
-        errorMessage.includes("deadline");
+function isTransientGeminiError(error: unknown): boolean {
+  const geminiErr = error as GeminiHttpError;
+  const status = geminiErr?.status;
+  const errorMessage = error instanceof Error ? error.message : "";
 
-      if (isOverloaded && retryCount < maxRetries) {
-        retryCount++;
-        const delay = retryCount * 3000;
-        console.log(
-          `Gemini ocupado/lento. Tentativa ${retryCount} de ${maxRetries}. Aguardando ${delay / 1000}s...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        continue;
+  return (
+    status === 503 ||
+    status === 429 ||
+    errorMessage.includes("503") ||
+    errorMessage.includes("429") ||
+    errorMessage.includes("Service Unavailable") ||
+    errorMessage.includes("high demand") ||
+    errorMessage.includes("timeout") ||
+    errorMessage.includes("deadline")
+  );
+}
+
+function toContentParts(content: string | (string | Part)[]): Part[] {
+  if (typeof content === "string") {
+    return [{ text: content }];
+  }
+  return content.map((item) =>
+    typeof item === "string" ? { text: item } : item,
+  );
+}
+
+async function sendMessageAcrossModels(params: {
+  chat: ChatSession | null;
+  currentModel: GeminiModelName | null;
+  systemInstruction: string;
+  tools: Tool[];
+  sessionHistory: Content[];
+  content: string | (string | Part)[];
+  maxRetriesPerModel?: number;
+}) {
+  const {
+    chat,
+    currentModel,
+    systemInstruction,
+    tools,
+    sessionHistory,
+    content,
+    maxRetriesPerModel = 4,
+  } = params;
+
+  const startIndex = currentModel
+    ? Math.max(0, MODELS_TO_TRY.indexOf(currentModel))
+    : 0;
+  const orderedModels = [
+    ...MODELS_TO_TRY.slice(startIndex),
+    ...MODELS_TO_TRY.slice(0, startIndex),
+  ];
+
+  let lastError: unknown;
+
+  for (let mIndex = 0; mIndex < orderedModels.length; mIndex++) {
+    const modelName = orderedModels[mIndex];
+    const activeChat =
+      mIndex === 0 && chat && currentModel === modelName
+        ? chat
+        : startNewChat(systemInstruction, tools, sessionHistory, modelName);
+
+    let retryCount = 0;
+
+    while (retryCount <= maxRetriesPerModel) {
+      try {
+        const result = await activeChat.sendMessage(content);
+        return {
+          result,
+          chat: activeChat,
+          modelName,
+        };
+      } catch (error: unknown) {
+        lastError = error;
+        const transient = isTransientGeminiError(error);
+
+        if (!transient) {
+          throw error;
+        }
+
+        if (retryCount < maxRetriesPerModel) {
+          retryCount++;
+          const delay = retryCount * 3000;
+          console.log(
+            `Gemini ocupado/lento no modelo ${modelName}. Tentativa ${retryCount} de ${maxRetriesPerModel}. Aguardando ${delay / 1000}s...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        const nextModel = orderedModels[mIndex + 1];
+        if (nextModel) {
+          console.warn(
+            `Modelo ${modelName} falhou após ${maxRetriesPerModel} tentativas. Fazendo fallback para ${nextModel}...`,
+          );
+        }
+        break;
       }
-      throw error;
     }
   }
+
+  throw lastError;
 }
 
 export async function POST(request: Request) {
@@ -182,7 +269,7 @@ export async function POST(request: Request) {
       take: 10,
     });
 
-    const history = lastMessages.reverse().map((msg) => ({
+    const history: Content[] = lastMessages.reverse().map((msg) => ({
       role: msg.role === "model" ? "model" : "user",
       parts: [{ text: msg.content }],
     }));
@@ -346,9 +433,27 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
       },
     ];
 
-    const chat = startNewChat(systemInstruction, tools, history);
-    let result = await sendMessageWithRetry(chat, message);
-    let responseAi = result!.response;
+    const sessionHistory: Content[] = [
+      ...history,
+      { role: "user", parts: toContentParts(message ?? "") },
+    ];
+
+    let currentChat: ChatSession | null = null;
+    let currentModel: GeminiModelName | null = MODELS_TO_TRY[0];
+
+    let step = await sendMessageAcrossModels({
+      chat: currentChat,
+      currentModel,
+      systemInstruction,
+      tools,
+      sessionHistory: history,
+      content: message,
+      maxRetriesPerModel: 4,
+    });
+
+    currentChat = step.chat;
+    currentModel = step.modelName;
+    let responseAi = step.result!.response;
     let calls = responseAi.functionCalls();
 
     while (calls && calls.length > 0) {
@@ -708,16 +813,36 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         }
       }
 
-      result = await sendMessageWithRetry(chat, [
-        {
-          functionResponse: {
-            name: call.name,
-            response: { content: functionResponse },
-          },
-        },
-      ]);
+      sessionHistory.push({
+        role: "model",
+        parts: [{ functionCall: call }],
+      });
 
-      responseAi = result!.response;
+      const toolResponsePart: Part = {
+        functionResponse: {
+          name: call.name,
+          response: { content: functionResponse },
+        },
+      };
+
+      sessionHistory.push({
+        role: "user",
+        parts: [toolResponsePart],
+      });
+
+      step = await sendMessageAcrossModels({
+        chat: currentChat,
+        currentModel,
+        systemInstruction,
+        tools,
+        sessionHistory,
+        content: [toolResponsePart],
+        maxRetriesPerModel: 4,
+      });
+
+      currentChat = step.chat;
+      currentModel = step.modelName;
+      responseAi = step.result!.response;
       calls = responseAi.functionCalls();
     }
 
