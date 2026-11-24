@@ -13,7 +13,7 @@ import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 export const dynamic = "force-dynamic";
 
 const MODELS_TO_TRY: GeminiModelName[] = [
-  "gemini-3.1-flash",
+  "gemini-3.1-flash-lite",
   "gemini-2.5-flash",
 ];
 
