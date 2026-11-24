@@ -13,8 +13,8 @@ import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 export const dynamic = "force-dynamic";
 
 const MODELS_TO_TRY: GeminiModelName[] = [
+  "gemini-3.1-flash",
   "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
 ];
 
 interface GeminiHttpError extends Error {
