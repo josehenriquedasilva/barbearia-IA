@@ -8,7 +8,7 @@ export function startNewChat(
   history: Content[],
 ) {
   const model = genAI.getGenerativeModel({
-    model: "gemini-3.5-flash-lite",
+    model: "gemini-2-flash-lite",
     systemInstruction: systemInstruction,
     generationConfig: {
       temperature: 0.1,
