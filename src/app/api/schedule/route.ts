@@ -1,25 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { startNewChat, GeminiModelName } from "@/lib/gemini";
-import {
-  ChatSession,
-  Content,
-  Part,
-  SchemaType,
-  Tool,
-} from "@google/generative-ai";
+import { startNewChat } from "@/lib/gemini";
+import { ChatSession, Part, SchemaType, Tool } from "@google/generative-ai";
 import { getAvailableSlotsForDay, getClosestSlots } from "@/utils/slots";
 
 export const dynamic = "force-dynamic";
-
-const MODELS_TO_TRY: GeminiModelName[] = [
-  "gemini-3.1-flash-lite",
-  "gemini-2.5-flash-lite",
-];
-
-interface GeminiHttpError extends Error {
-  status?: number;
-}
 
 interface ScheduleArgs {
   barberName?: string;
@@ -63,168 +48,36 @@ function getDatesContext() {
   return { todayStr, tomorrowStr };
 }
 
-function isTransientGeminiError(error: unknown): boolean {
-  const geminiErr = error as GeminiHttpError;
-  const status = geminiErr?.status;
-  const errorMessage = error instanceof Error ? error.message : "";
+async function sendMessageWithRetry(
+  chat: ChatSession,
+  content: string | (string | Part)[],
+  maxRetries = 4,
+) {
+  let retryCount = 0;
+  while (retryCount <= maxRetries) {
+    try {
+      return await chat.sendMessage(content);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "";
+      const isOverloaded =
+        errorMessage.includes("503") ||
+        errorMessage.includes("429") ||
+        errorMessage.includes("high demand") ||
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("deadline");
 
-  return (
-    status === 503 ||
-    status === 429 ||
-    errorMessage.includes("503") ||
-    errorMessage.includes("429") ||
-    errorMessage.includes("Service Unavailable") ||
-    errorMessage.includes("high demand") ||
-    errorMessage.includes("timeout") ||
-    errorMessage.includes("deadline")
-  );
-}
-
-function sanitizeHistoryForStartChat(history: Content[]): Content[] {
-  const cleaned = history.filter((item) => item.parts && item.parts.length > 0);
-  while (cleaned.length > 0 && cleaned[cleaned.length - 1].role === "user") {
-    cleaned.pop();
-  }
-  return cleaned;
-}
-
-function buildFallbackTextFromSlotsResponse(
-  data: Record<string, unknown> | null,
-  hasMultipleServices: boolean,
-): string {
-  if (!data) {
-    return "Pode me confirmar o serviço, dia e horário que você prefere?";
-  }
-
-  if (data.isClosed || data.semVagasNoDia) {
-    return "Não temos horários disponíveis nessa data para o serviço solicitado. Deseja agendar para outro dia?";
-  }
-
-  const requestedTime =
-    typeof data.horarioSolicitado === "string" && data.horarioSolicitado
-      ? data.horarioSolicitado
-      : null;
-  const isAvailable = Boolean(data.horarioSolicitadoDisponivel);
-  const closest = Array.isArray(data.sugestoesHorariosMaisProximos)
-    ? (data.sugestoesHorariosMaisProximos as string[]).filter(Boolean)
-    : [];
-  const general = Array.isArray(data.sugestoesRecomendadasGerais)
-    ? (data.sugestoesRecomendadasGerais as string[]).filter(Boolean)
-    : [];
-
-  if (requestedTime) {
-    if (isAvailable) {
-      return hasMultipleServices
-        ? `Temos vaga às ${requestedTime}. Qual serviço você deseja?`
-        : `Temos vaga às ${requestedTime}. Qual é o seu nome para concluir o agendamento?`;
-    }
-    if (closest.length >= 2) {
-      return `O horário das ${requestedTime} não está disponível. Temos às ${closest[0]} ou ${closest[1]}. Qual prefere?`;
-    }
-    if (closest.length === 1) {
-      return `O horário das ${requestedTime} não está disponível. Temos às ${closest[0]}. Pode ser?`;
-    }
-    return `O horário das ${requestedTime} não está disponível. Deseja verificar outro horário ou dia?`;
-  }
-
-  if (general.length >= 2) {
-    const firstTwo = general.slice(0, 2);
-    return `Temos horários disponíveis às ${firstTwo[0]} e às ${firstTwo[1]}. Qual prefere?`;
-  }
-  if (general.length === 1) {
-    return `Temos horário disponível às ${general[0]}. Pode ser?`;
-  }
-
-  return "Não há horários disponíveis nessa data. Deseja verificar outro dia?";
-}
-
-async function sendMessageAcrossModels(params: {
-  chat: ChatSession | null;
-  currentModel: GeminiModelName | null;
-  systemInstruction: string;
-  tools: Tool[];
-  fallbackHistory: Content[];
-  content: string | (string | Part)[];
-  fallbackTextContent?: string;
-  maxRetriesPerModel?: number;
-}) {
-  const {
-    chat,
-    currentModel,
-    systemInstruction,
-    tools,
-    fallbackHistory,
-    content,
-    fallbackTextContent,
-    maxRetriesPerModel = 2,
-  } = params;
-
-  const startIndex = currentModel
-    ? Math.max(0, MODELS_TO_TRY.indexOf(currentModel))
-    : 0;
-  const orderedModels = [
-    ...MODELS_TO_TRY.slice(startIndex),
-    ...MODELS_TO_TRY.slice(0, startIndex),
-  ];
-
-  let lastError: unknown;
-
-  for (let mIndex = 0; mIndex < orderedModels.length; mIndex++) {
-    const modelName = orderedModels[mIndex];
-    const isUsingExistingSession =
-      mIndex === 0 && chat !== null && currentModel === modelName;
-
-    const preparedHistory = sanitizeHistoryForStartChat(fallbackHistory);
-
-    const activeChat = isUsingExistingSession
-      ? chat
-      : startNewChat(systemInstruction, tools, preparedHistory, modelName);
-
-    const payloadToSend =
-      isUsingExistingSession || !fallbackTextContent
-        ? content
-        : fallbackTextContent;
-
-    let retryCount = 0;
-
-    while (retryCount <= maxRetriesPerModel) {
-      try {
-        const result = await activeChat.sendMessage(payloadToSend);
-        return {
-          result,
-          chat: activeChat,
-          modelName,
-        };
-      } catch (error: unknown) {
-        lastError = error;
-        const transient = isTransientGeminiError(error);
-
-        if (!transient) {
-          throw error;
-        }
-
-        if (retryCount < maxRetriesPerModel) {
-          retryCount++;
-          const delay = retryCount * 1000 + Math.floor(Math.random() * 400);
-          console.log(
-            `Gemini ocupado/lento no modelo ${modelName}. Tentativa ${retryCount} de ${maxRetriesPerModel}. Aguardando ${(delay / 1000).toFixed(1)}s...`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
-
-        const nextModel = orderedModels[mIndex + 1];
-        if (nextModel) {
-          console.warn(
-            `Modelo ${modelName} falhou após ${maxRetriesPerModel} tentativas. Fazendo fallback para ${nextModel}...`,
-          );
-        }
-        break;
+      if (isOverloaded && retryCount < maxRetries) {
+        retryCount++;
+        const delay = retryCount * 3000;
+        console.log(
+          `Gemini ocupado/lento. Tentativa ${retryCount} de ${maxRetries}. Aguardando ${delay / 1000}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
       }
+      throw error;
     }
   }
-
-  throw lastError;
 }
 
 export async function POST(request: Request) {
@@ -329,7 +182,7 @@ export async function POST(request: Request) {
       take: 10,
     });
 
-    const history: Content[] = lastMessages.reverse().map((msg) => ({
+    const history = lastMessages.reverse().map((msg) => ({
       role: msg.role === "model" ? "model" : "user",
       parts: [{ text: msg.content }],
     }));
@@ -378,7 +231,7 @@ REGRAS DE FORMATAÇÃO E COMPORTAMENTO (STRICT):
   - Quando o cliente perguntar por um horário e ele estiver indisponível, NÃO pergunte o serviço antes: informe que não está disponível e sugira outro(s) horário(s).
   - Se o cliente escolher um dos horários sugeridos (ou perguntar por outro horário e você verificar que está disponível) e o serviço ainda não tiver sido informado (e a loja tiver mais de um serviço), pergunte qual serviço ele deseja para verificar se encaixa na agenda de acordo com a duração do serviço, ANTES de pedir o nome do cliente para concluir o agendamento.
   - Assim que o cliente informar o serviço para um horário escolhido/disponível, chame "getAvailableSlots" passando o "serviceName" e o horário para validar se a duração do serviço cabe sem invadir outro horário, intervalo ou fechamento da barbearia; se couber, peça apenas o nome do cliente para concluir o agendamento.
-- Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado, lotado ou "totalSlotsDisponiveis": 0), NUNCA sugira horários: responda de forma clara informando que o dia não está disponível para o serviço, e pergunte diretamente: "Deseja agendar para outro dia?".
+- Se um dia inteiro estiver indisponível ou sem vagas (por exemplo, fechado ou lotado), responda de forma clara informando que o dia não está disponível, e pergunte diretamente: "Deseja agendar para outro dia? Para qual serviço?".
 - Se a conversa já estiver em andamento, vá DIRETO ao ponto, sem saudações.
 - Se precisar perguntar o nome do cliente, peça apenas o "nome" e não o nome completo, e toda vez que pedir o nome, informe que é "para concluir o agendamento" (NUNCA diga "para concluir o cadastro").
 - OBRIGATÓRIO: Antes de chamar a ferramenta "scheduleAppointment", você DEVE ter obtido o nome do cliente. Você DEVE passar o argumento "clientName" obrigatoriamente com o nome fornecido pelo usuário. NUNCA execute o agendamento sem o nome do cliente.
@@ -493,26 +346,9 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
       },
     ];
 
-    const fallbackHistory: Content[] = [...history];
-    const userMessageText = String(message ?? "");
-
-    let currentChat: ChatSession | null = null;
-    let currentModel: GeminiModelName | null = MODELS_TO_TRY[0];
-    let lastSlotsFunctionResponse: Record<string, unknown> | null = null;
-
-    let step = await sendMessageAcrossModels({
-      chat: currentChat,
-      currentModel,
-      systemInstruction,
-      tools,
-      fallbackHistory,
-      content: userMessageText,
-      maxRetriesPerModel: 2,
-    });
-
-    currentChat = step.chat;
-    currentModel = step.modelName;
-    let responseAi = step.result!.response;
+    const chat = startNewChat(systemInstruction, tools, history);
+    let result = await sendMessageWithRetry(chat, message);
+    let responseAi = result!.response;
     let calls = responseAi.functionCalls();
 
     while (calls && calls.length > 0) {
@@ -557,10 +393,8 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
           if (slotsResult.isClosed) {
             functionResponse = {
               isClosed: true,
-              semVagasNoDia: true,
               reason: slotsResult.closedReason,
               message: slotsResult.closedReason,
-              horariosDisponiveis: [],
             };
           } else {
             let sugestoesProximas: string[] = [];
@@ -642,7 +476,6 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
 
             functionResponse = {
               isClosed: false,
-              semVagasNoDia: slotsResult.slots.length === 0,
               date,
               barberName: targetBarber.name,
               serviceName: targetService.name,
@@ -658,8 +491,6 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
             };
           }
         }
-
-        lastSlotsFunctionResponse = functionResponse;
       }
 
       if (call.name === "cancelAppointment") {
@@ -877,60 +708,41 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         }
       }
 
-      const toolResponsePart: Part = {
-        functionResponse: {
-          name: call.name,
-          response: { content: functionResponse },
+      result = await sendMessageWithRetry(chat, [
+        {
+          functionResponse: {
+            name: call.name,
+            response: { content: functionResponse },
+          },
         },
-      };
+      ]);
 
-      const fallbackTextPrompt = `Cliente disse: "${userMessageText}". Resultado da consulta (${call.name}): ${JSON.stringify(functionResponse)}. Responda ao cliente em 1 ou 2 frases curtas seguindo rigorosamente as instruções.`;
-
-      step = await sendMessageAcrossModels({
-        chat: currentChat,
-        currentModel,
-        systemInstruction,
-        tools,
-        fallbackHistory,
-        content: [toolResponsePart],
-        fallbackTextContent: fallbackTextPrompt,
-        maxRetriesPerModel: 2,
-      });
-
-      currentChat = step.chat;
-      currentModel = step.modelName;
-      responseAi = step.result!.response;
+      responseAi = result!.response;
       calls = responseAi.functionCalls();
     }
 
-    const rawText = responseAi.text().trim();
-    const finalReply =
-      rawText.length > 0
-        ? rawText
-        : buildFallbackTextFromSlotsResponse(
-            lastSlotsFunctionResponse,
-            shopData.services.length > 1,
-          );
+    const aiFinalText = responseAi.text();
 
-    if (!rawText) {
-      console.warn(
-        `Modelo ${currentModel} retornou texto vazio. Usando resposta de contingência com dados da agenda.`,
-      );
+    if (aiFinalText && aiFinalText.trim().length > 0) {
+      await prisma.chatMessage.create({
+        data: {
+          role: "model",
+          content: aiFinalText.trim(),
+          shopId: Number(shopId),
+          clientPhone,
+        },
+      });
+
+      return NextResponse.json({
+        status: "TEXT_RESPONSE",
+        ai_response: [aiFinalText.trim()],
+      });
+    } else {
+      return NextResponse.json({
+        status: "TEXT_RESPONSE",
+        ai_response: ["Entendido! Como posso ajudar?"],
+      });
     }
-
-    await prisma.chatMessage.create({
-      data: {
-        role: "model",
-        content: finalReply,
-        shopId: Number(shopId),
-        clientPhone,
-      },
-    });
-
-    return NextResponse.json({
-      status: "TEXT_RESPONSE",
-      ai_response: [finalReply],
-    });
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Erro desconhecido";
