@@ -80,6 +80,64 @@ function isTransientGeminiError(error: unknown): boolean {
   );
 }
 
+function sanitizeHistoryForStartChat(history: Content[]): Content[] {
+  const cleaned = history.filter((item) => item.parts && item.parts.length > 0);
+  while (cleaned.length > 0 && cleaned[cleaned.length - 1].role === "user") {
+    cleaned.pop();
+  }
+  return cleaned;
+}
+
+function buildFallbackTextFromSlotsResponse(
+  data: Record<string, unknown> | null,
+  hasMultipleServices: boolean,
+): string {
+  if (!data) {
+    return "Pode me confirmar o serviço, dia e horário que você prefere?";
+  }
+
+  if (data.isClosed || data.semVagasNoDia) {
+    return "Não temos horários disponíveis nessa data para o serviço solicitado. Deseja agendar para outro dia?";
+  }
+
+  const requestedTime =
+    typeof data.horarioSolicitado === "string" && data.horarioSolicitado
+      ? data.horarioSolicitado
+      : null;
+  const isAvailable = Boolean(data.horarioSolicitadoDisponivel);
+  const closest = Array.isArray(data.sugestoesHorariosMaisProximos)
+    ? (data.sugestoesHorariosMaisProximos as string[]).filter(Boolean)
+    : [];
+  const general = Array.isArray(data.sugestoesRecomendadasGerais)
+    ? (data.sugestoesRecomendadasGerais as string[]).filter(Boolean)
+    : [];
+
+  if (requestedTime) {
+    if (isAvailable) {
+      return hasMultipleServices
+        ? `Temos vaga às ${requestedTime}. Qual serviço você deseja?`
+        : `Temos vaga às ${requestedTime}. Qual é o seu nome para concluir o agendamento?`;
+    }
+    if (closest.length >= 2) {
+      return `O horário das ${requestedTime} não está disponível. Temos às ${closest[0]} ou ${closest[1]}. Qual prefere?`;
+    }
+    if (closest.length === 1) {
+      return `O horário das ${requestedTime} não está disponível. Temos às ${closest[0]}. Pode ser?`;
+    }
+    return `O horário das ${requestedTime} não está disponível. Deseja verificar outro horário ou dia?`;
+  }
+
+  if (general.length >= 2) {
+    const firstTwo = general.slice(0, 2);
+    return `Temos horários disponíveis às ${firstTwo[0]} e às ${firstTwo[1]}. Qual prefere?`;
+  }
+  if (general.length === 1) {
+    return `Temos horário disponível às ${general[0]}. Pode ser?`;
+  }
+
+  return "Não há horários disponíveis nessa data. Deseja verificar outro dia?";
+}
+
 async function sendMessageAcrossModels(params: {
   chat: ChatSession | null;
   currentModel: GeminiModelName | null;
@@ -116,9 +174,11 @@ async function sendMessageAcrossModels(params: {
     const isUsingExistingSession =
       mIndex === 0 && chat !== null && currentModel === modelName;
 
+    const preparedHistory = sanitizeHistoryForStartChat(fallbackHistory);
+
     const activeChat = isUsingExistingSession
       ? chat
-      : startNewChat(systemInstruction, tools, fallbackHistory, modelName);
+      : startNewChat(systemInstruction, tools, preparedHistory, modelName);
 
     const payloadToSend =
       isUsingExistingSession || !fallbackTextContent
@@ -438,6 +498,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
 
     let currentChat: ChatSession | null = null;
     let currentModel: GeminiModelName | null = MODELS_TO_TRY[0];
+    let lastSlotsFunctionResponse: Record<string, unknown> | null = null;
 
     let step = await sendMessageAcrossModels({
       chat: currentChat,
@@ -447,11 +508,6 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
       fallbackHistory,
       content: userMessageText,
       maxRetriesPerModel: 2,
-    });
-
-    fallbackHistory.push({
-      role: "user",
-      parts: [{ text: userMessageText }],
     });
 
     currentChat = step.chat;
@@ -602,6 +658,8 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
             };
           }
         }
+
+        lastSlotsFunctionResponse = functionResponse;
       }
 
       if (call.name === "cancelAppointment") {
@@ -826,7 +884,7 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         },
       };
 
-      const fallbackTextPrompt = `[Consulta interna já executada: ${call.name}(${JSON.stringify(call.args)}) => ${JSON.stringify(functionResponse)}]. Com base nesse resultado e no histórico da conversa, responda ao cliente seguindo rigorosamente as instruções.`;
+      const fallbackTextPrompt = `Cliente disse: "${userMessageText}". Resultado da consulta (${call.name}): ${JSON.stringify(functionResponse)}. Responda ao cliente em 1 ou 2 frases curtas seguindo rigorosamente as instruções.`;
 
       step = await sendMessageAcrossModels({
         chat: currentChat,
@@ -839,46 +897,40 @@ FLUXO SEQUENCIAL DE ATENDIMENTO (OBRIGATÓRIO):
         maxRetriesPerModel: 2,
       });
 
-      fallbackHistory.push({
-        role: "model",
-        parts: [{ text: `Consultando agenda (${call.name})...` }],
-      });
-      fallbackHistory.push({
-        role: "user",
-        parts: [{ text: fallbackTextPrompt }],
-      });
-
       currentChat = step.chat;
       currentModel = step.modelName;
       responseAi = step.result!.response;
       calls = responseAi.functionCalls();
     }
 
-    const aiFinalText = responseAi.text();
+    const rawText = responseAi.text().trim();
+    const finalReply =
+      rawText.length > 0
+        ? rawText
+        : buildFallbackTextFromSlotsResponse(
+            lastSlotsFunctionResponse,
+            shopData.services.length > 1,
+          );
 
-    if (aiFinalText && aiFinalText.trim().length > 0) {
-      await prisma.chatMessage.create({
-        data: {
-          role: "model",
-          content: aiFinalText.trim(),
-          shopId: Number(shopId),
-          clientPhone,
-        },
-      });
-
-      return NextResponse.json({
-        status: "TEXT_RESPONSE",
-        ai_response: [aiFinalText.trim()],
-      });
-    } else {
+    if (!rawText) {
       console.warn(
-        `Modelo ${currentModel} retornou texto vazio após o processamento.`,
+        `Modelo ${currentModel} retornou texto vazio. Usando resposta de contingência com dados da agenda.`,
       );
-      return NextResponse.json({
-        status: "TEXT_RESPONSE",
-        ai_response: ["Entendido! Como posso ajudar?"],
-      });
     }
+
+    await prisma.chatMessage.create({
+      data: {
+        role: "model",
+        content: finalReply,
+        shopId: Number(shopId),
+        clientPhone,
+      },
+    });
+
+    return NextResponse.json({
+      status: "TEXT_RESPONSE",
+      ai_response: [finalReply],
+    });
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Erro desconhecido";
