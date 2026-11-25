@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 type FlowStep =
   | "ACTIVE_APPOINTMENT_MENU"
   | "CONFIRM_CANCEL"
+  | "RESCHEDULE_SERVICE_CHOICE"
+  | "RESCHEDULE_WHEN_CHOICE"
   | "SELECT_SERVICE"
   | "SELECT_BARBER"
   | "SELECT_DATE"
@@ -28,6 +30,8 @@ interface FlowState {
   time?: string;
   clientName?: string;
   isRescheduling?: boolean;
+  fixedDate?: string;
+  fixedTime?: string;
 }
 
 interface OutgoingMessage {
@@ -79,6 +83,19 @@ function getDateStrOffset(daysOffset: number): string {
   const now = new Date();
   const target = new Date(now.getTime() + daysOffset * 24 * 60 * 60 * 1000);
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(target);
+}
+
+function formatDateInSaoPauloISO(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(date);
+}
+
+function formatTimeInSaoPauloHM(date: Date): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: TZ,
+  }).format(date);
 }
 
 function formatDateLabel(
@@ -480,6 +497,44 @@ export async function POST(request: Request) {
       ? null
       : await loadState(numericShopId, clientPhone);
 
+    const promptRescheduleWhenChoice = async (nextState: FlowState) => {
+      const currentDateISO =
+        nextState.fixedDate ||
+        (upcomingAppointment
+          ? formatDateInSaoPauloISO(upcomingAppointment.startTime)
+          : undefined);
+      const currentTimeHM =
+        nextState.fixedTime ||
+        (upcomingAppointment
+          ? formatTimeInSaoPauloHM(upcomingAppointment.startTime)
+          : undefined);
+
+      const dateLabel = currentDateISO
+        ? currentDateISO.split("-").reverse().join("/")
+        : "atual";
+      const timeLabel = currentTimeHM || "atual";
+
+      return saveStateAndReply({
+        shopId: numericShopId,
+        clientPhone,
+        state: {
+          ...nextState,
+          isRescheduling: true,
+          fixedDate: currentDateISO,
+          fixedTime: currentTimeHM,
+          step: "RESCHEDULE_WHEN_CHOICE",
+        },
+        reply: {
+          text: `Seu agendamento atual está em ${dateLabel} às ${timeLabel}. O que você quer alterar?`,
+          buttons: [
+            { type: "reply", id: "when_date", displayText: "Só o dia" },
+            { type: "reply", id: "when_time", displayText: "Só o horário" },
+            { type: "reply", id: "when_both", displayText: "Dia e horário" },
+          ],
+        },
+      });
+    };
+
     const promptNextAfterServiceAndBarber = async (
       nextState: FlowState,
       greetingPrefix = "",
@@ -533,6 +588,11 @@ export async function POST(request: Request) {
             reply,
           });
         }
+      }
+
+      // Na remarcação, após definir serviço (e barbeiro), pergunta se quer alterar só o dia, só o horário ou ambos
+      if (nextState.isRescheduling && !nextState.date && !nextState.time) {
+        return promptRescheduleWhenChoice(nextState);
       }
 
       const openDates = getUpcomingOpenDates(shopData, 7);
@@ -771,10 +831,54 @@ export async function POST(request: Request) {
       }
 
       if (normId === "apt_reschedule" || normInput.includes("remarcar")) {
-        return promptNextAfterServiceAndBarber({
-          step: "SELECT_SERVICE",
+        const currentService = upcomingAppointment?.service;
+        const currentServiceStillActive = currentService
+          ? shopData.services.some((s) => s.id === currentService.id)
+          : false;
+
+        const baseRescheduleState: FlowState = {
+          step: "RESCHEDULE_SERVICE_CHOICE",
           isRescheduling: true,
           clientName: upcomingAppointment?.clientName,
+          barberId: upcomingAppointment?.barberId,
+          fixedDate: upcomingAppointment
+            ? formatDateInSaoPauloISO(upcomingAppointment.startTime)
+            : undefined,
+          fixedTime: upcomingAppointment
+            ? formatTimeInSaoPauloHM(upcomingAppointment.startTime)
+            : undefined,
+        };
+
+        if (
+          currentService &&
+          currentServiceStillActive &&
+          shopData.services.length > 1
+        ) {
+          return saveStateAndReply({
+            shopId: numericShopId,
+            clientPhone,
+            state: baseRescheduleState,
+            reply: {
+              text: `Seu serviço atual é *${currentService.name}*. Quer manter o mesmo serviço ou mudar?`,
+              buttons: [
+                {
+                  type: "reply",
+                  id: "srv_keep",
+                  displayText: "Manter serviço",
+                },
+                {
+                  type: "reply",
+                  id: "srv_change",
+                  displayText: "Mudar serviço",
+                },
+              ],
+            },
+          });
+        }
+
+        return promptNextAfterServiceAndBarber({
+          ...baseRescheduleState,
+          serviceId: currentServiceStillActive ? currentService?.id : undefined,
         });
       }
 
@@ -791,6 +895,101 @@ export async function POST(request: Request) {
           ],
         },
       });
+    }
+
+    if (state.step === "RESCHEDULE_SERVICE_CHOICE") {
+      if (normId === "srv_keep" || normInput.includes("manter")) {
+        return promptNextAfterServiceAndBarber({
+          ...state,
+          serviceId: upcomingAppointment?.serviceId,
+        });
+      }
+
+      if (normId === "srv_change" || normInput.includes("mudar")) {
+        return promptNextAfterServiceAndBarber({
+          ...state,
+          serviceId: undefined,
+        });
+      }
+
+      return saveStateAndReply({
+        shopId: numericShopId,
+        clientPhone,
+        state,
+        reply: {
+          text: "Deseja manter o serviço atual ou mudar?",
+          buttons: [
+            { type: "reply", id: "srv_keep", displayText: "Manter serviço" },
+            { type: "reply", id: "srv_change", displayText: "Mudar serviço" },
+          ],
+        },
+      });
+    }
+
+    if (state.step === "RESCHEDULE_WHEN_CHOICE") {
+      if (normId === "when_time" || normInput.includes("so o horario")) {
+        const targetDate =
+          state.fixedDate ||
+          (upcomingAppointment
+            ? formatDateInSaoPauloISO(upcomingAppointment.startTime)
+            : getDateStrOffset(0));
+
+        return promptTimeOrPeriodForDate(
+          { ...state, date: targetDate },
+          targetDate,
+        );
+      }
+
+      if (normId === "when_date" || normInput.includes("so o dia")) {
+        const openDates = getUpcomingOpenDates(shopData, 7);
+        const reply = buildChoiceMessage({
+          text: `Mantendo o horário das ${state.fixedTime || "atual"}. Para qual novo dia você quer passar?`,
+          buttonText: "Escolher dia",
+          sectionTitle: "Dias disponíveis",
+          options: openDates.map((d) => ({
+            id: `date_${d.dateStr}`,
+            title: d.title,
+            description: d.description,
+          })),
+        });
+        return saveStateAndReply({
+          shopId: numericShopId,
+          clientPhone,
+          state: { ...state, step: "SELECT_DATE" },
+          reply,
+        });
+      }
+
+      if (
+        normId === "when_both" ||
+        normInput.includes("dia e horario") ||
+        normInput.includes("ambos")
+      ) {
+        const openDates = getUpcomingOpenDates(shopData, 7);
+        const reply = buildChoiceMessage({
+          text: "Para qual dia você deseja remarcar?",
+          buttonText: "Escolher dia",
+          sectionTitle: "Dias disponíveis",
+          options: openDates.map((d) => ({
+            id: `date_${d.dateStr}`,
+            title: d.title,
+            description: d.description,
+          })),
+        });
+        return saveStateAndReply({
+          shopId: numericShopId,
+          clientPhone,
+          state: {
+            ...state,
+            fixedDate: undefined,
+            fixedTime: undefined,
+            step: "SELECT_DATE",
+          },
+          reply,
+        });
+      }
+
+      return promptRescheduleWhenChoice(state);
     }
 
     if (state.step === "CONFIRM_CANCEL") {
@@ -903,6 +1102,24 @@ export async function POST(request: Request) {
           clientPhone,
           state,
           reply,
+        });
+      }
+
+      // Se o cliente escolheu "Só o dia" na remarcação, mantém o horário fixo e já tenta concluir
+      if (state.isRescheduling && state.fixedTime && !state.fixedDate) {
+        const clientName =
+          state.clientName?.trim() ||
+          upcomingAppointment?.clientName ||
+          "Cliente";
+        return finalizeBooking({
+          currentState: {
+            ...state,
+            date: matchedDate.dateStr,
+            time: state.fixedTime,
+          },
+          dateStr: matchedDate.dateStr,
+          timeStr: state.fixedTime,
+          clientName,
         });
       }
 
