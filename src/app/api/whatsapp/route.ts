@@ -1,10 +1,69 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { waitUntil } from "@vercel/functions";
-import { sendWhatsAppMessage } from "@/lib/whatsApp";
+import {
+  sendWhatsAppMessage,
+  SendWhatsAppPayloadOptions,
+} from "@/lib/whatsApp";
 import Groq, { toFile } from "groq-sdk";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+interface OutgoingMessageItem {
+  text?: string;
+  buttons?: SendWhatsAppPayloadOptions["buttons"];
+  list?: SendWhatsAppPayloadOptions["list"];
+  footer?: string;
+}
+
+interface ParsedInboundMessage {
+  text: string;
+  interactiveId?: string;
+}
+
+function extractInboundMessage(
+  data: Record<string, unknown>,
+): ParsedInboundMessage {
+  const interactive = data?.interactive as
+    | {
+        button_reply?: { id?: string; title?: string };
+        list_reply?: { id?: string; title?: string };
+      }
+    | undefined;
+
+  if (interactive?.button_reply) {
+    return {
+      text: (
+        interactive.button_reply.title ||
+        interactive.button_reply.id ||
+        ""
+      ).trim(),
+      interactiveId: interactive.button_reply.id?.trim(),
+    };
+  }
+
+  if (interactive?.list_reply) {
+    return {
+      text: (
+        interactive.list_reply.title ||
+        interactive.list_reply.id ||
+        ""
+      ).trim(),
+      interactiveId: interactive.list_reply.id?.trim(),
+    };
+  }
+
+  const buttonId =
+    typeof data?.buttonId === "string" && data.buttonId.trim()
+      ? data.buttonId.trim()
+      : undefined;
+  const content = typeof data?.content === "string" ? data.content.trim() : "";
+
+  return {
+    text: content || buttonId || "",
+    interactiveId: buttonId,
+  };
+}
 
 async function logoutWhatsAppInstance(instanceId: string): Promise<boolean> {
   try {
@@ -64,20 +123,22 @@ async function transcreverAudioComGroq(
   }
 }
 
-async function processBackgroundAi({
+async function processBackgroundFlow({
   currentMsgId,
   shopId,
   clientPhone,
   instanceName,
   host,
+  interactiveId,
 }: {
   currentMsgId: number;
   shopId: number;
   clientPhone: string;
   instanceName: string;
   host: string;
+  interactiveId?: string;
 }) {
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 
   const latestUserMsg = await prisma.chatMessage.findFirst({
     where: { shopId, clientPhone, role: "user" },
@@ -113,29 +174,44 @@ async function processBackgroundAi({
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `${protocol}${host}`;
 
-    const aiResponse = await fetch(`${baseUrl}/api/schedule`, {
+    const flowResponse = await fetch(`${baseUrl}/api/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: combinedMessageText,
+        interactiveId,
         shopId,
         clientPhone,
         currentMessageIds: idsToUpdate,
       }),
     });
 
-    if (!aiResponse.ok) return;
+    if (!flowResponse.ok) return;
 
-    const dataIA = await aiResponse.json();
-    const content = dataIA.ai_response || dataIA.message || dataIA.response;
+    const dataFlow = await flowResponse.json();
+    const rawItems =
+      dataFlow.messages ||
+      dataFlow.ai_response ||
+      dataFlow.message ||
+      dataFlow.response;
 
-    if (!content) return;
+    if (!rawItems) return;
 
-    const parts = Array.isArray(content) ? content : [content];
+    const items: OutgoingMessageItem[] = Array.isArray(rawItems)
+      ? rawItems.map((entry) =>
+          typeof entry === "string" ? { text: entry } : entry,
+        )
+      : [typeof rawItems === "string" ? { text: rawItems } : rawItems];
 
-    for (const textPart of parts) {
-      if (!textPart || !textPart.trim()) continue;
-      await sendWhatsAppMessage(instanceName, clientPhone, textPart.trim());
+    for (const item of items) {
+      const msgText = (item?.text || "").trim();
+      if (!msgText && !item?.list && !item?.buttons) continue;
+
+      await sendWhatsAppMessage(instanceName, clientPhone, msgText, {
+        buttons: item?.buttons,
+        list: item?.list,
+        footer: item?.footer,
+      });
     }
   } catch {}
 }
@@ -145,7 +221,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     const event = (body.event || "").toLowerCase();
-    const data = body.data;
+    const data = (body.data || {}) as Record<string, unknown>;
 
     if (event !== "message.received" && event !== "message.reply") {
       return NextResponse.json({ ok: true, status: "ignored_event" });
@@ -155,15 +231,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, status: "ignored_from_me" });
     }
 
-    const instanceName = data?.numberId;
+    const instanceName =
+      typeof data?.numberId === "string" ? data.numberId : undefined;
     if (!instanceName) {
       return NextResponse.json({ error: "numberId missing" }, { status: 400 });
     }
 
-    const recipientPhone = (data?.to || "").replace(/\D/g, "");
+    const rawTo = typeof data?.to === "string" ? data.to : "";
+    const recipientPhone = rawTo.replace(/\D/g, "");
     const cleanRecipient = recipientPhone.replace(/^55/, "");
 
-    const rawClientPhone = data?.from || "";
+    const rawClientPhone = typeof data?.from === "string" ? data.from : "";
     const clientPhone = rawClientPhone.replace(/\D/g, "").replace(/^55/, "");
 
     const shop = await prisma.shop.findFirst({
@@ -206,16 +284,23 @@ export async function POST(request: Request) {
 
     const isAudio = data?.type === "audio";
     let messageText = "";
+    let interactiveId: string | undefined;
 
     if (isAudio) {
-      const mediaLink = data?.mediaLink;
-      const mediaFilename = data?.mediaFilename || "voice.ogg";
+      const mediaLink =
+        typeof data?.mediaLink === "string" ? data.mediaLink : "";
+      const mediaFilename =
+        typeof data?.mediaFilename === "string"
+          ? data.mediaFilename
+          : "voice.ogg";
 
       if (mediaLink) {
         messageText = await transcreverAudioComGroq(mediaLink, mediaFilename);
       }
     } else {
-      messageText = data?.content || "";
+      const parsed = extractInboundMessage(data);
+      messageText = parsed.text;
+      interactiveId = parsed.interactiveId;
     }
 
     if (!messageText || !messageText.trim()) {
@@ -233,12 +318,13 @@ export async function POST(request: Request) {
     });
 
     waitUntil(
-      processBackgroundAi({
+      processBackgroundFlow({
         currentMsgId: currentMsg.id,
         shopId: shop.id,
         clientPhone,
         instanceName,
         host: request.headers.get("host") || "",
+        interactiveId,
       }).catch(() => {}),
     );
 

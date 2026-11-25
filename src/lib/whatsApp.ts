@@ -1,6 +1,34 @@
 const PILOT_STATUS_NATIVE_URL = process.env.PILOT_STATUS_NATIVE_URL;
 const API_KEY = process.env.EVOLUTION_TENANT_KEY;
 
+export interface WhatsAppReplyButton {
+  type?: "reply";
+  id: string;
+  displayText: string;
+}
+
+export interface WhatsAppListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface WhatsAppListSection {
+  title?: string;
+  rows: WhatsAppListRow[];
+}
+
+export interface WhatsAppInteractiveList {
+  buttonText: string;
+  sections: WhatsAppListSection[];
+}
+
+export interface SendWhatsAppPayloadOptions {
+  buttons?: WhatsAppReplyButton[];
+  list?: WhatsAppInteractiveList;
+  footer?: string;
+}
+
 interface DeletePilotStatusParams {
   baseUrl: string;
   apiKey: string;
@@ -26,12 +54,13 @@ export async function sendWhatsAppMessage(
   instanceName: string,
   number: string,
   text: string,
+  options?: SendWhatsAppPayloadOptions,
 ) {
   if (!PILOT_STATUS_NATIVE_URL || !API_KEY || !instanceName) {
     return null;
   }
 
-  const baseUrl = PILOT_STATUS_NATIVE_URL;
+  const baseUrl = PILOT_STATUS_NATIVE_URL.replace(/\/+$/, "");
   const url = `${baseUrl}/messages/send`;
 
   const cleanDigits = number.replace(/\D/g, "");
@@ -39,6 +68,39 @@ export async function sendWhatsAppMessage(
     ? cleanDigits
     : `55${cleanDigits}`;
   const finalNumber = `+${numberWithDDI}`;
+
+  const payload: Record<string, unknown> = {
+    destinationNumber: finalNumber,
+    text,
+  };
+
+  if (options?.list) {
+    payload.list = {
+      buttonText: options.list.buttonText.slice(0, 20),
+      sections: options.list.sections.slice(0, 10).map((sec) => ({
+        ...(sec.title ? { title: sec.title.slice(0, 24) } : {}),
+        rows: sec.rows.slice(0, 10).map((row) => ({
+          id: row.id.slice(0, 200),
+          title: row.title.slice(0, 24),
+          ...(row.description
+            ? { description: row.description.slice(0, 72) }
+            : {}),
+        })),
+      })),
+    };
+    if (options.footer) {
+      payload.footer = options.footer.slice(0, 60);
+    }
+  } else if (options?.buttons && options.buttons.length > 0) {
+    payload.buttons = options.buttons.slice(0, 3).map((btn, idx) => ({
+      type: "reply",
+      id: (btn.id || `btn_${idx + 1}`).slice(0, 200),
+      displayText: btn.displayText.slice(0, 20),
+    }));
+    if (options.footer) {
+      payload.footer = options.footer.slice(0, 60);
+    }
+  }
 
   try {
     const response = await fetch(url, {
@@ -48,10 +110,7 @@ export async function sendWhatsAppMessage(
         "x-api-key": API_KEY,
         "x-whatsapp-number-id": instanceName,
       },
-      body: JSON.stringify({
-        destinationNumber: finalNumber,
-        text: text,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) return null;
@@ -152,6 +211,7 @@ export async function setWebhookForInstance(
 
     const selectedEvents = [
       "message.received",
+      "message.reply",
       "number.connected",
       "number.disconnected",
       "message.read",
