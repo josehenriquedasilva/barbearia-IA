@@ -17,8 +17,7 @@ type FlowStep =
   | "SELECT_DATE"
   | "SELECT_PERIOD"
   | "SELECT_TIME"
-  | "INPUT_NAME"
-  | "CONFIRM_BOOKING";
+  | "INPUT_NAME";
 
 interface FlowState {
   step: FlowStep;
@@ -149,6 +148,32 @@ function classifySlotPeriod(time: string): "MANHA" | "TARDE" | "NOITE" {
   if (hour < 12) return "MANHA";
   if (hour < 18) return "TARDE";
   return "NOITE";
+}
+
+function buildSingleSlotMessage(params: {
+  selectedPeriod?: "MANHA" | "TARDE" | "NOITE";
+  closingTime: string;
+  totalDaySlots: number;
+}): string {
+  const { selectedPeriod, closingTime, totalDaySlots } = params;
+
+  if (selectedPeriod === "NOITE") {
+    return `Só temos esse horário disponível à noite antes do fechamento às ${closingTime}. Escolha para agendar:`;
+  }
+
+  if (selectedPeriod === "MANHA") {
+    return "Só temos esse horário disponível no turno da manhã. Escolha para agendar:";
+  }
+
+  if (selectedPeriod === "TARDE") {
+    return "Só temos esse horário disponível no turno da tarde. Escolha para agendar:";
+  }
+
+  if (totalDaySlots === 1) {
+    return `Só temos esse horário disponível nesse dia antes do fechamento às ${closingTime}. Escolha para agendar:`;
+  }
+
+  return "Só temos esse horário disponível no momento. Escolha para agendar:";
 }
 
 function buildChoiceMessage(params: {
@@ -336,6 +361,113 @@ export async function POST(request: Request) {
       include: { barber: true, service: true },
       orderBy: { startTime: "asc" },
     });
+
+    const finalizeBooking = async (params: {
+      currentState: FlowState;
+      dateStr: string;
+      timeStr: string;
+      clientName: string;
+    }) => {
+      const { currentState, dateStr, timeStr, clientName } = params;
+
+      const targetService =
+        shopData.services.find((s) => s.id === currentState.serviceId) ||
+        shopData.services[0];
+      const targetBarber =
+        shopData.barbers.find((b) => b.id === currentState.barberId) ||
+        shopData.barbers[0];
+
+      const slotsResult = await getAvailableSlotsForDay(
+        numericShopId,
+        dateStr,
+        targetBarber.id,
+        targetService.durationMinutes,
+      );
+
+      const chosenSlot = slotsResult.slots.find((s) => s.time === timeStr);
+      if (slotsResult.isClosed || !chosenSlot) {
+        return promptTimeOrPeriodForDate(
+          { ...currentState, time: undefined, period: undefined },
+          dateStr,
+        );
+      }
+
+      const startAt = new Date(`${dateStr}T${timeStr}:00-03:00`);
+      const durationWithInterval = targetService.durationMinutes + 10;
+      const endTime = new Date(
+        startAt.getTime() + durationWithInterval * 60000,
+      );
+
+      try {
+        const finalAppointment = await prisma.$transaction(async (tx) => {
+          const existing = await tx.appointment.findFirst({
+            where: {
+              barberId: targetBarber.id,
+              status: "CONFIRMED",
+              NOT: { id: upcomingAppointment?.id },
+              AND: [
+                { startTime: { lt: endTime } },
+                { endTime: { gt: startAt } },
+              ],
+            },
+          });
+
+          if (existing) {
+            throw new Error("TIME_SLOT_TAKEN");
+          }
+
+          if (upcomingAppointment) {
+            return await tx.appointment.update({
+              where: { id: upcomingAppointment.id },
+              data: {
+                startTime: startAt,
+                endTime: endTime,
+                barberId: targetBarber.id,
+                serviceId: targetService.id,
+                status: "CONFIRMED",
+                clientName,
+              },
+            });
+          }
+
+          return await tx.appointment.create({
+            data: {
+              clientName,
+              clientPhone,
+              shopId: shopData.id,
+              barberId: targetBarber.id,
+              serviceId: targetService.id,
+              startTime: startAt,
+              endTime: endTime,
+            },
+          });
+        });
+
+        const dateFormatted = dateStr.split("-").reverse().join("/");
+        const barberInfo =
+          shopData.barbers.length > 1 ? ` com ${targetBarber.name}` : "";
+        const baseSuccess = upcomingAppointment
+          ? "Seu horário foi alterado com sucesso!"
+          : "Agendamento realizado com sucesso!";
+
+        return clearSessionAndReply({
+          shopId: numericShopId,
+          clientPhone,
+          text: `${baseSuccess}\nServiço: ${targetService.name}${barberInfo}\nData: ${dateFormatted} às ${timeStr}\nNome: ${clientName}`,
+          status: "SUCCESS",
+          details: finalAppointment,
+        });
+      } catch (txError: unknown) {
+        const errorMessage = txError instanceof Error ? txError.message : "";
+        if (errorMessage === "TIME_SLOT_TAKEN") {
+          return promptTimeOrPeriodForDate(
+            { ...currentState, time: undefined, period: undefined },
+            dateStr,
+          );
+        }
+        throw txError;
+      }
+    };
 
     const isRestartCommand =
       normId === "restart" ||
@@ -542,8 +674,17 @@ export async function POST(request: Request) {
         filteredTimes.length > 0 ? filteredTimes : spacedAllTimes
       ).slice(0, 10);
 
+      const promptText =
+        timesToShow.length === 1
+          ? buildSingleSlotMessage({
+              selectedPeriod,
+              closingTime: shopData.closingTime,
+              totalDaySlots: spacedAllTimes.length,
+            })
+          : "Escolha o melhor horário disponível:";
+
       const reply = buildChoiceMessage({
-        text: "Escolha o melhor horário disponível:",
+        text: promptText,
         buttonText: "Ver horários",
         sectionTitle: "Horários livres",
         options: timesToShow.map((time) => ({
@@ -798,27 +939,11 @@ export async function POST(request: Request) {
       }
 
       if (state.clientName && state.clientName.trim().length > 0) {
-        const service =
-          shopData.services.find((s) => s.id === state.serviceId) ||
-          shopData.services[0];
-        const barber =
-          shopData.barbers.find((b) => b.id === state.barberId) ||
-          shopData.barbers[0];
-        const dateFormatted = state.date.split("-").reverse().join("/");
-        const barberLine =
-          shopData.barbers.length > 1 ? `\nProfissional: ${barber.name}` : "";
-
-        return saveStateAndReply({
-          shopId: numericShopId,
-          clientPhone,
-          state: { ...state, time: formattedTime, step: "CONFIRM_BOOKING" },
-          reply: {
-            text: `Confirma o agendamento?\nServiço: ${service.name}${barberLine}\nData: ${dateFormatted} às ${formattedTime}\nNome: ${state.clientName}`,
-            buttons: [
-              { type: "reply", id: "book_confirm", displayText: "Confirmar" },
-              { type: "reply", id: "book_cancel", displayText: "Cancelar" },
-            ],
-          },
+        return finalizeBooking({
+          currentState: { ...state, time: formattedTime },
+          dateStr: state.date,
+          timeStr: formattedTime,
+          clientName: state.clientName.trim(),
         });
       }
 
@@ -845,157 +970,12 @@ export async function POST(request: Request) {
       }
 
       const cleanName = rawInput.slice(0, 60);
-      const service =
-        shopData.services.find((s) => s.id === state.serviceId) ||
-        shopData.services[0];
-      const barber =
-        shopData.barbers.find((b) => b.id === state.barberId) ||
-        shopData.barbers[0];
-      const dateFormatted = state.date.split("-").reverse().join("/");
-      const barberLine =
-        shopData.barbers.length > 1 ? `\nProfissional: ${barber.name}` : "";
-
-      return saveStateAndReply({
-        shopId: numericShopId,
-        clientPhone,
-        state: {
-          ...state,
-          clientName: cleanName,
-          step: "CONFIRM_BOOKING",
-        },
-        reply: {
-          text: `Confirma os dados abaixo?\nServiço: ${service.name}${barberLine}\nData: ${dateFormatted} às ${state.time}\nNome: ${cleanName}`,
-          buttons: [
-            { type: "reply", id: "book_confirm", displayText: "Confirmar" },
-            { type: "reply", id: "book_cancel", displayText: "Cancelar" },
-          ],
-        },
+      return finalizeBooking({
+        currentState: { ...state, clientName: cleanName },
+        dateStr: state.date,
+        timeStr: state.time,
+        clientName: cleanName,
       });
-    }
-
-    if (
-      state.step === "CONFIRM_BOOKING" &&
-      state.date &&
-      state.time &&
-      state.clientName
-    ) {
-      if (normId === "book_cancel" || normInput.includes("cancelar")) {
-        return clearSessionAndReply({
-          shopId: numericShopId,
-          clientPhone,
-          text: "Agendamento cancelado. Quando quiser marcar, é só mandar uma mensagem!",
-        });
-      }
-
-      if (normId !== "book_confirm" && !normInput.includes("confirmar")) {
-        return saveStateAndReply({
-          shopId: numericShopId,
-          clientPhone,
-          state,
-          reply: {
-            text: "Toque em Confirmar para finalizar ou Cancelar para desistir:",
-            buttons: [
-              { type: "reply", id: "book_confirm", displayText: "Confirmar" },
-              { type: "reply", id: "book_cancel", displayText: "Cancelar" },
-            ],
-          },
-        });
-      }
-
-      const targetService =
-        shopData.services.find((s) => s.id === state.serviceId) ||
-        shopData.services[0];
-      const targetBarber =
-        shopData.barbers.find((b) => b.id === state.barberId) ||
-        shopData.barbers[0];
-
-      const slotsResult = await getAvailableSlotsForDay(
-        numericShopId,
-        state.date,
-        targetBarber.id,
-        targetService.durationMinutes,
-      );
-
-      const chosenSlot = slotsResult.slots.find((s) => s.time === state.time);
-      if (slotsResult.isClosed || !chosenSlot) {
-        return promptTimeOrPeriodForDate(
-          { ...state, time: undefined, period: undefined },
-          state.date,
-        );
-      }
-
-      const startAt = new Date(`${state.date}T${state.time}:00-03:00`);
-      const durationWithInterval = targetService.durationMinutes + 10;
-      const endTime = new Date(
-        startAt.getTime() + durationWithInterval * 60000,
-      );
-
-      try {
-        const finalAppointment = await prisma.$transaction(async (tx) => {
-          const existing = await tx.appointment.findFirst({
-            where: {
-              barberId: targetBarber.id,
-              status: "CONFIRMED",
-              NOT: { id: upcomingAppointment?.id },
-              AND: [
-                { startTime: { lt: endTime } },
-                { endTime: { gt: startAt } },
-              ],
-            },
-          });
-
-          if (existing) {
-            throw new Error("TIME_SLOT_TAKEN");
-          }
-
-          if (upcomingAppointment) {
-            return await tx.appointment.update({
-              where: { id: upcomingAppointment.id },
-              data: {
-                startTime: startAt,
-                endTime: endTime,
-                barberId: targetBarber.id,
-                serviceId: targetService.id,
-                status: "CONFIRMED",
-                clientName: state.clientName!,
-              },
-            });
-          }
-
-          return await tx.appointment.create({
-            data: {
-              clientName: state.clientName!,
-              clientPhone,
-              shopId: shopData.id,
-              barberId: targetBarber.id,
-              serviceId: targetService.id,
-              startTime: startAt,
-              endTime: endTime,
-            },
-          });
-        });
-
-        const successMsg = upcomingAppointment
-          ? "Seu horário foi alterado com sucesso!"
-          : "Agendamento realizado com sucesso!";
-
-        return clearSessionAndReply({
-          shopId: numericShopId,
-          clientPhone,
-          text: successMsg,
-          status: "SUCCESS",
-          details: finalAppointment,
-        });
-      } catch (txError: unknown) {
-        const errorMessage = txError instanceof Error ? txError.message : "";
-        if (errorMessage === "TIME_SLOT_TAKEN") {
-          return promptTimeOrPeriodForDate(
-            { ...state, time: undefined, period: undefined },
-            state.date,
-          );
-        }
-        throw txError;
-      }
     }
 
     return promptNextAfterServiceAndBarber({ step: "SELECT_SERVICE" });
