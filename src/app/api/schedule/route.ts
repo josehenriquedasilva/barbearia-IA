@@ -24,9 +24,9 @@ interface FlowState {
   step: FlowStep;
   serviceId?: number;
   barberId?: number;
-  date?: string; // YYYY-MM-DD
+  date?: string;
   period?: "MANHA" | "TARDE" | "NOITE";
-  time?: string; // HH:MM
+  time?: string;
   clientName?: string;
   isRescheduling?: boolean;
 }
@@ -46,6 +46,34 @@ function normalizeText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function timeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function pickSpacedTimes(
+  times: string[],
+  stepMinutes: number,
+  maxCount = 10,
+): string[] {
+  if (times.length === 0) return [];
+  const safeStep = Math.max(10, stepMinutes);
+
+  const picked: string[] = [times[0]];
+  let lastMins = timeToMinutes(times[0]);
+
+  for (let i = 1; i < times.length; i++) {
+    if (picked.length >= maxCount) break;
+    const currentMins = timeToMinutes(times[i]);
+    if (currentMins - lastMins >= safeStep) {
+      picked.push(times[i]);
+      lastMins = currentMins;
+    }
+  }
+
+  return picked;
 }
 
 function getDateStrOffset(daysOffset: number): string {
@@ -320,12 +348,10 @@ export async function POST(request: Request) {
       ? null
       : await loadState(numericShopId, clientPhone);
 
-    // Helper para avançar automaticamente pelas etapas únicas (1 serviço / 1 barbeiro)
     const promptNextAfterServiceAndBarber = async (
       nextState: FlowState,
       greetingPrefix = "",
     ) => {
-      // 1. Escolher Serviço (se > 1 e ainda não escolhido)
       if (!nextState.serviceId) {
         if (shopData.services.length === 1) {
           nextState.serviceId = shopData.services[0].id;
@@ -348,7 +374,6 @@ export async function POST(request: Request) {
         }
       }
 
-      // 2. Escolher Barbeiro (se > 1 e ainda não escolhido)
       if (!nextState.barberId) {
         if (shopData.barbers.length === 1) {
           nextState.barberId = shopData.barbers[0].id;
@@ -378,7 +403,6 @@ export async function POST(request: Request) {
         }
       }
 
-      // 3. Escolher Data
       const openDates = getUpcomingOpenDates(shopData, 7);
       if (openDates.length === 0) {
         return clearSessionAndReply({
@@ -408,7 +432,6 @@ export async function POST(request: Request) {
       });
     };
 
-    // Helper para montar lista de horários (com quebra por turno se > 10 vagas)
     const promptTimeOrPeriodForDate = async (
       nextState: FlowState,
       dateStr: string,
@@ -455,17 +478,18 @@ export async function POST(request: Request) {
         });
       }
 
+      const stepMinutes = service.durationMinutes + 10;
       const allTimes = slotsResult.slots.map((s) => s.time);
+      const spacedAllTimes = pickSpacedTimes(allTimes, stepMinutes, 30);
 
-      // Se passou de 10 horários e o cliente ainda não escolheu turno, pergunta o turno primeiro
-      if (allTimes.length > 10 && !selectedPeriod) {
-        const morningTimes = allTimes.filter(
+      if (spacedAllTimes.length > 10 && !selectedPeriod) {
+        const morningTimes = spacedAllTimes.filter(
           (t) => classifySlotPeriod(t) === "MANHA",
         );
-        const afternoonTimes = allTimes.filter(
+        const afternoonTimes = spacedAllTimes.filter(
           (t) => classifySlotPeriod(t) === "TARDE",
         );
-        const nightTimes = allTimes.filter(
+        const nightTimes = spacedAllTimes.filter(
           (t) => classifySlotPeriod(t) === "NOITE",
         );
 
@@ -511,11 +535,11 @@ export async function POST(request: Request) {
       }
 
       const filteredTimes = selectedPeriod
-        ? allTimes.filter((t) => classifySlotPeriod(t) === selectedPeriod)
-        : allTimes;
+        ? spacedAllTimes.filter((t) => classifySlotPeriod(t) === selectedPeriod)
+        : spacedAllTimes;
 
       const timesToShow = (
-        filteredTimes.length > 0 ? filteredTimes : allTimes
+        filteredTimes.length > 0 ? filteredTimes : spacedAllTimes
       ).slice(0, 10);
 
       const reply = buildChoiceMessage({
@@ -541,9 +565,6 @@ export async function POST(request: Request) {
       });
     };
 
-    // =========================================================
-    // INÍCIO DE CONVERSA (SEM ESTADO ATIVO)
-    // =========================================================
     if (!state) {
       if (upcomingAppointment) {
         const dateStr = upcomingAppointment.startTime.toLocaleDateString(
@@ -579,10 +600,6 @@ export async function POST(request: Request) {
         `Olá! Bem-vindo à ${shopData.name}. `,
       );
     }
-
-    // =========================================================
-    // TRATAMENTO DE CADA ETAPA DO FLUXO
-    // =========================================================
 
     if (state.step === "ACTIVE_APPOINTMENT_MENU") {
       if (normId === "apt_keep" || normInput.includes("manter")) {
@@ -780,7 +797,6 @@ export async function POST(request: Request) {
         return promptTimeOrPeriodForDate(state, state.date, state.period);
       }
 
-      // Se já temos o nome (ex.: remarcação), pula direto para confirmação
       if (state.clientName && state.clientName.trim().length > 0) {
         const service =
           shopData.services.find((s) => s.id === state.serviceId) ||
@@ -982,7 +998,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fallback caso algum estado antigo fique inconsistente
     return promptNextAfterServiceAndBarber({ step: "SELECT_SERVICE" });
   } catch (error: unknown) {
     console.error("Erro no processamento do fluxo:", error);
