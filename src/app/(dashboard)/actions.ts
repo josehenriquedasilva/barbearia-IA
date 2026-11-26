@@ -313,6 +313,8 @@ export async function updateClosedDays(
       clientName: string;
       clientPhone: string;
       startTime: Date;
+      serviceId: number;
+      barberId: number;
       reason?: string;
     }> = [];
 
@@ -362,6 +364,8 @@ export async function updateClosedDays(
             clientName: app.clientName,
             clientPhone: app.clientPhone,
             startTime: app.startTime,
+            serviceId: app.serviceId,
+            barberId: app.barberId,
             reason: day.reason,
           });
         }
@@ -369,25 +373,64 @@ export async function updateClosedDays(
     });
 
     for (const notify of notificationsToSend) {
-      const dateFormatted = notify.startTime.toLocaleDateString("pt-BR");
+      const dateFormatted = notify.startTime.toLocaleDateString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+      });
       const timeFormatted = formatTime(notify.startTime);
       const reasonText = notify.reason || "Não informado";
 
-      const msg = `Olá *${notify.clientName}*, infelizmente seu agendamento para o dia ${dateFormatted} às ${timeFormatted} foi *cancelado* pois a barbearia estará *fechada* nesta data.\n\n*Motivo:* ${reasonText}.\n\nVeja outro horário disponível enviando uma mensagem por aqui.`;
+      const msg = `Olá *${notify.clientName}*, infelizmente seu agendamento para o dia ${dateFormatted} às ${timeFormatted} foi *cancelado* pois a barbearia estará *fechada* nesta data.\n\n*Motivo:* ${reasonText}.\n\nDeseja reagendar para outro dia?`;
+
+      const clientPhoneClean = notify.clientPhone
+        .replace(/\D/g, "")
+        .replace(/^55/, "");
 
       try {
-        await sendWhatsAppMessage(instanceName, notify.clientPhone, msg);
+        await sendWhatsAppMessage(instanceName, notify.clientPhone, msg, {
+          buttons: [
+            {
+              type: "reply",
+              id: "cancel_rebook",
+              displayText: "Ver horários",
+            },
+            {
+              type: "reply",
+              id: "cancel_ok",
+              displayText: "Entendido",
+            },
+          ],
+        });
 
-        const clientPhoneClean = notify.clientPhone
-          .replace(/\D/g, "")
-          .replace(/^55/, "");
+        await prisma.chatMessage.deleteMany({
+          where: {
+            shopId,
+            clientPhone: clientPhoneClean,
+            role: "state",
+          },
+        });
+
+        await prisma.chatMessage.create({
+          data: {
+            role: "state",
+            content: JSON.stringify({
+              step: "AFTER_CANCEL_PROMPT",
+              serviceId: notify.serviceId,
+              barberId: notify.barberId,
+              clientName: notify.clientName,
+            }),
+            shopId,
+            clientPhone: clientPhoneClean,
+            processed: true,
+          },
+        });
 
         await prisma.chatMessage.create({
           data: {
             role: "model",
             content: msg,
-            shopId: shopId,
+            shopId,
             clientPhone: clientPhoneClean,
+            processed: true,
           },
         });
       } catch (err) {
