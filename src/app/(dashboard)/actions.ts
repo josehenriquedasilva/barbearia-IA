@@ -235,15 +235,50 @@ export async function cancelAppointmentAction(
       data: { status: "CANCELED", cancelReason: reason },
     });
 
-    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR")} às ${formatTime(app.startTime)} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.\n\nVeja outro horário disponível enviando uma mensagem por aqui.`;
+    const message = `Olá *${app.clientName}*, infelizmente seu agendamento para o dia ${app.startTime.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} às ${formatTime(app.startTime)} foi *cancelado* pela barbearia.\n\n*Motivo:* ${reason}.\n\nDeseja reagendar para outro horário?`;
 
     const instanceName = app.shop.whatsappInstance || app.shop.slug;
-
-    await sendWhatsAppMessage(instanceName, app.clientPhone, message);
-
     const clientPhoneClean = app.clientPhone
       .replace(/\D/g, "")
       .replace(/^55/, "");
+
+    await sendWhatsAppMessage(instanceName, app.clientPhone, message, {
+      buttons: [
+        {
+          type: "reply",
+          id: "cancel_rebook",
+          displayText: "Ver horários",
+        },
+        {
+          type: "reply",
+          id: "cancel_ok",
+          displayText: "Entendido",
+        },
+      ],
+    });
+
+    await prisma.chatMessage.deleteMany({
+      where: {
+        shopId: user.shopId,
+        clientPhone: clientPhoneClean,
+        role: "state",
+      },
+    });
+
+    await prisma.chatMessage.create({
+      data: {
+        role: "state",
+        content: JSON.stringify({
+          step: "AFTER_CANCEL_PROMPT",
+          serviceId: app.serviceId,
+          barberId: app.barberId,
+          clientName: app.clientName,
+        }),
+        shopId: user.shopId,
+        clientPhone: clientPhoneClean,
+        processed: true,
+      },
+    });
 
     await prisma.chatMessage.create({
       data: {
@@ -251,6 +286,7 @@ export async function cancelAppointmentAction(
         content: message,
         shopId: user.shopId,
         clientPhone: clientPhoneClean,
+        processed: true,
       },
     });
 

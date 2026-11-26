@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 type FlowStep =
   | "ACTIVE_APPOINTMENT_MENU"
   | "CONFIRM_CANCEL"
+  | "AFTER_CANCEL_PROMPT"
   | "RESCHEDULE_SERVICE_CHOICE"
   | "RESCHEDULE_WHEN_CHOICE"
   | "SELECT_SERVICE"
@@ -590,7 +591,6 @@ export async function POST(request: Request) {
         }
       }
 
-      // Na remarcação, após definir serviço (e barbeiro), pergunta se quer alterar só o dia, só o horário ou ambos
       if (nextState.isRescheduling && !nextState.date && !nextState.time) {
         return promptRescheduleWhenChoice(nextState);
       }
@@ -800,6 +800,45 @@ export async function POST(request: Request) {
         { step: "SELECT_SERVICE" },
         `Olá! Bem-vindo à ${shopData.name}. `,
       );
+    }
+
+    if (state.step === "AFTER_CANCEL_PROMPT") {
+      if (
+        normId === "cancel_rebook" ||
+        normInput.includes("horarios") ||
+        normInput.includes("remarcar") ||
+        normInput.includes("agendar") ||
+        normInput.includes("sim")
+      ) {
+        const serviceStillActive = state.serviceId
+          ? shopData.services.some((s) => s.id === state.serviceId)
+          : false;
+
+        return promptNextAfterServiceAndBarber({
+          step: "SELECT_DATE",
+          serviceId: serviceStillActive ? state.serviceId : undefined,
+          barberId: state.barberId,
+          clientName: state.clientName,
+        });
+      }
+
+      if (
+        normId === "cancel_ok" ||
+        normInput.includes("entendido") ||
+        normInput.includes("nao") ||
+        normInput.includes("depois")
+      ) {
+        return clearSessionAndReply({
+          shopId: numericShopId,
+          clientPhone,
+          text: "Tudo bem! Quando quiser agendar um novo horário, é só enviar uma mensagem por aqui.",
+        });
+      }
+
+      return promptNextAfterServiceAndBarber({
+        step: "SELECT_SERVICE",
+        clientName: state.clientName,
+      });
     }
 
     if (state.step === "ACTIVE_APPOINTMENT_MENU") {
@@ -1105,7 +1144,6 @@ export async function POST(request: Request) {
         });
       }
 
-      // Se o cliente escolheu "Só o dia" na remarcação, mantém o horário fixo e já tenta concluir
       if (state.isRescheduling && state.fixedTime && !state.fixedDate) {
         const clientName =
           state.clientName?.trim() ||
