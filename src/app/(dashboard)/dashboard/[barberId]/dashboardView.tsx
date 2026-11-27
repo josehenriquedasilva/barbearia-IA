@@ -86,7 +86,6 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
     },
   );
 
-  // SWR para buscar os dados atualizados da barbearia/assinatura em tempo real
   const { data: shopData } = useSWR(
     shopId ? `/api/shop/status?shopId=${shopId}` : null,
     fetcher,
@@ -97,6 +96,21 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
   );
 
   const currentShop = shopData?.shop || user.shop;
+  const activeClosedDays: { date: string; reason: string }[] = Array.isArray(
+    currentShop?.closedDays,
+  )
+    ? currentShop.closedDays
+    : closedDays;
+
+  const matchedClosedDay = activeClosedDays.find((d) => d.date === dateString);
+  const isSundayClosed =
+    selectedDate.getDay() === 0 && Boolean(currentShop?.isClosedSunday);
+  const isSelectedDateClosed = Boolean(matchedClosedDay) || isSundayClosed;
+  const closedReason = matchedClosedDay?.reason
+    ? matchedClosedDay.reason
+    : isSundayClosed
+      ? "Domingo fechado"
+      : undefined;
 
   useEffect(() => {
     async function loadBarbers() {
@@ -319,7 +333,6 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
       />
 
       <main className="px-3.5 py-5 max-w-[900px] mx-auto">
-        {/* CARD DE PLANO REFINADO E CLEAN */}
         {isAdmin && (
           <div className="bg-gradient-to-r from-neutral-900 via-neutral-900 to-neutral-900/90 border border-neutral-800 rounded-xl p-4 mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
             <div className="flex items-center gap-3">
@@ -421,13 +434,15 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             isOpenClosedDaysModal={() => setIsClosedDaysOpen(true)}
-            closedDays={closedDays.map((d) => d.date)}
+            closedDays={activeClosedDays.map((d) => d.date)}
           />
         </section>
 
         <section className="my-3.5">
           <Appointments
             appointments={Array.isArray(appointments) ? appointments : []}
+            isClosedDay={isSelectedDateClosed}
+            closedReason={closedReason}
             onOpenCancelModal={(appointment) =>
               setSelectedAppointment(appointment)
             }
@@ -472,7 +487,7 @@ export default function DashboardView({ user, isAdmin }: DashboardViewProps) {
         <ClosedDaysModal
           isOpen={isClosedDaysOpen}
           onClose={() => setIsClosedDaysOpen(false)}
-          closedDays={closedDays}
+          closedDays={activeClosedDays}
           onSave={handleSaveClosedDays}
         />
       )}

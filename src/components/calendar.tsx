@@ -9,7 +9,9 @@ export default function Calendar({
   isOpenClosedDaysModal,
   closedDays,
 }: CalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(
+    () => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+  );
 
   const daysInMonth = new Date(
     currentMonth.getFullYear(),
@@ -30,13 +32,13 @@ export default function Calendar({
 
   const previousMonth = () => {
     setCurrentMonth(
-      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1),
+      (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1),
     );
   };
 
   const nextMonth = () => {
     setCurrentMonth(
-      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1),
+      (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1),
     );
   };
 
@@ -71,12 +73,14 @@ export default function Calendar({
           </h3>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={previousMonth}
               className="p-1 hover:bg-neutral-800 rounded transition-colors"
             >
               <BiChevronLeft className="w-4 h-4 md:w-5 md:h-5 text-neutral-400 cursor-pointer" />
             </button>
             <button
+              type="button"
               onClick={nextMonth}
               className="p-1 hover:bg-neutral-800 rounded transition-colors cursor-pointer"
             >
@@ -102,16 +106,19 @@ export default function Calendar({
             const closed = isClosed(day);
             return (
               <button
+                type="button"
                 key={day}
-                onClick={() =>
-                  onSelectDate(
-                    new Date(
-                      currentMonth.getFullYear(),
-                      currentMonth.getMonth(),
-                      day,
-                    ),
-                  )
+                title={
+                  closed ? "Dia fechado para novos agendamentos" : undefined
                 }
+                onClick={() => {
+                  const nextDate = new Date(
+                    currentMonth.getFullYear(),
+                    currentMonth.getMonth(),
+                    day,
+                  );
+                  onSelectDate(nextDate);
+                }}
                 className={`
             aspect-square flex items-center justify-center rounded-lg text-xs md:text-sm transition-all cursor-pointer
             ${
@@ -150,6 +157,7 @@ export default function Calendar({
       {isAdmin && (
         <div className="mt-4 pt-4 border-t border-neutral-800">
           <button
+            type="button"
             onClick={isOpenClosedDaysModal}
             className="w-full flex items-center justify-center gap-2 bg-neutral-800 hover:bg-neutral-750 border border-neutral-700 text-neutral-300 rounded-lg px-4 py-3 transition-colors cursor-pointer hover:bg-neutral-700"
           >

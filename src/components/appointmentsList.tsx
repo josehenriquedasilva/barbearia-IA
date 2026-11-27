@@ -3,12 +3,13 @@
 import { AppointmentsListProps } from "@/types/types";
 import AppointmentsCard from "./ui/appointmentsCard";
 import { useEffect, useState } from "react";
-
-// Fazer alterações que está na IA para não alucinar a IA quando enviar msg de aviso e o cliente envia outra querendo marcar outro horário
+import { BiCalendarX } from "react-icons/bi";
 
 export default function Appointments({
   appointments,
   onOpenCancelModal,
+  isClosedDay = false,
+  closedReason,
 }: AppointmentsListProps) {
   const [, setTick] = useState(0);
 
@@ -35,6 +36,9 @@ export default function Appointments({
   const isEmpty =
     confirmed.length === 0 && completed.length === 0 && canceled.length === 0;
 
+  const formattedReason =
+    closedReason && closedReason !== "Não informado" ? closedReason : null;
+
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 md:p-6">
       <section className="flex justify-between items-center mb-5">
@@ -46,10 +50,29 @@ export default function Appointments({
         </p>
       </section>
 
+      {isClosedDay && (
+        <div className="mb-5 bg-red-950/40 border border-red-800/60 rounded-xl p-3.5 flex items-start gap-3">
+          <div className="bg-red-900/50 text-red-400 p-2 rounded-lg shrink-0 mt-0.5">
+            <BiCalendarX className="size-4" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-red-300">
+              Dia definido como fechado
+            </p>
+            <p className="text-xs text-red-300/80 mt-0.5">
+              Este dia não pode receber novos agendamentos.
+              {formattedReason ? ` Motivo: ${formattedReason}.` : ""}
+            </p>
+          </div>
+        </div>
+      )}
+
       {isEmpty ? (
         <div className="text-center py-8 md:py-12">
           <p className="text-neutral-500 text-sm md:text-base">
-            Nenhum agendamento para hoje
+            {isClosedDay
+              ? "Dia fechado — sem agendamentos para esta data"
+              : "Nenhum agendamento para hoje"}
           </p>
         </div>
       ) : (

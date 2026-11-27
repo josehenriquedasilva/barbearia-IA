@@ -146,6 +146,7 @@ export interface ShopSettings {
   lunchStart: string | null;
   lunchEnd: string | null;
   services: Service[];
+  closedDays?: { date: string; reason: string }[];
 }
 
 export interface SettingsPayload {
@@ -215,6 +216,8 @@ export interface WhatsAppStatusProps {
 export interface AppointmentsListProps {
   appointments: AppointmentData[];
   onOpenCancelModal: (appointment: AppointmentData) => void;
+  isClosedDay?: boolean;
+  closedReason?: string;
 }
 
 export interface AppointmentCardProps {
