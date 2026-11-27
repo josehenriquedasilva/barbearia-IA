@@ -404,9 +404,12 @@ export async function POST(request: Request) {
 
       const chosenSlot = slotsResult.slots.find((s) => s.time === timeStr);
       if (slotsResult.isClosed || !chosenSlot) {
+        const dateFormatted = dateStr.split("-").reverse().join("/");
         return promptTimeOrPeriodForDate(
           { ...currentState, time: undefined, period: undefined },
           dateStr,
+          undefined,
+          `Poxa, o horário das ${timeStr} no dia ${dateFormatted} acabou de ser preenchido por outra pessoa. Escolha outro horário disponível:`,
         );
       }
 
@@ -478,9 +481,12 @@ export async function POST(request: Request) {
       } catch (txError: unknown) {
         const errorMessage = txError instanceof Error ? txError.message : "";
         if (errorMessage === "TIME_SLOT_TAKEN") {
+          const dateFormatted = dateStr.split("-").reverse().join("/");
           return promptTimeOrPeriodForDate(
             { ...currentState, time: undefined, period: undefined },
             dateStr,
+            undefined,
+            `Poxa, alguém acabou de agendar às ${timeStr} no dia ${dateFormatted}. Veja os outros horários livres:`,
           );
         }
         throw txError;
@@ -628,6 +634,7 @@ export async function POST(request: Request) {
       nextState: FlowState,
       dateStr: string,
       selectedPeriod?: "MANHA" | "TARDE" | "NOITE",
+      customMessage?: string,
     ) => {
       const service =
         shopData.services.find((s) => s.id === nextState.serviceId) ||
@@ -719,7 +726,9 @@ export async function POST(request: Request) {
               step: "SELECT_PERIOD",
             },
             reply: {
-              text: "Temos vários horários livres nesse dia. Qual turno você prefere?",
+              text: customMessage
+                ? `${customMessage} Qual turno você prefere?`
+                : "Temos vários horários livres nesse dia. Qual turno você prefere?",
               buttons: periodButtons,
             },
           });
@@ -735,13 +744,14 @@ export async function POST(request: Request) {
       ).slice(0, 10);
 
       const promptText =
-        timesToShow.length === 1
+        customMessage ||
+        (timesToShow.length === 1
           ? buildSingleSlotMessage({
               selectedPeriod,
               closingTime: shopData.closingTime,
               totalDaySlots: spacedAllTimes.length,
             })
-          : "Escolha o melhor horário disponível:";
+          : "Escolha o melhor horário disponível:");
 
       const reply = buildChoiceMessage({
         text: promptText,
