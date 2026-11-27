@@ -42,6 +42,14 @@ interface OutgoingMessage {
   footer?: string;
 }
 
+interface UpcomingDateItem {
+  dateStr: string;
+  title: string;
+  description: string;
+  isClosed: boolean;
+  closedReason?: string;
+}
+
 const TZ = "America/Sao_Paulo";
 
 function normalizeText(value: string): string {
@@ -102,6 +110,7 @@ function formatTimeInSaoPauloHM(date: Date): string {
 function formatDateLabel(
   dateStr: string,
   indexOffset?: number,
+  closedInfo?: { isClosed: boolean; reason?: string },
 ): {
   title: string;
   description: string;
@@ -118,6 +127,30 @@ function formatDateLabel(
     weekday.charAt(0).toUpperCase() + weekday.slice(1).split("-")[0];
   const shortDate = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
 
+  if (closedInfo?.isClosed) {
+    const cleanReason =
+      closedInfo.reason && closedInfo.reason !== "Não informado"
+        ? `Fechado (${closedInfo.reason})`
+        : `Fechado • ${capitalizedWeekday}`;
+
+    if (indexOffset === 0) {
+      return {
+        title: `Hoje (${shortDate}) • Fechado`.slice(0, 24),
+        description: cleanReason.slice(0, 72),
+      };
+    }
+    if (indexOffset === 1) {
+      return {
+        title: `Amanhã (${shortDate}) - Fechado`.slice(0, 24),
+        description: cleanReason.slice(0, 72),
+      };
+    }
+    return {
+      title: `${capitalizedWeekday} (${shortDate}) - Fechado`.slice(0, 24),
+      description: cleanReason.slice(0, 72),
+    };
+  }
+
   if (indexOffset === 0) {
     return { title: `Hoje (${shortDate})`, description: capitalizedWeekday };
   }
@@ -130,32 +163,58 @@ function formatDateLabel(
   };
 }
 
-function getUpcomingOpenDates(
+function getUpcomingDates(
   shopData: {
     isClosedSunday: boolean;
-    closedDays: Array<{ date: string }>;
+    closedDays: Array<{ date: string; reason?: string | null }>;
   },
-  maxDays: number = 7,
-): Array<{ dateStr: string; title: string; description: string }> {
-  const closedSet = new Set(shopData.closedDays.map((c) => c.date));
-  const results: Array<{
-    dateStr: string;
-    title: string;
-    description: string;
-  }> = [];
+  maxOpenDays: number = 7,
+  maxTotalRows: number = 10,
+): UpcomingDateItem[] {
+  const closedMap = new Map<string, string>();
+  for (const c of shopData.closedDays) {
+    closedMap.set(c.date, c.reason || "Não informado");
+  }
 
-  for (let offset = 0; offset < 21 && results.length < maxDays; offset++) {
+  const results: UpcomingDateItem[] = [];
+  let openCount = 0;
+
+  for (
+    let offset = 0;
+    offset < 21 && openCount < maxOpenDays && results.length < maxTotalRows;
+    offset++
+  ) {
     const dateStr = getDateStrOffset(offset);
-    if (closedSet.has(dateStr)) continue;
-
     const [y, m, d] = dateStr.split("-").map(Number);
     const utcDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
     const isSunday = utcDate.getUTCDay() === 0;
 
-    if (isSunday && shopData.isClosedSunday) continue;
+    const isExplicitlyClosed = closedMap.has(dateStr);
+    const isSundayClosed = isSunday && shopData.isClosedSunday;
+    const isClosed = isExplicitlyClosed || isSundayClosed;
 
-    const { title, description } = formatDateLabel(dateStr, offset);
-    results.push({ dateStr, title, description });
+    const closedReason = isExplicitlyClosed
+      ? closedMap.get(dateStr)
+      : isSundayClosed
+        ? "Domingo fechado"
+        : undefined;
+
+    const { title, description } = formatDateLabel(dateStr, offset, {
+      isClosed,
+      reason: closedReason,
+    });
+
+    results.push({
+      dateStr,
+      title,
+      description,
+      isClosed,
+      closedReason,
+    });
+
+    if (!isClosed) {
+      openCount++;
+    }
   }
 
   return results;
@@ -200,10 +259,18 @@ function buildChoiceMessage(params: {
   sectionTitle: string;
   options: Array<{ id: string; title: string; description?: string }>;
   footer?: string;
+  forceList?: boolean;
 }): OutgoingMessage {
-  const { text, buttonText, sectionTitle, options, footer } = params;
+  const {
+    text,
+    buttonText,
+    sectionTitle,
+    options,
+    footer,
+    forceList = false,
+  } = params;
 
-  if (options.length <= 3) {
+  if (!forceList && options.length <= 3) {
     const buttons: WhatsAppReplyButton[] = options.map((opt) => ({
       type: "reply",
       id: opt.id,
@@ -226,6 +293,25 @@ function buildChoiceMessage(params: {
     },
     footer,
   };
+}
+
+function buildDateSelectionReply(
+  text: string,
+  dates: UpcomingDateItem[],
+): OutgoingMessage {
+  const hasClosedDays = dates.some((d) => d.isClosed);
+
+  return buildChoiceMessage({
+    text,
+    buttonText: "Escolher dia",
+    sectionTitle: "Dias da agenda",
+    forceList: hasClosedDays,
+    options: dates.map((d) => ({
+      id: d.isClosed ? `closed_${d.dateStr}` : `date_${d.dateStr}`,
+      title: d.title,
+      description: d.description,
+    })),
+  });
 }
 
 async function loadState(
@@ -601,8 +687,10 @@ export async function POST(request: Request) {
         return promptRescheduleWhenChoice(nextState);
       }
 
-      const openDates = getUpcomingOpenDates(shopData, 7);
-      if (openDates.length === 0) {
+      const upcomingDates = getUpcomingDates(shopData, 7, 10);
+      const hasOpenDate = upcomingDates.some((d) => !d.isClosed);
+
+      if (!hasOpenDate) {
         return clearSessionAndReply({
           shopId: numericShopId,
           clientPhone,
@@ -611,16 +699,10 @@ export async function POST(request: Request) {
         });
       }
 
-      const reply = buildChoiceMessage({
-        text: `${greetingPrefix}Para qual dia você deseja agendar?`,
-        buttonText: "Escolher dia",
-        sectionTitle: "Dias disponíveis",
-        options: openDates.map((d) => ({
-          id: `date_${d.dateStr}`,
-          title: d.title,
-          description: d.description,
-        })),
-      });
+      const reply = buildDateSelectionReply(
+        `${greetingPrefix}Para qual dia você deseja agendar?`,
+        upcomingDates,
+      );
 
       return saveStateAndReply({
         shopId: numericShopId,
@@ -651,19 +733,13 @@ export async function POST(request: Request) {
       );
 
       if (slotsResult.isClosed || slotsResult.slots.length === 0) {
-        const openDates = getUpcomingOpenDates(shopData, 7).filter(
+        const upcomingDates = getUpcomingDates(shopData, 7, 10).filter(
           (d) => d.dateStr !== dateStr,
         );
-        const reply = buildChoiceMessage({
-          text: "Não temos horários disponíveis nessa data para o serviço escolhido. Escolha outro dia:",
-          buttonText: "Escolher outro dia",
-          sectionTitle: "Dias disponíveis",
-          options: openDates.map((d) => ({
-            id: `date_${d.dateStr}`,
-            title: d.title,
-            description: d.description,
-          })),
-        });
+        const reply = buildDateSelectionReply(
+          "Não temos horários disponíveis nessa data para o serviço escolhido. Escolha outro dia:",
+          upcomingDates,
+        );
         return saveStateAndReply({
           shopId: numericShopId,
           clientPhone,
@@ -990,17 +1066,11 @@ export async function POST(request: Request) {
       }
 
       if (normId === "when_date" || normInput.includes("so o dia")) {
-        const openDates = getUpcomingOpenDates(shopData, 7);
-        const reply = buildChoiceMessage({
-          text: `Mantendo o horário das ${state.fixedTime || "atual"}. Para qual novo dia você quer passar?`,
-          buttonText: "Escolher dia",
-          sectionTitle: "Dias disponíveis",
-          options: openDates.map((d) => ({
-            id: `date_${d.dateStr}`,
-            title: d.title,
-            description: d.description,
-          })),
-        });
+        const upcomingDates = getUpcomingDates(shopData, 7, 10);
+        const reply = buildDateSelectionReply(
+          `Mantendo o horário das ${state.fixedTime || "atual"}. Para qual novo dia você quer passar?`,
+          upcomingDates,
+        );
         return saveStateAndReply({
           shopId: numericShopId,
           clientPhone,
@@ -1014,17 +1084,11 @@ export async function POST(request: Request) {
         normInput.includes("dia e horario") ||
         normInput.includes("ambos")
       ) {
-        const openDates = getUpcomingOpenDates(shopData, 7);
-        const reply = buildChoiceMessage({
-          text: "Para qual dia você deseja remarcar?",
-          buttonText: "Escolher dia",
-          sectionTitle: "Dias disponíveis",
-          options: openDates.map((d) => ({
-            id: `date_${d.dateStr}`,
-            title: d.title,
-            description: d.description,
-          })),
-        });
+        const upcomingDates = getUpcomingDates(shopData, 7, 10);
+        const reply = buildDateSelectionReply(
+          "Para qual dia você deseja remarcar?",
+          upcomingDates,
+        );
         return saveStateAndReply({
           shopId: numericShopId,
           clientPhone,
@@ -1123,29 +1187,45 @@ export async function POST(request: Request) {
     }
 
     if (state.step === "SELECT_DATE") {
-      const openDates = getUpcomingOpenDates(shopData, 7);
+      const upcomingDates = getUpcomingDates(shopData, 7, 10);
       const matchedDate =
-        openDates.find((d) => normId === `date_${d.dateStr}`) ||
-        openDates.find((d) => normalizeText(d.title) === normInput) ||
-        openDates.find((d) =>
+        upcomingDates.find(
+          (d) =>
+            normId === `date_${d.dateStr}` || normId === `closed_${d.dateStr}`,
+        ) ||
+        upcomingDates.find((d) => normalizeText(d.title) === normInput) ||
+        upcomingDates.find((d) =>
           normInput.includes(d.title.split("(")[1]?.replace(")", "") || "___"),
         ) ||
-        (normInput.includes("hoje") ? openDates[0] : undefined) ||
+        (normInput.includes("hoje") ? upcomingDates[0] : undefined) ||
         (normInput.includes("amanha")
-          ? openDates.find((d) => d.dateStr === getDateStrOffset(1))
+          ? upcomingDates.find((d) => d.dateStr === getDateStrOffset(1))
           : undefined);
 
       if (!matchedDate) {
-        const reply = buildChoiceMessage({
-          text: "Data inválida. Selecione um dos dias disponíveis:",
-          buttonText: "Escolher dia",
-          sectionTitle: "Dias disponíveis",
-          options: openDates.map((d) => ({
-            id: `date_${d.dateStr}`,
-            title: d.title,
-            description: d.description,
-          })),
+        const reply = buildDateSelectionReply(
+          "Data inválida. Selecione um dos dias disponíveis:",
+          upcomingDates,
+        );
+        return saveStateAndReply({
+          shopId: numericShopId,
+          clientPhone,
+          state,
+          reply,
         });
+      }
+
+      if (matchedDate.isClosed) {
+        const reasonDetail =
+          matchedDate.closedReason &&
+          matchedDate.closedReason !== "Não informado"
+            ? ` (${matchedDate.closedReason})`
+            : "";
+
+        const reply = buildDateSelectionReply(
+          `Esse dia está fechado${reasonDetail} e não aceita agendamentos. Por favor, escolha um dos dias abertos abaixo:`,
+          upcomingDates,
+        );
         return saveStateAndReply({
           shopId: numericShopId,
           clientPhone,
